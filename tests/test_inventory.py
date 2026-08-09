@@ -5,6 +5,7 @@ from pathlib import Path
 
 import jsonschema
 
+from pmgs_reference.ingest import csv_support
 from pmgs_reference.ingest.inventory import build_inventory, write_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,25 @@ def test_write_inventory_emits_jsonl_and_summary(synthetic_pmgs: Path, tmp_path:
     assert summary["file_count"] == 26
     assert summary["logical_sha256"] == inventory.logical_sha256
     assert summary["status_counts"] == {"parsed": 24, "retained": 2}
+
+
+def test_csv_field_limit_is_portable_to_windows_python_312(monkeypatch) -> None:
+    calls: list[int] = []
+
+    def windows_compatible_field_size_limit(limit: int | None = None) -> int:
+        if limit is None:
+            return 131_072
+        if limit > (1 << 31) - 1:
+            raise OverflowError("Python int too large to convert to C long")
+        calls.append(limit)
+        return 131_072
+
+    monkeypatch.setattr(csv_support.csv, "field_size_limit", windows_compatible_field_size_limit)
+
+    with csv_support.portable_csv_field_size_limit():
+        pass
+
+    assert calls == [csv_support.MAXIMUM_PORTABLE_CSV_FIELD_SIZE, 131_072]
 
 
 def test_inventory_accepts_cp932_extension_in_declared_shift_jis_xml(tmp_path: Path) -> None:

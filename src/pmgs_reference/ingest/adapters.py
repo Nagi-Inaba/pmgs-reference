@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import io
 import re
-import sys
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import cast
@@ -13,6 +12,7 @@ from typing import cast
 import pymupdf
 from lxml import etree, html
 
+from pmgs_reference.ingest.csv_support import portable_csv_field_size_limit
 from pmgs_reference.ingest.database import DatabaseWriter, SourceRef, normalized_text
 from pmgs_reference.ingest.inventory import SourceManifestEntry
 from pmgs_reference.normalization import normalize_code
@@ -33,12 +33,8 @@ def _csv_rows(path: Path) -> Iterator[list[str]]:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = raw.decode("cp932")
-    previous_limit = csv.field_size_limit()
-    try:
-        csv.field_size_limit(sys.maxsize)
+    with portable_csv_field_size_limit():
         yield from csv.reader(io.StringIO(text, newline=""))
-    finally:
-        csv.field_size_limit(previous_limit)
 
 
 def _parse_xml(raw: bytes) -> etree._Element:

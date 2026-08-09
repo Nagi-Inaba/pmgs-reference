@@ -7,7 +7,6 @@ import hashlib
 import io
 import json
 import re
-import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +14,8 @@ from typing import Literal, cast
 
 import pymupdf
 from lxml import etree, html
+
+from pmgs_reference.ingest.csv_support import portable_csv_field_size_limit
 
 FileType = Literal["csv", "xml", "html", "pdf", "xsl", "text"]
 ProcessingStatus = Literal["parsed", "retained", "failed"]
@@ -159,13 +160,9 @@ def _parse_xml(raw: bytes) -> str | None:
 def _validate(raw: bytes, file_type: FileType) -> tuple[str | None, ProcessingStatus]:
     if file_type == "csv":
         text, encoding = _decode_text(raw)
-        previous_limit = csv.field_size_limit()
-        try:
-            csv.field_size_limit(sys.maxsize)
+        with portable_csv_field_size_limit():
             for _row in csv.reader(io.StringIO(text, newline="")):
                 pass
-        finally:
-            csv.field_size_limit(previous_limit)
         return encoding, "parsed"
     if file_type in {"xml", "xsl"}:
         xml_encoding = _parse_xml(raw)
