@@ -1,9 +1,9 @@
 # 現在の状態
 
 - 更新日: 2026-08-09
-- 実装状態: 公開出典表示の強化を実装済み
-- 検証状態: repository全検査、Worker全検査、実データ全量A/B監査に合格
-- 公開状態: 未デプロイ、外部URL未検証、外部検索index未検証
+- 実装状態: 公開出典表示とWindows Python 3.12互換修正を実装済み
+- 検証状態: repository全検査、Worker全検査、実データ全量A/B監査、GitHub-hosted CI、CodeQLに合格
+- 公開状態: GitHub source repositoryはpublic、R2、Worker、PyPI、独自domain、外部検索indexは未公開または未検証
 
 ## 結論
 
@@ -17,7 +17,9 @@ validatorは、いずれかの必須表示が欠けた候補を`notice_errors`�
 
 この新しい公開契約は合成fixtureと実データ全量A/B監査で検証済みである。
 
-現在のローカル状態は`full-data audited`である。
+現在のローカル状態は`full-data audited`、source repositoryの外部状態は`GitHub public`である。
+
+[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)は通常のHTML閲覧とcloneが可能である。R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は別のrelease gateとして未実施である。
 
 ## 現在の公開契約
 
@@ -49,12 +51,12 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 2026-08-09時点でrepository標準検査に合格した。
 
-- repository boundary: trackedまたはuntrackedの候補141件、違反0
+- repository boundary: trackedまたはuntrackedの候補142件、違反0
 - Ruff lint: 合格
-- Ruff format: 63 file、差分0
-- mypy: 21 source file、問題0
-- pytest: 45件合格
-- sdistとwheel: build成功、各27 file、禁止形式または非公開記載の検出0
+- Ruff format: 64 file、差分0
+- mypy: 22 source file、問題0
+- pytest: 46件合格
+- sdistとwheel: build成功、各28 file、禁止形式または非公開記載の検出0
 - Worker: TypeScript、oxlint、workerd test 23件、WebMCP test 3件、dry-run bundleに合格
 - npm audit: 脆弱性0
 - Markdown: 34 file、相対link欠損0
@@ -66,13 +68,36 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 この検査は現在のfile内容を対象とする。
 
-公開用`main`は、現在の公開候補だけを持つ単一root commitとして確定した。
+公開用`main`は、現在の公開候補だけを持つclean root commit `c3f836b`から開始した。
+
+その後の`077ccc3`はWindows Python 3.12でCSV field size上限がoverflowする問題だけを修正し、同条件の回帰testを追加した。
 
 旧履歴は外部backup bundleへ退避し、`main`から到達不能にした。
 
 公開用履歴と現在treeのcredential pattern、禁止形式file、端末固有path、公開対象外の運用記録を検査した。
 
-remoteは未設定で、pushは実施していない。
+`origin`は`https://github.com/Nagi-Inaba/pmgs-reference.git`で、`main`をpush済みである。
+
+## GitHub source repositoryの公開検証
+
+2026-08-09に`Nagi-Inaba/pmgs-reference`をpublic repositoryとして外部確認した。
+
+- public URL: [https://github.com/Nagi-Inaba/pmgs-reference](https://github.com/Nagi-Inaba/pmgs-reference)
+- default branch: `main`
+- license表示: Apache-2.0
+- Issues: enabled
+- Wiki、Projects、Discussions: disabled
+- Actionsの既定permission: read-only、pull request承認permission: disabled
+- Dependabot alertsとsecurity updates: enabled
+- secret scanningとpush protection: enabled
+- private vulnerability reporting: enabled
+- branch protection: 実在する5 hosted checkを必須化、force pushとbranch deletionを禁止
+
+[Hosted CI run 31305434936](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31305434936)では、Python 3.12と3.14をUbuntuとWindowsで検査し、Cloudflare WorkerをNode.js 22で検査した。5 jobすべてが成功した。
+
+最初の非公開runではWindows Python 3.12だけがCSV 19件を失敗扱いにした。原因は`csv.field_size_limit(sys.maxsize)`が同環境のsigned C long上限を超えることだった。portable上限を`2^31-1`へ固定し、回帰testを追加した後のrun 31305434936で同環境を含む全jobが成功した。
+
+[CodeQL setup run 31305563795](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31305563795)はActions、Python、JavaScript/TypeScriptの解析に成功した。default setupはweekly scheduleである。
 
 ## 現在契約の全量監査
 
@@ -102,8 +127,7 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. GitHub-hosted CI、repository security設定、公開visibilityを外部で確認する。
-2. 実originを確定したA/B再生成後に、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを外部で確認する。
-3. 検索エンジンとAI検索からの発見性を公開後に測定する。
+1. 実originを確定したA/B再生成後に、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを外部で確認する。
+2. 検索エンジンとAI検索からの発見性を公開後に測定する。
 
-外部公開、package公開、deploy、index登録は、ローカル検証から自動的に完了扱いにしない。
+GitHub以外の全量成果物公開、package公開、deploy、index登録は、ローカル検証から自動的に完了扱いにしない。

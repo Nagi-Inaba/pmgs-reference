@@ -35,17 +35,17 @@
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 45件、Ruff、mypy、boundary、sdist、wheelに合格 |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 46件、Ruff、mypy、boundary、sdist、wheelに合格 |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | [2026-08-09の実データ公開候補検証](verification/public-release-2026-08-09.md)で`ready=true`、失敗0件 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | Python標準検査とWorker `verify`に合格 |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
-| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | implemented | ローカル構文検査済み、hosted実行は外部確認 |
+| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | [Hosted CI run 31305434936](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31305434936)で5 jobが成功 |
 | GH-03 | contribution、security、Issue、PRのdata-safeな受付境界を定義する | verified | `CONTRIBUTING.md`、`SECURITY.md`、Issue forms、PR template、CODEOWNERS |
-| GH-04 | 公開用Git履歴から旧版の公開対象外運用記録を除去する | verified | `main`を現在の公開候補だけを持つ単一root commitとして確定 |
-| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | external | [GitHub公開チェックリスト](github-publication-checklist.md) |
+| GH-04 | 公開用Git履歴から旧版の公開対象外運用記録を除去する | verified | clean root commit `c3f836b`から公開履歴を開始し、旧履歴を外部backupへ分離 |
+| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | [現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)と[GitHub公開チェックリスト](github-publication-checklist.md) |
 
 ## v1対象外
 
 AI要約、機械翻訳、意味検索、D1、Vectorize、Workers AI、Remote MCP、SPARQL、自動公開はv1要件に含めない。
 
-GitHub公開、R2 upload、Worker deploy、domain設定、PyPI公開、外部indexはローカル要件と分けて記録する。
+GitHub source repositoryの公開は完了した。R2 upload、Worker deploy、domain設定、PyPI公開、外部indexは別の外部releaseとして記録する。
