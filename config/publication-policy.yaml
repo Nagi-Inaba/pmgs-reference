@@ -1,0 +1,27 @@
+schema_version: "1.0"
+release_id: JPPM2026002
+sources:
+  - source_id: jppm2026002
+    owner: JPO
+    acquisition_basis: registered_bulk_download
+    policy_status: registered_use
+    delivery:
+      web_information_service: true
+      api_record_lookup: true
+      mcp_record_lookup: true
+      search_indexing: true
+      ai_input: true
+      ai_training: false
+      source_archive_download: false
+      canonical_database_download: false
+    attribution: Copyright (C) JPO 2026
+    source_url: https://www.jpo.go.jp/system/laws/sesaku/data/download.html
+    processing_notice:
+      ja: 本サービスは、特許庁が提供するPMGSデータを独自に変換し、分類または文書単位で表示しています。
+      en: This service independently transforms JPO-provided PMGS data into classification- and document-level reference pages.
+    non_affiliation_notice:
+      ja: 本サービスは、特許庁またはINPITが運営する公式サービスではありません。
+      en: This independent service is not operated by the JPO or INPIT.
+    evidence_url: https://www.jpo.go.jp/system/laws/sesaku/data/document/download/terms_of_use_bulk_data_download_service.pdf
+    evidence_sha256: 2F71C10C809A336E59359A3F5F2599A3B5B125DD3624417BB899BF8C860C50FC
+    checked_at: "2026-08-09"

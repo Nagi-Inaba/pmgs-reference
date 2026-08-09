@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pmgs-reference.example/schemas/publication-policy.schema.json",
+  "title": "PMGS publication policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "sources"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "release_id": { "type": "string", "minLength": 1 },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": { "$ref": "#/$defs/sourcePolicy" }
+    }
+  },
+  "$defs": {
+    "sourcePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "owner",
+        "acquisition_basis",
+        "policy_status",
+        "delivery",
+        "attribution",
+        "source_url",
+        "processing_notice",
+        "non_affiliation_notice",
+        "evidence_url",
+        "evidence_sha256",
+        "checked_at"
+      ],
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "acquisition_basis": { "const": "registered_bulk_download" },
+        "policy_status": { "const": "registered_use" },
+        "delivery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "web_information_service",
+            "api_record_lookup",
+            "mcp_record_lookup",
+            "search_indexing",
+            "ai_input",
+            "ai_training",
+            "source_archive_download",
+            "canonical_database_download"
+          ],
+          "properties": {
+            "web_information_service": { "type": "boolean" },
+            "api_record_lookup": { "type": "boolean" },
+            "mcp_record_lookup": { "type": "boolean" },
+            "search_indexing": { "type": "boolean" },
+            "ai_input": { "type": "boolean" },
+            "ai_training": { "type": "boolean" },
+            "source_archive_download": { "const": false },
+            "canonical_database_download": { "const": false }
+          }
+        },
+        "attribution": { "type": "string", "minLength": 1 },
+        "source_url": { "type": "string", "format": "uri" },
+        "processing_notice": { "$ref": "#/$defs/localizedNotice" },
+        "non_affiliation_notice": { "$ref": "#/$defs/localizedNotice" },
+        "evidence_url": { "type": "string", "format": "uri" },
+        "evidence_sha256": { "type": "string", "pattern": "^[A-F0-9]{64}$" },
+        "checked_at": { "type": "string", "format": "date" }
+      }
+    },
+    "localizedNotice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ja", "en"],
+      "properties": {
+        "ja": { "type": "string", "minLength": 1 },
+        "en": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pmgs-reference"
+version = "0.1.0"
+description = "Versioned local and public reference interfaces for JPO PMGS data"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Nagi-Inaba" }]
+dependencies = [
+  "lxml>=6.1,<7",
+  "mcp>=2.0,<3",
+  "pymupdf>=1.28,<2",
+  "pyyaml>=6.0,<7",
+]
+
+[project.urls]
+Repository = "https://github.com/Nagi-Inaba/pmgs-reference"
+Issues = "https://github.com/Nagi-Inaba/pmgs-reference/issues"
+
+[project.scripts]
+pmgs = "pmgs_reference.cli:main"
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.26,<5",
+  "lxml-stubs>=0.5.1,<0.6",
+  "mypy>=2.3,<3",
+  "pytest>=9.1,<10",
+  "pytest-cov>=7.0,<8",
+  "ruff>=0.16,<0.17",
+  "types-pyyaml>=6.0.12,<7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pmgs_reference"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/LICENSE",
+  "/README.md",
+  "/pyproject.toml",
+  "/src/pmgs_reference",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["build", "data", "docs/evidence"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+allowed-confusables = ["："]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["pmgs_reference"]
+mypy_path = "src"

@@ -1,0 +1,27 @@
+schema_version: "1.0"
+release_id: JPPM2099001
+sources:
+  - source_id: synthetic-pmgs
+    owner: Test Fixture
+    acquisition_basis: registered_bulk_download
+    policy_status: registered_use
+    delivery:
+      web_information_service: true
+      api_record_lookup: true
+      mcp_record_lookup: true
+      search_indexing: true
+      ai_input: true
+      ai_training: false
+      source_archive_download: false
+      canonical_database_download: false
+    attribution: Copyright (C) TEST 2026
+    source_url: https://example.test/synthetic-pmgs
+    processing_notice:
+      ja: このページは、合成テストデータを変換して作成しています。
+      en: This page is generated from transformed synthetic test data.
+    non_affiliation_notice:
+      ja: このページは、公的機関が運営する公式サービスではありません。
+      en: This is not an official service operated by a public authority.
+    evidence_url: https://example.test/registered-use-policy.pdf
+    evidence_sha256: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    checked_at: "2099-01-01"

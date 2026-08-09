@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pmgs-reference.example/schemas/classification-record.schema.json",
+  "title": "PMGS classification record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "scheme",
+    "edition",
+    "code",
+    "normalized_code",
+    "match_status",
+    "labels",
+    "texts",
+    "properties",
+    "relations",
+    "documents",
+    "sources",
+    "canonical_url"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "release_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "scheme": { "enum": ["fi", "fterm", "ipc"] },
+    "edition": { "type": ["string", "null"], "maxLength": 64 },
+    "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "normalized_code": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "match_status": {
+      "enum": ["exact", "normalized_exact", "invalid", "not_found"]
+    },
+    "labels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/textValue" }
+    },
+    "texts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourcedText" }
+    },
+    "properties": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourcedProperty" }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" }
+    },
+    "documents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/documentLink" }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "canonical_url": { "type": ["string", "null"], "format": "uri" }
+  },
+  "$defs": {
+    "textValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "text", "provenance"],
+      "properties": {
+        "language": { "enum": ["ja", "en"] },
+        "text": { "type": "string" },
+        "provenance": { "const": "official" }
+      }
+    },
+    "sourcedText": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "language", "text", "provenance", "source_id", "locator"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "language": { "enum": ["ja", "en"] },
+        "text": { "type": "string" },
+        "provenance": { "const": "official" },
+        "source_id": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "scheme", "code", "edition"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "scheme": { "enum": ["fi", "fterm", "ipc"] },
+        "code": { "type": "string", "minLength": 1 },
+        "edition": { "type": ["string", "null"] }
+      }
+    },
+    "sourcedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "language", "provenance", "source_id", "locator"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" },
+        "language": { "enum": ["ja", "en", null] },
+        "provenance": { "const": "official" },
+        "source_id": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 }
+      }
+    },
+    "documentLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_id", "kind", "language", "title", "page_count", "link_type"],
+      "properties": {
+        "document_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "language": { "enum": ["ja", "en", "und"] },
+        "title": { "type": "string", "minLength": 1 },
+        "page_count": { "type": ["integer", "null"], "minimum": 0 },
+        "link_type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "title",
+        "relative_id",
+        "owner",
+        "original_url",
+        "sha256",
+        "attribution"
+      ],
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "relative_id": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "original_url": { "type": "string", "format": "uri" },
+        "sha256": { "type": "string", "pattern": "^[A-F0-9]{64}$" },
+        "attribution": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

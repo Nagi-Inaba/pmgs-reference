@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "vectors": [
+    {
+      "scheme": "fi",
+      "input": " G06F   3/  048 ",
+      "normalized": "G06F3/048",
+      "group_key": "G06F3"
+    },
+    {
+      "scheme": "fi",
+      "input": "A01B   1/    00",
+      "normalized": "A01B1/00",
+      "group_key": "A01B1"
+    },
+    {
+      "scheme": "ipc",
+      "input": " g06f 3/048 ",
+      "normalized": "G06F3/048",
+      "group_key": "G06F3"
+    },
+    {
+      "scheme": "fterm",
+      "input": "4C083 AA01",
+      "normalized": "4C083AA01",
+      "group_key": "4C083"
+    },
+    {
+      "scheme": "fterm",
+      "input": " 2B002AA00 ",
+      "normalized": "2B002AA00",
+      "group_key": "2B002"
+    },
+    {
+      "scheme": "ipc",
+      "input": "A61K 8:00",
+      "normalized": "A61K8:00",
+      "group_key": "A61K8:00"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pmgs-reference.example/schemas/source-manifest-entry.schema.json",
+  "title": "PMGS source manifest entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_id",
+    "relative_path",
+    "size_bytes",
+    "sha256",
+    "file_type",
+    "encoding",
+    "data_group",
+    "parser",
+    "status",
+    "error"
+  ],
+  "properties": {
+    "source_id": { "type": "string", "pattern": "^src-[a-f0-9]{24}$" },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\).+$"
+    },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string", "pattern": "^[A-F0-9]{64}$" },
+    "file_type": { "enum": ["csv", "xml", "html", "pdf", "xsl", "text"] },
+    "encoding": { "type": ["string", "null"] },
+    "data_group": { "type": "string", "minLength": 1 },
+    "parser": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["parsed", "retained", "failed"] },
+    "error": { "type": ["string", "null"] }
+  }
+}

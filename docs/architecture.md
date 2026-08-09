@@ -1,0 +1,78 @@
+# アーキテクチャ
+
+## 最終用途
+
+JPO提供のPMGSデータに含まれる分類本文を、ローカル利用者、ウェブ検索、GPT Actions、Gemini Gems、Copilot Studio、MCPクライアントが同じ版と出典で参照できるようにする。
+
+公開参照面は独立した情報提供サービスであり、JPOまたはINPITの公式サービスとして表示しない。
+
+## コンポーネント
+
+```mermaid
+flowchart LR
+    A["登録後に取得したPMGS原資料"] --> B["Python ingestion"]
+    B --> C["版付きSQLite正本"]
+    C --> D["Python API"]
+    C --> E["CLI"]
+    C --> F["stdio MCP"]
+    C --> G["決定的な公開export"]
+    G --> H["HTML、Markdown、JSON、manifest"]
+    H --> I["Cloudflare R2"]
+    I --> J["Cloudflare Worker"]
+    J --> K["人と通常の検索エンジン"]
+    J --> L["OpenAPI対応クライアント"]
+    J --> M["WebMCP対応ブラウザ"]
+```
+
+## 責務
+
+Pythonは入力形式の解釈、正規化、lineage、検索、公開成果物の生成を担当する。
+
+SQLiteはローカルの正本であり、公開配布物ではない。
+
+Python API、CLI、stdio MCPは同じ`PMGSStore`検索層を呼ぶ。MCP固有の分類解釈や別索引を持たない。
+
+分類と文書の日本語部分語検索にはFTS5 trigram索引を使う。3文字未満の語だけ、入力をリテラルとしてescapeしたSQLite部分一致へ切り替える。
+
+Workerは利用者入力を検証し、版付きR2 keyを選び、content negotiationとHTTP応答を処理する。
+
+WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
+
+公開可能な版はWorkerへ埋め込むrelease catalogでallowlistし、`CURRENT_RELEASE`を`current`の解決先とする。R2内の一覧やpointerから暗黙に現在版を変更しない。
+
+分類照会はgroup manifestと対象JSON chunk、文書照会はdocument manifestと対象JSON chunkの最大2回のR2読み取りで完了する。直接配信するHTML、Markdown、JSON、CSSはR2 bodyをストリーミングする。詳細は[ADR 0004](decisions/0004-worker-release-resolution.md)に定める。
+
+WebMCPは同一オリジンのJSON APIを呼ぶ追加層であり、通常ページの表示条件にはしない。
+
+## 出典表示
+
+`config/publication-policy.yaml`はowner、attribution、JPOの原典案内URL、日本語と英語の加工表示、日本語と英語の非公式サービス表示を持つ。
+
+公開exportはpolicyのattributionを正本SQLite内の`COPYRGHT`と照合し、不一致を公開前に拒否する。
+
+公開HTML、Markdown、`llms.txt`は同じpolicyから表示を生成する。
+
+公開JSONのsource objectはowner、原典案内URL、SHA-256、attributionを持つ。
+
+validatorは公開ページごとに必須表示を検査する。
+
+v1はsource policyを一つに限定する。
+
+複数権利者の資料を扱う場合は、source fileとpolicyを明示的に対応付けるschemaを追加するまで拒否する。
+
+## 信頼境界
+
+- PMGS入力は信頼済み形式とはみなさず、サイズ、文字コード、列数、XML解析、PDF抽出を検証する。
+- CLI引数、環境変数、HTTP query、path parameterはすべて外部入力として検証する。
+- 公開exportはローカルパス、ユーザー名、認証情報、元ファイル、SQLiteを含まないことを検査する。
+- R2 keyはallowlist済みのscheme、release、languageと、Pythonが生成したmanifestから組み立てる。
+
+## 失敗時の挙動
+
+inventoryは全ファイルを`parsed`、`retained`、`failed`のいずれかで記録する。
+
+未処理または抽出失敗が1件でもあるビルドは、完全版を名乗らない。
+
+公開APIは入力不正を400、該当なしを404、成果物不整合を503で返す。
+
+現在版の切替に失敗しても、既存の版付き成果物を削除しない。

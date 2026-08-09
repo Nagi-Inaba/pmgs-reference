@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem in the local tools or public reference interfaces.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach a PMGS source package, generated database, registration material, credentials, or confidential patent data.
+        Use the synthetic fixture or a minimal redacted example whenever possible.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Python API
+        - CLI
+        - stdio MCP
+        - Public export
+        - Cloudflare Worker or JSON API
+        - HTML or Markdown page
+        - WebMCP optional tool
+        - Documentation or build tooling
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include a minimal command or request with private paths and data removed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Remove credentials, usernames, local absolute paths, and non-public source text from logs.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data-safety confirmation
+      options:
+        - label: I removed credentials, private identifiers, local absolute paths, and non-public PMGS source data.
+          required: true

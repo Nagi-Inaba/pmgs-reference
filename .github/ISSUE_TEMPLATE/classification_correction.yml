@@ -1,0 +1,52 @@
+name: Classification data question
+description: Report a possible mismatch in a published classification record without uploading source packages.
+title: "[Classification]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for reproducible record mismatches, not legal opinions or patentability analysis.
+        Do not upload bulk PMGS files, generated databases, registration material, or confidential patent documents.
+  - type: dropdown
+    id: scheme
+    attributes:
+      label: Classification scheme
+      options:
+        - FI
+        - F-term
+        - IPC
+    validations:
+      required: true
+  - type: input
+    id: code
+    attributes:
+      label: Classification code
+      placeholder: G06F3/048
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: PMGS release and edition
+      placeholder: JPPM2026002, IPC 8U
+    validations:
+      required: true
+  - type: input
+    id: public_url
+    attributes:
+      label: Public record URL
+      description: Use a public PMGS Reference URL when one is available.
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed mismatch
+      description: Describe the field and value. Do not paste a bulk source record.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Public evidence
+      description: Link to a public JPO or WIPO page, document, or other reproducible source.
+    validations:
+      required: true

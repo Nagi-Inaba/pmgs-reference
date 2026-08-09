@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pmgs-reference.example/schemas/release-manifest.schema.json",
+  "title": "PMGS public release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "source_manifest_sha256",
+    "database_schema_version",
+    "generated_at",
+    "base_url",
+    "max_json_chunk_bytes",
+    "publication_policy_sha256",
+    "coverage",
+    "objects"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "release_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "source_manifest_sha256": { "$ref": "#/$defs/sha256" },
+    "database_schema_version": { "type": "integer", "minimum": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "base_url": { "type": "string", "format": "uri", "pattern": "^https?://[^/]+$" },
+    "max_json_chunk_bytes": { "type": "integer", "minimum": 4096, "maximum": 8388608 },
+    "publication_policy_sha256": { "$ref": "#/$defs/sha256" },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "bytes", "sha256", "content_type"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "content_type": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[A-F0-9]{64}$" }
+  }
+}
