@@ -135,7 +135,9 @@ def doctor_database(
 ) -> DoctorResult:
     """Verify a database, real stdio handshake, read-only tools, and hash stability."""
     resolved_database = Path(database).expanduser().resolve()
-    resolved_python = Path(python_executable or sys.executable).expanduser().resolve()
+    # Preserve the virtual-environment launcher instead of resolving its POSIX
+    # symlink to a system interpreter that cannot import this package.
+    resolved_python = Path(python_executable or sys.executable).expanduser().absolute()
     if not resolved_python.is_file():
         raise FileNotFoundError(f"Python executable not found: {resolved_python}")
 

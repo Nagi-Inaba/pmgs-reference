@@ -172,7 +172,9 @@ def prepare_agent_kit(
 ) -> AgentKitResult:
     """Create a non-destructive, import-ready local agent kit."""
     resolved_database = Path(database).expanduser().resolve()
-    resolved_python = Path(python_executable).expanduser().resolve()
+    # Keep a virtual environment's interpreter path intact. On POSIX, resolving
+    # the symlink can escape the environment and lose its installed packages.
+    resolved_python = Path(python_executable).expanduser().absolute()
     resolved_output = Path(output_dir).expanduser().resolve()
     if not resolved_python.is_file():
         raise FileNotFoundError(f"Python executable not found: {resolved_python}")
