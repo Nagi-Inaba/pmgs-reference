@@ -57,7 +57,7 @@ npm --prefix worker run verify
 - evidence PDFがJPO公開資料だけで、PDF signatureとhashを確認できる。
 - synthetic fixture以外のPMGS-shaped source fileがない。
 - Markdown linkがrepository内で解決できる。
-- 現在の公開表示契約を使う実データA/B auditが完了している。
+- R2 uploadまたはWorker deployを行う場合は、現在の公開表示契約を使う実データA/B auditが完了している。
 
 ## repository settings
 
@@ -74,7 +74,7 @@ npm --prefix worker run verify
 description例は次のとおりである。
 
 ```text
-Versioned Python, MCP, HTML, Markdown, and OpenAPI reference interfaces for registered-use JPO PMGS data.
+JPO PMGSデータをCodex・Claude Code、Python、CLI、任意Webから参照する版付き特許分類リファレンス
 ```
 
 topics例は次のとおりである。

@@ -2,8 +2,8 @@
 
 - 更新日: 2026-08-10
 - 実装状態: v0.2.0のCodex・Claude Code向けagent kit、日本語既定、英語切替、Webセルフホスト資料を実装済み
-- 検証状態: 現行sourceはrepository全検査とWorker全検査に合格。日英Web入口追加後の実データ全量A/B監査とhosted CIは未実施
-- 公開状態: GitHub source repositoryはpublic。v0.2.0のcommit、push、GitHub Releaseは未実施。R2、Worker、PyPI、独自domain、外部検索indexも未公開または未検証
+- 検証状態: 現行sourceはrepository全検査、Worker全検査、GitHub hosted CI、CodeQLに合格。日英Web入口追加後の実データ全量A/B監査はWeb公開時まで未実施
+- 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。R2、Worker、PyPI、独自domain、外部検索indexは未公開または未検証
 
 ## 結論
 
@@ -17,7 +17,7 @@ Web公開は停止したまま、第三者が費用と運用責任を引き受�
 
 現行sourceと合成fixtureは`locally verified`である。2026-08-09に全量監査したSQLite正本と分類recordは回帰基準として有効だが、その後に追加した日英Web入口の公開bytesは実データ全量A/Bで再監査していない。
 
-source repositoryの外部状態は`GitHub public`である。v0.2.0差分のcommit、push、GitHub Release、hosted CIは次の外部release gateである。
+source repositoryの外部状態は`GitHub public`である。v0.2.0差分は保護branchへのPull Request、hosted CI、CodeQLを通して`main`へmergeし、dataを含まないwheelとsdistをGitHub Releaseへ公開した。
 
 [GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)は通常のHTML閲覧とcloneが可能である。R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は停止中の任意セルフホストgateであり、管理者は実施していない。
 
@@ -103,6 +103,25 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 [CodeQL setup run 31305563795](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31305563795)はActions、Python、JavaScript/TypeScriptの解析に成功した。default setupはweekly scheduleである。
 
+## v0.2.0のGitHub公開
+
+[Pull Request #1](https://github.com/Nagi-Inaba/pmgs-reference/pull/1)は、必須checkをすべて通して2026-08-10にmergeした。merge commitは`cebd82caa76366c6d01e2fb9d27387b46dcfeb8f`である。
+
+最初のCIではUbuntuだけが失敗した。仮想環境のPython symlinkをsystem interpreterへ解決したため、stdio子processが`pmgs_reference`をimportできなかったことが原因である。commit `650a3e3`で仮想環境のlauncher pathを保持し、再実行した。
+
+[Hosted CI run 31363816163](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31363816163)では、Python 3.12と3.14をUbuntuとWindowsで検査し、Cloudflare WorkerをNode.js 22で検査した。5 jobすべてが成功した。
+
+[CodeQL run 31363812624](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31363812624)では、Actions、Python、JavaScript/TypeScriptの3解析が成功した。
+
+[GitHub Release v0.2.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.2.0)はdraftでもprereleaseでもなく、tagとtargetは上記merge commitを指す。添付した成果物は次のとおりである。
+
+- `pmgs_reference-0.2.0-py3-none-any.whl`: 82,168 bytes、SHA-256 `F9122FCC21E378D35D3EFA99FAB61A0CFAC0CB803C62E5ABBC9F704974F68BCC`
+- `pmgs_reference-0.2.0.tar.gz`: 71,233 bytes、SHA-256 `389EB97A9CBFD5A65AD9F56CB84360615E58E29C7975B3DEDAA930A48BA3F2E7`
+
+GitHub asset digestはローカルSHA-256と一致した。wheelは32 file、sdistは33 fileで、共通skillを含み、PMGS実データ、SQLite、source manifest、全量export、禁止形式は0件だった。
+
+repository descriptionは日本語である。R2 upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
+
 ## 2026-08-09の直前契約に対する全量監査
 
 2026-08-09に新しい空の出力先へ実データA/B公開候補を生成した。
@@ -133,9 +152,7 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. v0.2.0差分をcommitしてpublic GitHub repositoryへpushし、hosted CIを確認する。
-2. GitHub Releaseへdataを含まないsdistとwheelを添付し、公開状態を確認する。
-3. 第三者がWeb公開する場合だけ、実originでA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを外部確認する。
-4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
+1. 第三者がWeb公開する場合だけ、実originでA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを外部確認する。
+2. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub以外の全量成果物公開、package公開、deploy、index登録は、ローカル検証から自動的に完了扱いにしない。
+GitHub sourceとdata非同梱のv0.2.0 Releaseは公開済みである。GitHub以外の全量成果物公開、package index公開、deploy、index登録は完了扱いにしない。
