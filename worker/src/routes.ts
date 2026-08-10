@@ -30,8 +30,11 @@ const DIRECT_FILE = /^(?:manifest|coverage|publication-policy)\.json$/u;
 const GROUP_FILE = /^(?:manifest\.json|\d{3}\.json)$/u;
 const ROOT_OBJECTS: Readonly<Record<string, string>> = {
   "/": "index.html",
+  "/ja/": "index.html",
+  "/en/": "index.en.html",
   "/openapi.json": "openapi.json",
   "/llms.txt": "llms.txt",
+  "/llms.en.txt": "llms.en.txt",
   "/robots.txt": "robots.txt",
   "/sitemap.xml": "sitemap.xml",
   "/assets/style.css": "assets/style.css",

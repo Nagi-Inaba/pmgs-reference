@@ -6,6 +6,8 @@
 
 R2 upload、Worker deploy、ドメイン変更、PyPI公開、Git pushは含まない。
 
+現在、管理者によるWeb公開は停止中である。第三者が外部公開を行う場合は、本runbookに加えて[Webセルフホストガイド](self-hosting.md)の費用、互換性、upload後全件照合、運用責任を確認する。
+
 ## 1. 入力を固定する
 
 原資料を版付きディレクトリとして保持し、旧版を上書きしない。
@@ -59,7 +61,7 @@ pmgs validate-public build/public --report build/reports/public-validation.json
 
 元ファイル、SQLite、一括JSON、ローカル絶対パス、ユーザー名、秘密情報が含まれないことを検査する。
 
-すべてのHTML、Markdown、トップページ、`llms.txt`にattribution、原典案内URL、加工表示、非公式サービス表示があることを確認する。
+すべてのHTML、Markdown、日英トップページ、日英`llms.txt`にattribution、原典案内URL、加工表示、非公式サービス表示があることを確認する。
 
 公開JSONのsource objectにowner、原典案内URL、attributionがあることを確認する。
 
@@ -132,3 +134,5 @@ Workerの`CURRENT_RELEASE`を変更してdeployする。
 本番URLをsmoke testする。
 
 失敗時はWorkerだけを前版へ戻す。
+
+検索index、GPTs、Gem、GPT Actions、Copilot Studioの発見性または互換性は、deploy成功と分けて外部検証する。

@@ -664,7 +664,7 @@ def export_public(
         _validate_source_attribution(connection, release_id, policy.source)
         output_path.mkdir(parents=True)
         writer = OutputWriter(output_path)
-        sitemap_urls = [f"{clean_base_url}/"]
+        sitemap_urls = [f"{clean_base_url}/", f"{clean_base_url}/en/"]
         latest_ipc = current_ipc_edition(connection, release_id)
         group_index = build_group_index(connection, release_id, latest_ipc)
         coverage = _coverage(connection, release_id, group_index)
@@ -752,12 +752,26 @@ def export_public(
             },
         )
         writer.write_text(
-            "index.html", home_html(clean_base_url, release_id, policy.source), HTML_CONTENT_TYPE
+            "index.html",
+            home_html(clean_base_url, release_id, policy.source, "ja"),
+            HTML_CONTENT_TYPE,
+        )
+        writer.write_text(
+            "index.en.html",
+            home_html(clean_base_url, release_id, policy.source, "en"),
+            HTML_CONTENT_TYPE,
         )
         writer.write_text("assets/style.css", stylesheet(), CSS_CONTENT_TYPE)
         writer.write_json("openapi.json", openapi_document(clean_base_url, release_id))
         writer.write_text(
-            "llms.txt", llms_text(clean_base_url, release_id, policy.source), TEXT_CONTENT_TYPE
+            "llms.txt",
+            llms_text(clean_base_url, release_id, policy.source, "ja"),
+            TEXT_CONTENT_TYPE,
+        )
+        writer.write_text(
+            "llms.en.txt",
+            llms_text(clean_base_url, release_id, policy.source, "en"),
+            TEXT_CONTENT_TYPE,
         )
         writer.write_text("robots.txt", robots_text(clean_base_url), TEXT_CONTENT_TYPE)
         for key, content in sitemap_documents(clean_base_url, sitemap_urls).items():

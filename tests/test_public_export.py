@@ -256,10 +256,15 @@ def test_public_discovery_files_are_machine_parseable_and_no_raw_sources_are_exp
     assert any(parameter["name"] == "release" for parameter in document_parameters)
     ElementTree.parse(root / "sitemap.xml")
 
-    assert "Exact lookup API" in (root / "llms.txt").read_text(encoding="utf-8")
+    assert "完全一致API" in (root / "llms.txt").read_text(encoding="utf-8")
+    assert "Exact lookup API" in (root / "llms.en.txt").read_text(encoding="utf-8")
     index_html = (root / "index.html").read_text(encoding="utf-8")
     assert "PMGS Reference" in index_html
+    assert 'href="https://pmgs.example.test/en/"' in index_html
     assert 'src="/assets/webmcp.js"' in index_html
+    english_index = (root / "index.en.html").read_text(encoding="utf-8")
+    assert 'lang="en"' in english_index
+    assert 'name="language" value="en"' in english_index
     forbidden = {".sqlite", ".sqlite3", ".db", ".csv", ".pdf", ".zip", ".xsl"}
     assert not [
         path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in forbidden
@@ -279,13 +284,22 @@ def test_every_human_and_agent_page_discloses_source_processing_and_service_stat
     non_affiliation = source["non_affiliation_notice"]
     assert isinstance(processing, dict) and isinstance(non_affiliation, dict)
 
-    targets = [root / "index.html", root / "llms.txt"]
+    targets = [
+        root / "index.html",
+        root / "index.en.html",
+        root / "llms.txt",
+        root / "llms.en.txt",
+    ]
     targets.extend(sorted((root / "releases" / RELEASE / "site").rglob("*.html")))
     targets.extend(sorted((root / "releases" / RELEASE / "site").rglob("*.md")))
     assert targets
     for path in targets:
         relative = path.relative_to(root).as_posix()
-        language = "en" if relative == "llms.txt" or "/site/en/" in relative else "ja"
+        language = (
+            "en"
+            if relative in {"index.en.html", "llms.en.txt"} or "/site/en/" in relative
+            else "ja"
+        )
         text = path.read_text(encoding="utf-8")
         assert source["attribution"] in text
         assert source["source_url"] in text

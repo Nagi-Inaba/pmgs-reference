@@ -1,0 +1,4 @@
+interface:
+  display_name: "PMGS特許分類リファレンス"
+  short_description: "出典付きのFI、Fターム、IPC照会"
+  default_prompt: "$pmgs-reference を使い、設定済みのローカルPMGSデータベースでこの特許分類を確認してください。"

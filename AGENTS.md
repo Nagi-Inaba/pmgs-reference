@@ -10,6 +10,15 @@ The public surfaces serve people and AI clients that need source-backed patent-c
 
 Do not turn this project into a patent-classification recommender, legal-opinion system, or general AI analysis service.
 
+## Language
+
+Japanese is the canonical and default user-facing language.
+
+- Keep `README.md`, CLI help, the distributed skill, and the public root and `llms.txt` in Japanese by default.
+- Keep English available through `README.en.md`, matching English guides, `language=en`, `/en/`, and `llms.en.txt`.
+- Update Japanese and English counterparts together when a shared public contract changes.
+- Do not translate or rewrite official source text unless the output labels it as derived material.
+
 ## Read before changing
 
 Read only the documents relevant to the requested change, starting with:

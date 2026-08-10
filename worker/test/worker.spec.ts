@@ -162,6 +162,17 @@ describe("static and negotiated routes", () => {
     expect(indexBody).toContain("/assets/webmcp.js");
     expect(indexBody).toContain("公的機関が運営する公式サービスではありません");
 
+    const englishIndex = await request("/en/");
+    expect(englishIndex.status).toBe(200);
+    expect(await englishIndex.text()).toContain(
+      "not an official service operated by a public authority",
+    );
+
+    const japaneseLlms = await request("/llms.txt");
+    expect(await japaneseLlms.text()).toContain("合成テストデータを変換して作成しています");
+    const englishLlms = await request("/llms.en.txt");
+    expect(await englishLlms.text()).toContain("generated from transformed synthetic test data");
+
     const release = await request(`/releases/JPPM2099001/manifest.json`);
     expect(release.headers.get("Cache-Control")).toContain("immutable");
     expect((await json(release)).release_id).toBe("JPPM2099001");

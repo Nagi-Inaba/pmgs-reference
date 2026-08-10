@@ -2,6 +2,7 @@
 
 - 状態：採用
 - 日付：2026-08-08
+- 一部置換：外部AI clientの互換性判断は[ADR 0007](0007-local-agent-kit-and-optional-web-hosting.md)を優先する
 
 ## 文脈
 

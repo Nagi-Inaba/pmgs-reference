@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 import runpy
+import tomllib
 from pathlib import Path
 from typing import cast
+from urllib.parse import unquote
 
 import jsonschema
 import yaml
@@ -79,3 +82,39 @@ def test_repository_boundary_allows_only_documented_path_fixtures(tmp_path: Path
     candidate.write_text(f"{windows_fixture}\n{unix_fixture}\n", encoding="utf-8")
 
     assert repository_content_errors(candidate, "tests/test_public_export.py") == []
+
+
+def test_japanese_is_default_and_english_surfaces_are_linked() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    english_readme = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    skill = (
+        ROOT / "src" / "pmgs_reference" / "resources" / "skills" / "pmgs-reference" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert "[English](README.en.md)" in readme
+    assert "日本語を既定言語" in readme
+    assert "[日本語](README.md)" in english_readme
+    assert "回答は日本語を既定" in skill
+    assert project["project"]["readme"] == "README.md"
+    assert "JPO PMGSデータ" in project["project"]["description"]
+
+
+def test_all_markdown_relative_links_resolve() -> None:
+    pattern = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+    skipped_directories = {".git", ".venv", "build", "dist", "node_modules"}
+    missing: list[str] = []
+
+    for markdown in sorted(ROOT.rglob("*.md")):
+        if any(part in skipped_directories for part in markdown.parts):
+            continue
+        for raw_target in pattern.findall(markdown.read_text(encoding="utf-8")):
+            target = raw_target.strip().strip("<>").split(maxsplit=1)[0]
+            if target.startswith(("#", "http://", "https://", "mailto:")):
+                continue
+            path_text = unquote(target.split("#", 1)[0])
+            if path_text and not (markdown.parent / path_text).resolve().exists():
+                relative = markdown.relative_to(ROOT).as_posix()
+                missing.append(f"{relative} -> {target}")
+
+    assert missing == []

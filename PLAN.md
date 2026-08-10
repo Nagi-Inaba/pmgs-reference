@@ -1,15 +1,17 @@
 # PMGS Reference v1 設計計画
 
 - 初版作成日: 2026-08-08
-- 最終更新日: 2026-08-09
+- 最終更新日: 2026-08-10
 - 対象: JPOの登録制一括ダウンロードサービスから取得したPMGSパッケージ
-- 利用者: ローカル開発者、一般のウェブ利用者、検索エンジン、GPTs、Gemini Gems、Copilot Studio、MCPクライアント
+- 利用者: Codex・Claude Code利用者、ローカル開発者、任意Web公開者、検索エンジン、GPTs、Gem、Copilot Studio、MCPクライアント
 
 ## 目的
 
 PMGS Referenceは、PMGSパッケージを版付きSQLiteへ変換し、同じ正本から複数の読み取り専用参照面を生成する。
 
 ローカル参照面はPython API、CLI、stdio MCPで構成する。
+
+日本語をREADME、skill、照会、公開ページの既定言語とし、英語は明示的に切り替えられる状態を維持する。
 
 公開参照面はサーバー描画HTML、Markdown、JSON、OpenAPIで構成する。
 
@@ -19,17 +21,19 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 
 ## 現在の実装状態
 
-ローカル正本、Python API、CLI、stdio MCP、決定的な公開export、Cloudflare Worker、OpenAPI、WebMCPアダプターは実装済みである。
+ローカル正本、Python API、CLI、stdio MCP、Codex・Claude Code用agent kit、決定的な公開export、Cloudflare Worker、OpenAPI、WebMCPアダプターは実装済みである。
 
 2026-08-09に、公開ページの帰属表示、原典リンク、加工表示、非公式サービス表示を必須契約へ追加した。
 
-この表示契約は合成fixtureと2026-08-09の実データ全量監査で検証済みである。
+2026-08-09時点の表示契約は、合成fixtureと実データ全量監査で検証済みである。
 
 実データA/Bは各399,025オブジェクト、10,491,136,463 bytesで一致し、全件validatorとrelease auditは`ready=true`、`failures=[]`となった。
 
-現在のローカル状態は`full-data audited`である。
+2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語切替先を追加した。この新しい入口契約は合成fixtureで検証し、Web公開時に実originで全量A/B監査を再実行する。
 
-デプロイ、ドメイン公開、PyPI公開、外部検索エンジンへの登録は本計画とは別の外部状態である。
+ローカルSQLiteと分類recordの全量状態は`full-data audited`、現行Web入口の状態は`locally verified`である。
+
+GitHub source repositoryを現在の配布面とする。Web deploy、domain公開、PyPI公開、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
 
 ## v1の設計原則
 
@@ -54,6 +58,7 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 - 原資料に存在する日本語と英語
 - 版付きSQLiteとFTS5によるローカル文字列検索
 - Python API、CLI、stdio MCP
+- CodexとClaude Codeに対応するclient別MCP設定、共通skill、診断、評価ケース
 - 分類または文書単位のHTML、Markdown、JSON
 - release manifest、coverage、OpenAPI、`llms.txt`、`robots.txt`、sitemap
 - Cloudflare Workerによる読み取り専用配信
@@ -81,9 +86,11 @@ flowchart LR
     C --> D["Python API"]
     C --> E["CLI"]
     C --> F["stdio MCP"]
+    F --> N["client別設定と共通skill"]
+    N --> O["Codex・Claude Code"]
     C --> G["決定的な公開export"]
     G --> H["HTML、Markdown、JSON、manifest"]
-    H --> I["Cloudflare R2"]
+    H -. "任意セルフホスト" .-> I["Cloudflare R2"]
     I --> J["Cloudflare Worker"]
     J --> K["人と検索エンジン"]
     J --> L["OpenAPI対応クライアント"]
@@ -205,7 +212,7 @@ validatorはこれらの表示が一つでも欠けた公開候補を不合格�
 
 Python APIは完全一致照会、文字列検索、上位下位、関連文書、文書取得、release情報を提供する。
 
-CLIはinventory、build、validate、lookup、search、document、export、公開検証、release audit、MCP起動を提供する。
+CLIはinventory、build、validate、lookup、search、document、doctor、agent kit生成、skill導入、export、公開検証、release audit、MCP起動を提供する。
 
 stdio MCPは次の三つの読み取り専用toolを提供する。
 
@@ -214,6 +221,8 @@ stdio MCPは次の三つの読み取り専用toolを提供する。
 - `get_pmgs_document`
 
 ローカル参照経路はネットワークからデータを自動取得せず、telemetryやmodel callを行わない。
+
+Codex用TOMLとClaude Code用JSONは別々に生成する。分類照会の共通手順は同じskillから配布する。
 
 ## 公開成果物
 
@@ -235,7 +244,8 @@ WebMCP以外のクライアント側script、外部font、広告、trackingを�
 
 | URL | 内容 |
 | --- | --- |
-| `/` | サービス説明、完全一致フォーム、release、公開範囲 |
+| `/`、`/ja/` | 日本語のサービス説明、完全一致フォーム、release、公開範囲 |
+| `/en/` | 英語のサービス説明、完全一致フォーム、release、公開範囲 |
 | `/ja/fterm/{theme}` | 日本語Fタームテーマ |
 | `/en/fterm/{theme}` | 原資料に英語があるFタームテーマ |
 | `/ja/classification/{main_group}` | 日本語FIまたはIPCグループ |
@@ -248,7 +258,8 @@ WebMCP以外のクライアント側script、外部font、広告、trackingを�
 | `/api/v1/releases` | 公開release一覧 |
 | `/api/v1/coverage` | 公開範囲 |
 | `/openapi.json` | OpenAPI 3.1 |
-| `/llms.txt` | AIクライアント向け入口 |
+| `/llms.txt` | 日本語のAIクライアント向け入口 |
+| `/llms.en.txt` | 英語のAIクライアント向け入口 |
 | `/sitemap.xml` | 公開ページ一覧 |
 
 ## WorkerとWebMCP
@@ -330,6 +341,8 @@ WebMCP toolは同一originの完全一致APIだけを呼び、書き込みや個
 | WorkerのCPUまたはmemory上限を超える | 事前生成、chunk上限、最大2 R2 readを維持する |
 | WebMCP仕様が変わる | 一つのadapterへ隔離し、通常APIを正本にする |
 | 外部検索で発見されない | server-rendered HTML、sitemap、Markdownを提供し、index状態は公開後に測定する |
+| GPTsやGemが特定domainを参照しない | Web参照はbest effortと表示し、Actionsなど明示API接続を対応環境だけで検証する |
+| Copilot StudioがOpenAPI 3.1を受け付けない | tenantのREST API toolを確認し、必要な場合だけPower Platform互換定義を別契約として追加する |
 
 ## 参考設計
 

@@ -2,7 +2,9 @@
 
 ## 最終用途
 
-JPO提供のPMGSデータに含まれる分類本文を、ローカル利用者、ウェブ検索、GPT Actions、Gemini Gems、Copilot Studio、MCPクライアントが同じ版と出典で参照できるようにする。
+JPO提供のPMGSデータに含まれる分類本文を、Codex・Claude Code、ローカル利用者、任意のウェブ検索、GPT Actions、Gem、Copilot Studio、MCPクライアントが同じ版と出典で参照できるようにする。
+
+日本語を既定言語とし、英語を明示的に選択できる状態を維持する。
 
 公開参照面は独立した情報提供サービスであり、JPOまたはINPITの公式サービスとして表示しない。
 
@@ -15,9 +17,11 @@ flowchart LR
     C --> D["Python API"]
     C --> E["CLI"]
     C --> F["stdio MCP"]
+    F --> N["client別設定と共通skill"]
+    N --> O["Codex・Claude Code"]
     C --> G["決定的な公開export"]
     G --> H["HTML、Markdown、JSON、manifest"]
-    H --> I["Cloudflare R2"]
+    H -. "任意セルフホスト" .-> I["Cloudflare R2"]
     I --> J["Cloudflare Worker"]
     J --> K["人と通常の検索エンジン"]
     J --> L["OpenAPI対応クライアント"]
@@ -32,6 +36,8 @@ SQLiteはローカルの正本であり、公開配布物ではない。
 
 Python API、CLI、stdio MCPは同じ`PMGSStore`検索層を呼ぶ。MCP固有の分類解釈や別索引を持たない。
 
+agent kitはCodex用TOMLとClaude Code用JSONを別々に生成し、同じ読み取り専用skillをclient固有の個人用directoryへ導入する。設定は既存fileを上書きせず、SQLiteの絶対pathを公開repositoryへ入れない。
+
 分類と文書の日本語部分語検索にはFTS5 trigram索引を使う。3文字未満の語だけ、入力をリテラルとしてescapeしたSQLite部分一致へ切り替える。
 
 Workerは利用者入力を検証し、版付きR2 keyを選び、content negotiationとHTTP応答を処理する。
@@ -44,13 +50,15 @@ WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
 
 WebMCPは同一オリジンのJSON APIを呼ぶ追加層であり、通常ページの表示条件にはしない。
 
+Web経路は第三者が費用と運用責任を引き受ける場合だけdeployする任意セルフホスト面である。OpenAPI 3.1を受け付けないclientには互換定義を別途生成し、同じAPI契約との回帰testを必要とする。
+
 ## 出典表示
 
 `config/publication-policy.yaml`はowner、attribution、JPOの原典案内URL、日本語と英語の加工表示、日本語と英語の非公式サービス表示を持つ。
 
 公開exportはpolicyのattributionを正本SQLite内の`COPYRGHT`と照合し、不一致を公開前に拒否する。
 
-公開HTML、Markdown、`llms.txt`は同じpolicyから表示を生成する。
+公開HTML、Markdown、日本語`llms.txt`、英語`llms.en.txt`は同じpolicyから表示を生成する。
 
 公開JSONのsource objectはowner、原典案内URL、SHA-256、attributionを持つ。
 

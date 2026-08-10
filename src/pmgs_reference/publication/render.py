@@ -442,29 +442,64 @@ def document_markdown(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def home_html(base_url: str, release_id: str, source: SourcePresentation) -> str:
+def home_html(
+    base_url: str,
+    release_id: str,
+    source: SourcePresentation,
+    language: str = "ja",
+) -> str:
+    is_english = language == "en"
+    canonical = f"{base_url}/en/" if is_english else f"{base_url}/"
+    alternate = f"{base_url}/" if is_english else f"{base_url}/en/"
+    switch_label = "日本語" if is_english else "English"
+    introduction = _localized(
+        language,
+        ja="特許庁が提供するPMGSデータに含まれる分類本文を、版と出典を保って参照するための独立した情報提供サービスです。",
+        en=(
+            "An independent reference service for JPO-provided PMGS classification text "
+            "with release and source lineage."
+        ),
+    )
+    scheme_label = _localized(language, ja="分類体系", en="Scheme")
+    code_label = _localized(language, ja="分類コード", en="Code")
+    lookup_label = _localized(language, ja="完全一致で照会", en="Exact lookup")
+    access_heading = _localized(language, ja="機械可読の入口", en="Machine-readable access")
+    coverage_label = _localized(language, ja="公開範囲", en="Coverage")
+    sitemap_label = _localized(language, ja="サイトマップ", en="Sitemap")
+    boundary = _localized(
+        language,
+        ja="本サービスはJPO提供本文を表示し、AI要約、分類推測、法的判断を追加しません。",
+        en=(
+            "This service displays JPO-provided text without AI summaries, "
+            "classification predictions, or legal conclusions."
+        ),
+    )
     return f"""<!doctype html>
-<html lang="ja"><head><meta charset="utf-8">
+<html lang="{_text(language)}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PMGS Reference</title>
-<link rel="canonical" href="{_text(base_url)}/">
+<link rel="canonical" href="{_text(canonical)}">
+<link rel="alternate" hreflang="ja" href="{_text(base_url)}/">
+<link rel="alternate" hreflang="en" href="{_text(base_url)}/en/">
 <link rel="stylesheet" href="/assets/style.css">
 <script src="/assets/webmcp.js" defer></script></head>
 <body><main><header class="page-header">
+<nav><a href="{_text(alternate)}" hreflang="{"ja" if is_english else "en"}">{switch_label}</a></nav>
 <p class="eyebrow">Release {_text(release_id)}</p><h1>PMGS Reference</h1>
-<p>特許庁が提供するPMGSデータに含まれる分類本文を、版と出典を保って参照するための独立した情報提供サービスです。</p></header>
-{_source_notice_html(source, "ja")}
+<p>{introduction}</p></header>
+{_source_notice_html(source, language)}
 <form action="/api/v1/lookup" method="get">
-<label>Scheme <select name="scheme"><option>fi</option><option>fterm</option>
+<label>{scheme_label} <select name="scheme"><option>fi</option><option>fterm</option>
 <option>ipc</option></select></label>
-<label>Code <input name="code" required maxlength="128"></label>
-<input type="hidden" name="language" value="ja">
-<button>Exact lookup</button></form>
-<h2>Machine-readable access</h2><ul>
+<label>{code_label} <input name="code" required maxlength="128"></label>
+<input type="hidden" name="language" value="{_text(language)}">
+<button>{lookup_label}</button></form>
+<h2>{access_heading}</h2><ul>
 <li><a href="/openapi.json">OpenAPI 3.1</a></li>
-<li><a href="/llms.txt">llms.txt</a></li>
-<li><a href="/api/v1/coverage">Coverage</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul>
-<p>本サービスはJPO提供本文を表示し、AI要約、分類推測、法的判断を追加しません。</p></main></body></html>
+<li><a href="/{"llms.en.txt" if is_english else "llms.txt"}">llms.txt</a></li>
+<li><a href="/api/v1/coverage">{coverage_label}</a></li>
+<li><a href="/sitemap.xml">{sitemap_label}</a></li></ul>
+<p>{boundary}</p></main></body></html>
 """
 
 
@@ -487,8 +522,14 @@ def stylesheet() -> str:
     )
 
 
-def llms_text(base_url: str, release_id: str, source: SourcePresentation) -> str:
-    return f"""# PMGS Reference
+def llms_text(
+    base_url: str,
+    release_id: str,
+    source: SourcePresentation,
+    language: str = "ja",
+) -> str:
+    if language == "en":
+        return f"""# PMGS Reference
 
 Release: {release_id}
 
@@ -508,6 +549,28 @@ Service status: {source.non_affiliation_notice_en}
 
 Use scheme, code, release, edition, and language explicitly. Cite the returned release_id,
 official text, source relative_id, source SHA-256, and canonical_url.
+"""
+    return f"""# PMGS Reference
+
+リリース: {release_id}
+
+この独立したサイトは、特許庁提供のPMGS分類本文を出典情報とともに公開します。
+AI要約、意味検索、分類推測、法的助言は提供しません。
+
+帰属表示: {source.attribution}
+特許庁の原典案内: {source.source_url}
+加工表示: {source.processing_notice_ja}
+運営主体: {source.non_affiliation_notice_ja}
+
+- 完全一致API: {base_url}/api/v1/lookup
+- OpenAPI 3.1: {base_url}/openapi.json
+- 公開範囲: {base_url}/api/v1/coverage
+- サイトマップ: {base_url}/sitemap.xml
+- リリースmanifest: {base_url}/releases/{release_id}/manifest.json
+- English: {base_url}/llms.en.txt
+
+scheme、code、release、edition、languageを明示してください。回答ではrelease_id、
+公式文言、source relative_id、source SHA-256、canonical_urlを出典として示してください。
 """
 
 
@@ -555,7 +618,7 @@ def sitemap_documents(
 
 
 def openapi_document(base_url: str, release_id: str) -> dict[str, Any]:
-    """Return the portable OpenAPI 3.1 contract consumed by Actions and Copilot Studio."""
+    """Return the portable OpenAPI 3.1 contract for compatible API clients."""
     error_schema = {
         "type": "object",
         "additionalProperties": False,
