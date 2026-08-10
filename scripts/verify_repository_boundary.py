@@ -41,9 +41,19 @@ LOCAL_PATH_PATTERNS = (
 )
 ALLOWED_LOCAL_PATH_PREFIXES = {
     "README.md": ("C:" + "\\path\\to\\",),
+    "README.en.md": ("C:" + "\\path\\to\\",),
     "docs/local-interfaces.md": (
+        "C:" + "\\absolute\\",
         "C:" + "\\path\\to\\",
         "C:" + "\\\\path\\\\to\\\\",
+    ),
+    "docs/local-agent-kit.md": (
+        "C:" + "\\absolute\\",
+        "C:" + "\\path\\to\\",
+    ),
+    "docs/local-agent-kit.en.md": (
+        "C:" + "\\absolute\\",
+        "C:" + "\\path\\to\\",
     ),
     "tests/test_public_export.py": (
         "B:" + "\\nnext",

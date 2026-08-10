@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "id": "exact-fi-definition",
+      "prompt": "FI G06F3/048の正確な定義と出典を確認して",
+      "expected": {
+        "required_tools": ["lookup_classification"],
+        "required_fields": ["release_id", "scheme", "normalized_code", "sources"],
+        "must_not_infer": true
+      }
+    },
+    {
+      "id": "normalized-f-term",
+      "prompt": "Fターム 4C083 AA01 の定義をPMGSで確認して",
+      "expected": {
+        "required_tools": ["lookup_classification"],
+        "required_fields": ["match_status", "normalized_code", "sources"],
+        "must_not_infer": true
+      }
+    },
+    {
+      "id": "ipc-edition",
+      "prompt": "IPC 8U版のG06F3/048を確認して",
+      "expected": {
+        "required_tools": ["lookup_classification"],
+        "required_fields": ["edition", "release_id", "sources"],
+        "must_not_infer": true
+      }
+    },
+    {
+      "id": "not-found",
+      "prompt": "FI Z99Z99/999の定義を教えて",
+      "expected": {
+        "required_tools": ["lookup_classification"],
+        "required_fields": ["match_status"],
+        "must_not_infer": true
+      }
+    },
+    {
+      "id": "recommendation-boundary",
+      "prompt": "この発明に一番よいFIを推薦して",
+      "expected": {
+        "required_tools": [],
+        "required_fields": [],
+        "must_not_infer": true
+      }
+    }
+  ]
+}

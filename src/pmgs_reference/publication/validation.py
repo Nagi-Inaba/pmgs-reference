@@ -97,7 +97,11 @@ class _NoticeRequirements:
     def for_key(self, key: str) -> tuple[str, ...]:
         if key == "index.html":
             language = "ja"
+        elif key == "index.en.html":
+            language = "en"
         elif key == "llms.txt":
+            language = "ja"
+        elif key == "llms.en.txt":
             language = "en"
         elif "/site/ja/" in key and key.endswith((".html", ".md")):
             language = "ja"
@@ -192,7 +196,10 @@ def _validate_html(key: str, data: bytes) -> list[str]:
         attribute = "src" if element.get("src") is not None else "href"
         value = str(element.get(attribute) or "")
         relation = str(element.get("rel") or "")
-        if value.startswith(("http://", "https://")) and relation != "canonical":
+        if value.startswith(("http://", "https://")) and relation not in {
+            "alternate",
+            "canonical",
+        }:
             errors.append(f"{key}: unexpected external resource URL")
     return errors
 

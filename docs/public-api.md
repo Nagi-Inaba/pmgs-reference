@@ -10,7 +10,7 @@ GET /api/v1/lookup?scheme=fi&code=G06F3%2F048&release=current&language=ja
 
 `scheme`は`fi`、`fterm`、`ipc`のallowlistから選ぶ。
 
-`language`は`ja`または`en`とする。
+`language`は`ja`または`en`とし、省略時は`ja`とする。
 
 ## 文書照会
 
@@ -74,7 +74,9 @@ WorkerはAPI応答時に指定言語の出典由来値だけを`classification-r
 
 チャンク`001`の公開URLは番号を省略し、`002`以降は末尾へ番号を付ける。分類fragmentは必ず実際にその分類を含むページへ向ける。
 
-`openapi.json`、`llms.txt`、`robots.txt`、`sitemap.xml`も同じビルドで生成する。公開成果物にCSV、XML原資料、PDF、SQLite、一括JSONは含めない。
+`index.html`と`llms.txt`は日本語正本、`index.en.html`と`llms.en.txt`は英語切替先として生成する。Workerは`/`と`/ja/`で日本語top、`/en/`で英語topを返す。
+
+`openapi.json`、`robots.txt`、`sitemap.xml`も同じビルドで生成する。公開成果物にCSV、XML原資料、PDF、SQLite、一括JSONは含めない。
 
 ## HTMLとWebMCP
 
@@ -82,10 +84,12 @@ WorkerはAPI応答時に指定言語の出典由来値だけを`classification-r
 
 `Accept: text/markdown`を指定すると、同じ版と出典を持つ事前生成Markdownを返す。
 
-HTML、Markdown、トップページ、`llms.txt`はattribution、JPOの原典案内URL、加工表示、非公式サービス表示を含む。
+HTML、Markdown、日英トップページ、日英`llms.txt`はattribution、JPOの原典案内URL、加工表示、非公式サービス表示を含む。
 
 validatorはこれらの表示が欠けた候補を`notice_errors`で不合格にする。
 
 全HTMLは`/assets/webmcp.js`を任意追加層として読み込む。対応ブラウザで`document.modelContext`が存在する場合だけ、読み取り専用の`lookup_patent_classification`を1件登録する。toolは同一オリジンの分類APIを呼び、別の定義やAI要約を生成しない。
 
-GPTs、Gem、Copilot StudioはWebMCP対応を前提にせず、通常のウェブクロールまたは`openapi.json`を入口にする。
+GPTsとGemのWeb参照はHTML、Markdown、sitemapを入口にするが、indexや特定domainの利用は保証されない。
+
+`openapi.json`はOpenAPI 3.1対応clientの入口である。GPT ActionsまたはCopilot Studioが異なるOpenAPI版を要求する場合は、同じHTTP契約から互換定義を生成して別途検証する。

@@ -11,7 +11,9 @@ Worker は PMGS 原資料を解析しない。分類照会は group manifest と
 - `GET /api/v1/releases`、`GET /api/v1/coverage`：公開版と coverage
 - `/ja/...`、`/en/...`：HTML。`Accept: text/markdown` では同内容の Markdown
 - `/releases/{release}/...`：不変の版付き JSON と manifest
-- `/openapi.json`、`/llms.txt`、`/robots.txt`、`/sitemap.xml`
+- `/`、`/ja/`：日本語top（既定）
+- `/en/`：英語top
+- `/openapi.json`、`/llms.txt`、`/llms.en.txt`、`/robots.txt`、`/sitemap.xml`
 - `/assets/webmcp.js`：対応ブラウザだけが利用する任意の WebMCP 登録スクリプト
 
 ## 版の切替
@@ -51,3 +53,5 @@ npm run benchmark:chunks
 ## 外部操作の境界
 
 このディレクトリの通常検証は `wrangler deploy --dry-run` までである。R2 upload、実 deploy、custom domain、DNS、Git push は行わない。
+
+第三者が外部公開する場合は、[Webセルフホストガイド](../docs/self-hosting.md)と[公開候補リリース手順](../docs/release-runbook.md)に従う。

@@ -105,11 +105,19 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
     body: `<!doctype html><html><body><h1>PMGS Reference</h1><p>${NOTICE_JA}</p><script src="/assets/webmcp.js" defer></script></body></html>`,
     contentType: "text/html; charset=utf-8",
   },
+  "index.en.html": {
+    body: `<!doctype html><html lang="en"><body><h1>PMGS Reference</h1><p>${NOTICE_EN}</p></body></html>`,
+    contentType: "text/html; charset=utf-8",
+  },
   "openapi.json": {
     body: JSON.stringify({ openapi: "3.1.0" }),
     contentType: "application/json; charset=utf-8",
   },
   "llms.txt": {
+    body: `# PMGS Reference\n\n${NOTICE_JA}\n`,
+    contentType: "text/plain; charset=utf-8",
+  },
+  "llms.en.txt": {
     body: `# PMGS Reference\n\n${NOTICE_EN}\n`,
     contentType: "text/plain; charset=utf-8",
   },

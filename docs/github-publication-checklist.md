@@ -108,13 +108,16 @@ local成功をhosted CI成功と読み替えない。
 
 ## visibility変更前の停止条件
 
-- 現在契約の実データA/B auditがない。
+- GitHub sourceへPMGS原資料、生成DB、全量成果物、credential、端末固有pathが混入している疑いがある。
 - hosted Actionsが未実行または失敗している。
 - security設定とbranch ruleを確認できない。
 - description、topics、license表示が実装境界と一致しない。
-- 実データ、生成DB、local path、credential、公開対象外の運用記録が残る疑いがある。
 - READMEのdata取得方法と非同梱方針が実装と一致しない。
 - JPO出典、加工表示、非公式サービス表示が公開候補にない。
+
+GitHub sourceだけを公開し、Webをdeployしない場合は、現行Web契約の実データA/B auditをvisibilityまたはsource更新の必須条件にしない。READMEと状態記録で、Web成果物が未deployであることを明示する。
+
+R2 uploadまたはWorker deployを行う場合は、実originを使った現行契約の実データA/B auditがないことを停止条件にする。
 
 ## GitHub公開後
 

@@ -6,16 +6,16 @@
 
 ## 現在の境界
 
-2026-08-09に公開source schemaと表示契約を変更した。
+2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語topと英語`llms.en.txt`を切替先として追加した。
 
-変更内容はowner、JPO原典案内URL、attribution、加工表示、非公式サービス表示の必須化である。
+この入口変更後の契約は合成fixtureによるrepository全検査とWorker回帰検査で検証した。実データ全量A/B監査は、第三者が実originでWeb公開する場合に再実行する。
 
 `public-release-2026-08-08.md`と`public-release-audit-2026-08-08.json`は、旧表示契約に対する履歴記録として保持する。
 
-現在契約の実データA/B export、全件validator、release auditは、[2026-08-09の実データ公開候補検証](public-release-2026-08-09.md)で合格した。
+[2026-08-09の実データ公開候補検証](public-release-2026-08-09.md)は、owner、JPO原典案内URL、attribution、加工表示、非公式サービス表示を必須化した直前契約に対する全量A/B監査である。
 
 機械可読な監査結果は[2026-08-09のrelease audit](public-release-audit-2026-08-09.json)へ保存した。
 
-合成fixtureを使うrepository全検査とWorker回帰検査も、2026-08-09の現在契約で合格している。
+2026-08-09のobject countとtree hashを、2026-08-10の現行Web入口契約のrelease hashとして扱わない。
 
 現在の状態は[現在の状態](../current-status.md)を参照する。

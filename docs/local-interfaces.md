@@ -2,7 +2,7 @@
 
 ## 目的
 
-正規取得済みPMGS原資料から生成した版付きSQLiteを、Python、CLI、stdio MCPから同じ検索契約で参照する。
+正規取得済みPMGS原資料から生成した版付きSQLiteを、Python、CLI、stdio MCP、Codex、Claude Codeから同じ検索契約で参照する。
 
 いずれの経路もモデルを呼ばず、定義の要約、分類候補の推測、機械翻訳、ネットワーク取得を行わない。
 
@@ -15,6 +15,8 @@
 3. `%LOCALAPPDATA%\pmgs-reference\data\current.sqlite`
 
 PythonパッケージにPMGS原資料やSQLiteは同梱しない。データベースが見つからない場合も自動ダウンロードしない。
+
+照会言語は日本語`ja`を既定とし、原資料に英語がある場合は`en`へ切り替えられる。
 
 ## Python API
 
@@ -71,9 +73,14 @@ uv run pmgs lookup fi "G06F3/048" --db C:\path\to\pmgs-reference.sqlite --json
 uv run pmgs search "相互作用技術" --scheme fi --scheme ipc --db C:\path\to\pmgs-reference.sqlite --json
 uv run pmgs search "改正" --content-type document --db C:\path\to\pmgs-reference.sqlite --json
 uv run pmgs document DOCUMENT_ID --page 1 --db C:\path\to\pmgs-reference.sqlite --json
+uv run pmgs doctor --db C:\path\to\pmgs-reference.sqlite --json
 ```
 
 `lookup --json`は該当なしの共通レコードを出力して終了コード1を返す。正常照会は0を返す。
+
+`lookup`と`search`の`--language`既定値は`ja`である。英語は`--language en`を指定する。
+
+`doctor`はSQLite schema、release、実stdio接続、tool 3件、read-only annotation、サンプル照会、照会前後hashを検査する。
 
 ## stdio MCP
 
@@ -110,8 +117,26 @@ MCPクライアント設定では、裸の`python`、`py`、`uvx`キャッシュ
 
 stdioの標準出力はMCPプロトコル専用とする。診断ログは標準出力へ書かない。
 
+## CodexとClaude Code
+
+```powershell
+uv run --frozen pmgs agent-kit `
+  --db C:\path\to\pmgs-reference.sqlite `
+  --output build\local-agent-kit `
+  --python-executable C:\absolute\path\.venv\Scripts\python.exe `
+  --client both
+
+uv run --frozen pmgs install-agent-skill --client both
+```
+
+`agent-kit`はCodex用TOML、Claude Code用JSON、共通skill、登録commandを新しい出力directoryへ生成する。既存directoryは上書きしない。
+
+`install-agent-skill`は同一内容なら冪等で、内容の異なる同名skillを上書きしない。CodexとClaude Codeの設定形式は別々に保ち、照会手順だけを共通skillとして配布する。
+
+Windowsの一括導入、設定scope、更新、削除は[ローカルAIエージェント導入ガイド](local-agent-kit.md)を参照する。
+
 ## 検証
 
-合成fixtureでは、Python API、JSON Schema、CLIの終了コード、MCP tool列挙、構造化応答、入力エラー、実際のstdioクライアント接続をpytestで検査する。
+合成fixtureでは、Python API、JSON Schema、CLIの終了コード、MCP tool列挙、構造化応答、入力エラー、実際のstdioクライアント接続、agent kit、skill導入をpytestで検査する。
 
 実データでは、FI、Fターム、IPC 8U、IPC旧版、関連PDFページ、日本語部分語検索、正本ファイルの照会前後ハッシュを検査する。
