@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.12", "3.14"]
 
     steps:
@@ -56,6 +56,40 @@ jobs:
 
       - name: Build distributions
         run: uv build
+
+  wheel-e2e:
+    name: Installed wheel on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync locked dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Verify installed setup and doctor
+        run: >-
+          uv run --frozen python scripts/verify_wheel_install.py
+          --dist-dir dist
+          --source tests/fixtures/synthetic_pmgs
 
   worker:
     name: Cloudflare Worker on Node 22

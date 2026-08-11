@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import runpy
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import cast
@@ -10,6 +12,8 @@ from urllib.parse import unquote
 
 import jsonschema
 import yaml
+
+from pmgs_reference import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -101,6 +105,71 @@ def test_japanese_is_default_and_english_surfaces_are_linked() -> None:
     description = project["project"]["description"]
     assert "特許庁のPMGSデータ" in description
     assert all(term in description for term in ("FI", "Fターム", "IPC", "ローカル"))
+
+
+def test_package_version_has_one_public_value() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert project["project"]["version"] == "0.3.0"
+    assert __version__ == project["project"]["version"]
+
+
+def test_release_tag_guard_accepts_only_the_package_version() -> None:
+    script = ROOT / "scripts" / "verify_release_tag.py"
+    accepted = subprocess.run(
+        [sys.executable, str(script), "--tag", "v0.3.0"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    rejected = subprocess.run(
+        [sys.executable, str(script), "--tag", "v0.3.1"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert accepted.returncode == 0
+    assert rejected.returncode != 0
+    assert "does not match package version" in rejected.stderr
+
+
+def test_release_workflow_keeps_publish_authority_narrow() -> None:
+    workflow_path = ROOT / ".github" / "workflows" / "release.yml"
+    raw = workflow_path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(raw)
+    jobs = workflow["jobs"]
+
+    assert "workflow_dispatch" not in raw
+    assert workflow["permissions"] == {"contents": "read"}
+    assert jobs["publish-pypi"]["environment"]["name"] == "pypi"
+    assert jobs["publish-pypi"]["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+    }
+    assert jobs["publish-github"]["permissions"] == {"contents": "write"}
+    assert jobs["publish-github"]["steps"][-1]["env"]["GH_REPO"] == "${{ github.repository }}"
+    assert "id-token" not in jobs["publish-github"]["permissions"]
+    assert "id-token" not in jobs["build"]
+    assert raw.count("name: python-distributions") == 3
+    assert "uv lock --check" in raw
+    assert "npm --prefix worker ci" in raw
+    assert "npm --prefix worker run verify" in raw
+    assert "scripts/verify_wheel_install.py" in raw
+
+
+def test_windows_setup_script_is_a_thin_setup_adapter() -> None:
+    script = (ROOT / "scripts" / "setup_local_agent.ps1").read_text(encoding="utf-8")
+
+    assert "'pmgs', 'setup'" in script
+    assert "'inventory'" not in script
+    assert "'build'" not in script
+    assert "'agent-kit'" not in script
+    assert "'install-agent-skill'" not in script
 
 
 def test_all_markdown_relative_links_resolve() -> None:

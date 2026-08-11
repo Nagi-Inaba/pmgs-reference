@@ -1,12 +1,40 @@
 # PMGS Reference
 
-**特許庁のPMGSデータを、CodexやClaude Codeから検索できるようにするツール**
+**特許庁のPMGSデータを、CodexやClaude Codeから根拠付きで検索するためのツール**
 
 [English](README.en.md)
 
-PMGS Referenceを導入すると、CodexやClaude Codeに特許分類の定義や階層をそのまま質問できます。
-AIは手元のPMGSデータベースを検索し、該当する文言、版、関連資料、出典を返します。
-一般的なWeb検索やAIの記憶だけに頼らず、PMGSを根拠に分類を確認できます。
+PMGS Referenceは、取得済みのPMGSパッケージを検索用SQLiteへ変換し、FI、Fターム、IPCの定義・階層・版・関連資料をAIから参照できるようにします。CodexとClaude Codeは読み取り専用MCPを通じて同じデータを検索するため、一般的なWeb検索やモデルの記憶だけに頼らず、PMGSの文言と出典を確認できます。
+
+## 最短セットアップ
+
+PyPIでv0.3.0が公開された後は、次の2コマンドで導入できます。
+
+```powershell
+uv tool install pmgs-reference
+pmgs setup C:\path\to\JPPM2026002
+```
+
+現在のGitHub版を試す場合は、リポジトリからインストールします。
+
+```powershell
+git clone https://github.com/Nagi-Inaba/pmgs-reference.git
+Set-Location pmgs-reference
+uv tool install .
+pmgs setup C:\path\to\JPPM2026002
+```
+
+`pmgs setup`はPMGSを棚卸しし、SQLiteを構築・検証してから現行版へ切り替えます。CodexまたはClaude Codeが見つかると、接続を登録するか`[Y/n]`で確認し、既定のEnterで登録します。完了後は新しいCodexまたはClaude Codeのセッションを開いてください。
+
+登録先を明示する場合は次のように指定できます。
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --client codex --register
+pmgs setup C:\path\to\JPPM2026002 --client both --register
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register
+```
+
+同じPMGSをもう一度指定しても作り直しません。新しい版を指定すると、検証に合格したSQLiteだけを現行版へ切り替え、旧版は残します。保存先、非対話実行、JSON結果などの詳細は[CodexとClaude Codeへの導入ガイド](docs/local-agent-kit.md)にまとめています。
 
 ## AIにできる質問
 
@@ -16,71 +44,47 @@ AIは手元のPMGSデータベースを検索し、該当する文言、版、�
 - 「『相互作用技術』を含むFIとIPCを探して」
 - 「この分類に関連するPMGS文書の該当ページを読んで」
 
-## 仕組み
+Codexでは、たとえば次のように依頼します。
 
-```mermaid
-flowchart LR
-    A["取得済みのPMGSデータ"] --> B["ローカルSQLiteデータベース"]
-    B --> C["MCP"]
-    C --> D["Codex"]
-    C --> E["Claude Code"]
-    B --> F["Python APIとCLI"]
-    B --> G["Web公開用HTMLとJSON"]
+```text
+$pmgs-reference を使って、FI G06F3/048の定義、階層、版、出典を確認して。
 ```
-
-セットアップスクリプトが、取得済みのPMGSパッケージを検索用SQLiteデータベースへ変換します。
-CodexとClaude Codeは、MCPを通じて同じデータベースを検索します。
-Python APIとCLIから直接検索したり、Web公開用のHTML、Markdown、JSON、OpenAPIを生成したりすることもできます。
 
 ## できること
 
 | 機能 | 内容 |
 | --- | --- |
-| 分類コードの検索 | FI、Fターム、IPCのコードから定義、版、出典を取得 |
-| キーワード検索 | 分類の本文やPMGS文書を文字列で検索 |
+| 分類コードの検索 | FI、Fターム、IPCの定義、版、出典を取得 |
+| キーワード検索 | 分類本文とPMGS文書を文字列で検索 |
 | 階層の確認 | 上位分類、下位分類、関連分類を取得 |
-| 関連資料の参照 | 解説、改正資料、PDFなどをページまたは節単位で取得 |
-| CodexとClaude Codeからの利用 | 読み取り専用MCPと共通スキルを導入 |
-| PythonとCLIからの利用 | アプリ、Notebook、スクリプトから同じデータを検索 |
+| 関連資料の参照 | 解説、改正資料、PDFをページまたは節単位で取得 |
+| Codex・Claude Code連携 | 読み取り専用MCPと共通スキルをセットアップ |
+| Python・CLI | アプリ、Notebook、スクリプトから同じSQLiteを検索 |
 | Web公開用データの生成 | HTML、Markdown、JSON、OpenAPI、サイトマップを生成 |
 
-## Codexで使う
+## 仕組み
 
-次のものを用意します。
-
-- 利用登録を行って取得したPMGSパッケージ
-- Python 3.12または3.14
-- [uv](https://docs.astral.sh/uv/)
-- Codex CLI
-
-```powershell
-git clone https://github.com/Nagi-Inaba/pmgs-reference.git
-Set-Location pmgs-reference
-
-powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
-  -SourceDirectory C:\path\to\JPPM2026002 `
-  -ReleaseId JPPM2026002 `
-  -Client codex `
-  -RegisterClients
+```mermaid
+flowchart LR
+    A["取得済みPMGS"] --> B["pmgs setup"]
+    B --> C["版付きSQLite"]
+    C --> D["PythonとCLI"]
+    C --> E["読み取り専用MCP"]
+    E --> F["Codex"]
+    E --> G["Claude Code"]
+    C --> H["任意のWeb公開用export"]
 ```
 
-セットアップが終わったら、Codexで次のように依頼します。
-
-```text
-$pmgs-reference を使って、FI G06F3/048の定義、階層、出典を確認して。
-```
-
-Claude Codeで使う場合は`-Client claude`、両方で使う場合は`-Client both`を指定します。
-設定先や更新方法は[CodexとClaude Codeへの導入ガイド](docs/local-agent-kit.md)に記載しています。
+SQLiteは利用者の端末に保存され、Python、CLI、MCPが同じ現行版を参照します。MCPの接続先は個別のSQLiteファイルではなく管理ディレクトリなので、PMGSを更新してもクライアント設定を書き換える必要はありません。
 
 ## PythonとCLIで使う
 
-Python APIでは、分類の検索、階層の取得、関連資料の取得を一つの`PMGSStore`から行えます。
+`pmgs setup`を既定の保存先で実行した後は、データベースパスを指定せずに開けます。
 
 ```python
 from pmgs_reference import PMGSStore
 
-store = PMGSStore.open(r"C:\path\to\pmgs-reference.sqlite")
+store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048")
 results = store.search("相互作用技術", schemes=["fi", "ipc"])
@@ -88,27 +92,22 @@ parents = store.parents("fi", "G06F3/048")
 documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 ```
 
-CLIからも同じデータを検索できます。
-
 ```powershell
-uv run pmgs lookup fi "G06F3/048" --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs search "相互作用技術" --scheme fi --scheme ipc --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs document DOCUMENT_ID --page 1 --db C:\path\to\pmgs-reference.sqlite --json
+pmgs lookup fi "G06F3/048" --json
+pmgs search "相互作用技術" --scheme fi --scheme ipc --json
+pmgs document DOCUMENT_ID --page 1 --json
+pmgs doctor --json
 ```
 
-利用できるメソッドとコマンドは[ローカル参照インターフェース](docs/local-interfaces.md)にまとめています。
+独自の保存先や既存SQLiteを使う方法は[ローカル参照インターフェース](docs/local-interfaces.md)を参照してください。
 
-## GPTsやGem向けのWebサイトを作る
+## GPTsやGemから参照できるWebサイトを作る
 
-PMGSの分類ごとに、軽量なHTML、Markdown、JSONを生成できます。
-Cloudflare WorkerとR2を使って公開すれば、GPTsやGemがWeb検索から参照できるサイトとして運用できます。
-公開手順と構成は[Webセルフホストガイド](docs/self-hosting.md)を参照してください。
+分類ごとの軽量なHTML、Markdown、JSONとOpenAPIを生成できます。Cloudflare WorkerとR2などへセルフホストすると、GPTsやGemはWeb検索や対応するAPI接続から分類定義を参照できます。構成、生成手順、運用費用の考え方は[Webセルフホストガイド](docs/self-hosting.md)に記載しています。
 
 ## PMGSデータ
 
-PMGSデータ自体は、このリポジトリに含まれていません。
-特許庁の利用登録を行い、取得したPMGSパッケージをセットアップスクリプトへ指定します。
-生成したSQLiteデータベースは利用者のローカル環境に保存されます。
+PMGSデータ自体はリポジトリやPythonパッケージに含まれません。特許庁の利用登録後に取得したPMGSパッケージを`pmgs setup`へ指定してください。
 
 ## 関連資料
 
@@ -121,5 +120,4 @@ PMGSデータ自体は、このリポジトリに含まれていません。
 
 ## ライセンス
 
-ソースコードは[Apache License 2.0](LICENSE)で提供します。
-PMGSデータの利用条件は[登録条件と公開形態](docs/registered-use-terms.md)を確認してください。
+ソースコードは[Apache License 2.0](LICENSE)で提供します。PMGSデータの利用条件は[登録条件と公開形態](docs/registered-use-terms.md)を確認してください。

@@ -9,6 +9,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from pmgs_reference import PMGSQueryError, PMGSStore
 from pmgs_reference.errors import DocumentNotFoundError, EditionNotFoundError
+from pmgs_reference.validation import validate_database
 
 
 def _classification_schema() -> dict[str, object]:
@@ -43,6 +44,100 @@ def test_open_lookup_and_database_discovery(
     shutil.copy2(synthetic_database, default_database)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     assert PMGSStore.open().release_info()["source_file_count"] == 26
+
+
+def test_open_resolves_an_explicit_data_directory_before_the_environment(
+    synthetic_database: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "managed"
+    release = PMGSStore.open(synthetic_database).release_info()
+    validation = validate_database(synthetic_database)
+    managed = (
+        data_root
+        / "data"
+        / "releases"
+        / str(release["release_id"])
+        / str(release["source_manifest_sha256"])
+        / f"{validation.database_sha256}.sqlite"
+    )
+    managed.parent.mkdir(parents=True)
+    shutil.copy2(synthetic_database, managed)
+    state = data_root / "state"
+    state.mkdir()
+    (state / "current.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "release_id": "JPPM2099001",
+                "source_manifest_sha256": release["source_manifest_sha256"],
+                "database_sha256": validation.database_sha256,
+                "database_schema_version": validation.user_version,
+                "database_relpath": managed.relative_to(data_root).as_posix(),
+                "activated_at": "2099-01-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PMGS_REFERENCE_DB", str(tmp_path / "missing.sqlite"))
+
+    store = PMGSStore.open(data_dir=data_root)
+
+    assert store.path == managed.resolve()
+
+
+def test_managed_pointer_metadata_must_match_the_database(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    data_root = tmp_path / "managed"
+    release = PMGSStore.open(synthetic_database).release_info()
+    validation = validate_database(synthetic_database)
+    managed = (
+        data_root
+        / "data"
+        / "releases"
+        / "JPPM2099002"
+        / str(release["source_manifest_sha256"])
+        / f"{validation.database_sha256}.sqlite"
+    )
+    managed.parent.mkdir(parents=True)
+    shutil.copy2(synthetic_database, managed)
+    state = data_root / "state"
+    state.mkdir()
+    (state / "current.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "release_id": "JPPM2099002",
+                "source_manifest_sha256": release["source_manifest_sha256"],
+                "database_sha256": validation.database_sha256,
+                "database_schema_version": validation.user_version,
+                "database_relpath": managed.relative_to(data_root).as_posix(),
+                "activated_at": "2099-01-01T00:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="identity does not match"):
+        PMGSStore.open(data_dir=data_root)
+
+
+def test_invalid_current_pointer_fails_closed_without_legacy_fallback(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    data_root = tmp_path / "managed"
+    legacy = data_root / "data" / "current.sqlite"
+    legacy.parent.mkdir(parents=True)
+    shutil.copy2(synthetic_database, legacy)
+    state = data_root / "state"
+    state.mkdir()
+    (state / "current.json").write_text(
+        json.dumps({"schema_version": "1.0", "database_relpath": "../../outside.sqlite"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"current\.json"):
+        PMGSStore.open(data_dir=data_root)
 
 
 def test_lookup_preserves_scheme_and_edition_identity(synthetic_database: Path) -> None:

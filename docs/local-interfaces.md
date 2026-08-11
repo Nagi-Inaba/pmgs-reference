@@ -2,7 +2,7 @@
 
 ## 目的
 
-正規取得済みPMGS原資料から生成した版付きSQLiteを、Python、CLI、stdio MCP、Codex、Claude Codeから同じ検索契約で参照する。
+正規取得済みPMGS原資料から生成した版付きSQLiteを、Python、CLI、stdio MCP、Codex、Claude Codeから同じ検索契約で参照する。通常の導入は`pmgs setup`がSQLiteの構築、検証、現行版の切替まで行う。
 
 いずれの経路もモデルを呼ばず、定義の要約、分類候補の推測、機械翻訳、ネットワーク取得を行わない。
 
@@ -11,8 +11,14 @@
 `PMGSStore.open()`とquery系CLIは、次の順でSQLiteを探す。
 
 1. `path`または`--db`で渡した明示パス
-2. `PMGS_REFERENCE_DB`環境変数
-3. `%LOCALAPPDATA%\pmgs-reference\data\current.sqlite`
+2. `data_dir`または`--data-dir`で渡した管理ディレクトリの`state/current.json`
+3. `PMGS_REFERENCE_DB`環境変数
+4. OS既定の管理ディレクトリにある`state/current.json`
+5. pointerがまだない旧構成だけ、管理ディレクトリの`data/current.sqlite`
+
+OS既定の管理ディレクトリはWindowsが`%LOCALAPPDATA%\pmgs-reference`、macOSが`~/Library/Application Support/pmgs-reference`、Linuxが`${XDG_DATA_HOME:-~/.local/share}/pmgs-reference`である。
+
+`current.json`はrelease、source manifest SHA-256、database SHA-256、schema version、管理ディレクトリ内の相対DBパスを持つ。形式不正、管理ディレクトリ外への参照、欠損ファイル、DBとのidentity不一致はfail closedで拒否し、旧`current.sqlite`へ暗黙にfallbackしない。
 
 PythonパッケージにPMGS原資料やSQLiteは同梱しない。データベースが見つからない場合も自動ダウンロードしない。
 
@@ -23,7 +29,7 @@ PythonパッケージにPMGS原資料やSQLiteは同梱しない。データベ�
 ```python
 from pmgs_reference import PMGSStore
 
-store = PMGSStore.open(r"C:\path\to\pmgs-reference.sqlite")
+store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048", language="ja")
 results = store.search("相互作用技術", schemes=["fi", "ipc"], limit=20)
@@ -34,7 +40,7 @@ release = store.release_info()
 
 公開メソッドは次のとおりである。
 
-- `PMGSStore.open(path=None)`
+- `PMGSStore.open(path=None, *, data_dir=None)`
 - `lookup(scheme, code, release="current", edition=None, language="ja")`
 - `search(query, schemes=None, release="current", language="ja", limit=20)`
 - `parents(scheme, code, release="current", edition=None)`
@@ -69,11 +75,11 @@ IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`
 ## CLI
 
 ```powershell
-uv run pmgs lookup fi "G06F3/048" --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs search "相互作用技術" --scheme fi --scheme ipc --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs search "改正" --content-type document --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs document DOCUMENT_ID --page 1 --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs doctor --db C:\path\to\pmgs-reference.sqlite --json
+pmgs lookup fi "G06F3/048" --json
+pmgs search "相互作用技術" --scheme fi --scheme ipc --json
+pmgs search "改正" --content-type document --json
+pmgs document DOCUMENT_ID --page 1 --json
+pmgs doctor --json
 ```
 
 `lookup --json`は該当なしの共通レコードを出力して終了コード1を返す。正常照会は0を返す。
@@ -93,7 +99,7 @@ uv run pmgs doctor --db C:\path\to\pmgs-reference.sqlite --json
 起動例：
 
 ```powershell
-C:\path\to\pmgs-reference\.venv\Scripts\python.exe -m pmgs_reference.cli mcp --db C:\path\to\pmgs-reference.sqlite
+C:\path\to\pmgs-reference\Scripts\python.exe -m pmgs_reference.cli mcp --data-dir C:\path\to\pmgs-data
 ```
 
 MCPクライアント設定では、裸の`python`、`py`、`uvx`キャッシュではなく、このプロジェクト用の安定仮想環境にある`python.exe`の絶対パスを指定する。
@@ -102,13 +108,13 @@ MCPクライアント設定では、裸の`python`、`py`、`uvx`キャッシュ
 {
   "mcpServers": {
     "pmgs-reference": {
-      "command": "C:\\path\\to\\pmgs-reference\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\pmgs-reference\\Scripts\\python.exe",
       "args": [
         "-m",
         "pmgs_reference.cli",
         "mcp",
-        "--db",
-        "C:\\path\\to\\pmgs-reference.sqlite"
+        "--data-dir",
+        "C:\\path\\to\\pmgs-data"
       ]
     }
   }
@@ -121,7 +127,7 @@ stdioの標準出力はMCPプロトコル専用とする。診断ログは標準
 
 ```powershell
 uv run --frozen pmgs agent-kit `
-  --db C:\path\to\pmgs-reference.sqlite `
+  --data-dir C:\path\to\pmgs-data `
   --output build\local-agent-kit `
   --python-executable C:\absolute\path\.venv\Scripts\python.exe `
   --client both
@@ -129,7 +135,7 @@ uv run --frozen pmgs agent-kit `
 uv run --frozen pmgs install-agent-skill --client both
 ```
 
-`agent-kit`はCodex用TOML、Claude Code用JSON、共通skill、登録commandを新しい出力directoryへ生成する。既存directoryは上書きしない。
+通常は`pmgs setup`が登録とskill導入まで行う。`agent-kit`は設定を先にレビューしたい場合に、Codex用TOML、Claude Code用JSON、共通skill、登録commandを新しい出力directoryへ生成する。既存directoryは上書きしない。
 
 `install-agent-skill`は同一内容なら冪等で、内容の異なる同名skillを上書きしない。CodexとClaude Codeの設定形式は別々に保ち、照会手順だけを共通skillとして配布する。
 

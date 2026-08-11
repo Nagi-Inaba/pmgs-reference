@@ -8,6 +8,7 @@ import pytest
 
 from pmgs_reference.cli import main
 from pmgs_reference.ingest.build import build_database
+from pmgs_reference.ingest.inventory import build_inventory
 from pmgs_reference.validation import validate_database
 
 
@@ -157,3 +158,35 @@ def test_validate_cli_writes_report(
     assert payload["valid"] is True
     assert payload["database_file"] == database_path.name
     assert str(tmp_path) not in report_path.read_text(encoding="utf-8")
+
+
+def test_build_refuses_to_overwrite_an_existing_database(
+    synthetic_pmgs: Path, tmp_path: Path
+) -> None:
+    database_path = tmp_path / "pmgs-reference.sqlite"
+    build_database(synthetic_pmgs, "JPPM2099001", database_path)
+    before = database_path.read_bytes()
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        build_database(synthetic_pmgs, "JPPM2099001", database_path)
+
+    assert database_path.read_bytes() == before
+
+
+def test_build_accepts_a_precomputed_inventory(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inventory = build_inventory(synthetic_pmgs)
+
+    def unexpected_inventory(_source: Path) -> object:
+        raise AssertionError("build_database must reuse the supplied inventory")
+
+    monkeypatch.setattr("pmgs_reference.ingest.build.build_inventory", unexpected_inventory)
+    result = build_database(
+        synthetic_pmgs,
+        "JPPM2099001",
+        tmp_path / "pmgs-reference.sqlite",
+        inventory=inventory,
+    )
+
+    assert result.source_manifest_sha256 == inventory.logical_sha256

@@ -2,9 +2,9 @@
 
 ## 前提
 
-このrunbookはローカルで公開候補を作り、外部公開直前まで検証する。
+このrunbookは、Web公開候補の検証とPython packageのreleaseを別々の経路として扱う。
 
-R2 upload、Worker deploy、ドメイン変更、PyPI公開、Git pushは含まない。
+第1節から第6節はローカルでWeb公開候補を作り、R2 upload、Worker deploy、ドメイン変更の直前まで検証する。Git操作やWeb deployは含まない。
 
 現在、管理者によるWeb公開は停止中である。第三者が外部公開を行う場合は、本runbookに加えて[Webセルフホストガイド](self-hosting.md)の費用、互換性、upload後全件照合、運用責任を確認する。
 
@@ -136,3 +136,70 @@ Workerの`CURRENT_RELEASE`を変更してdeployする。
 失敗時はWorkerだけを前版へ戻す。
 
 検索index、GPTs、Gem、GPT Actions、Copilot Studioの発見性または互換性は、deploy成功と分けて外部検証する。
+
+## Pythonパッケージのリリース
+
+Python packageはWeb公開候補と独立してreleaseできる。`release.yml`はtag付きsourceを再検証し、一度buildしたwheelとsdistをartifactとして固定する。PyPI公開後、その同じartifactからGitHub Releaseを作る。
+
+### 1. ローカル候補を検証する
+
+```powershell
+uv lock --check
+uv run --frozen python scripts/verify_repository_boundary.py
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen mypy src
+uv run --frozen pytest -q
+uv build
+npm --prefix worker ci
+npm --prefix worker run verify
+```
+
+wheelを隔離されたtool環境へ導入し、source checkoutに依存せず`pmgs setup`、同一sourceの再実行、`pmgs doctor`、version表示が成功することも確認する。
+
+```powershell
+uv build --wheel
+uv run --frozen python scripts/verify_wheel_install.py `
+  --dist-dir dist `
+  --source tests/fixtures/synthetic_pmgs
+```
+
+### 2. 外部設定を確認する
+
+GitHubに`pypi` environmentを作り、required reviewerと`v*` tagだけを許可するdeployment ruleを設定する。
+
+PyPIのpending Trusted Publisherは次の値を使う。
+
+| 項目 | 値 |
+| --- | --- |
+| PyPI project | `pmgs-reference` |
+| GitHub owner | `Nagi-Inaba` |
+| repository | `pmgs-reference` |
+| workflow | `release.yml` |
+| environment | `pypi` |
+
+PyPI上のproject名が利用可能か、既存projectを正しく管理できることをrelease直前に確認する。取得できない場合は自動で別名へ変更せず、package名とrepository契約を改めて判断する。
+
+workflowはPyPI publish jobだけへ`id-token: write`を与える。API tokenをrepository secretへ保存しない。Trusted Publishingの設定とenvironment利用は[PyPI公式手順](https://docs.pypi.org/trusted-publishers/using-a-publisher/)、provenance attestationは[PyPI公式attestation手順](https://docs.pypi.org/attestations/producing-attestations/)を基準にする。
+
+### 3. versionとtagを一致させる
+
+`pyproject.toml`のversion、README、状態記録を更新し、次のguardを通す。
+
+```powershell
+uv run --frozen python scripts/verify_release_tag.py --tag v0.3.0
+```
+
+検証済みcommitへ`v<version>` tagを作ってpushする。この外部操作は、差分review、mainのhosted CI、公開承認が完了した場合だけ行う。
+
+### 4. workflow結果を確認する
+
+`build` jobがboundary、Ruff、format、mypy、pytest、wheel、sdistを再検証した後、`publish-pypi` jobは`pypi` environmentで承認待ちになる。
+
+承認後、PyPI Trusted Publishingとattestation付きで配布する。PyPI成功後だけ`publish-github` jobが同じwheelとsdistからGitHub Releaseを作る。
+
+### 5. 公開物を外部検証する
+
+PyPI project page、version、hash、attestation、GitHub Releaseのassetを確認する。空の環境から`uv tool install pmgs-reference`を実行し、`pmgs --version`と合成fixtureの`pmgs setup`をsmoke testする。
+
+GitHub Releaseだけ成功、PyPIだけ成功、workflowが承認待ちなどの部分状態を区別して`docs/current-status.md`へ記録する。

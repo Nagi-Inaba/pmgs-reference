@@ -12,7 +12,10 @@ import yaml
 import pmgs_reference.agent_kit as agent_kit_module
 from pmgs_reference.agent_kit import install_agent_skills, prepare_agent_kit
 from pmgs_reference.cli import main
+from pmgs_reference.data_paths import write_json_atomic
 from pmgs_reference.diagnostics import _sample_identity
+from pmgs_reference.store import PMGSStore
+from pmgs_reference.validation import validate_database
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,6 +63,71 @@ def test_agent_kit_generates_distinct_codex_and_claude_configs(
         )
 
 
+def test_agent_kit_and_doctor_accept_a_managed_data_directory(
+    synthetic_database: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data_root = tmp_path / "managed"
+    validation = validate_database(synthetic_database)
+    release = PMGSStore.open(synthetic_database).release_info()
+    database = (
+        data_root
+        / "data"
+        / "releases"
+        / str(release["release_id"])
+        / str(release["source_manifest_sha256"])
+        / f"{validation.database_sha256}.sqlite"
+    )
+    database.parent.mkdir(parents=True)
+    database.write_bytes(synthetic_database.read_bytes())
+    write_json_atomic(
+        data_root / "state" / "current.json",
+        {
+            "schema_version": "1.0",
+            "release_id": release["release_id"],
+            "source_manifest_sha256": release["source_manifest_sha256"],
+            "database_sha256": validation.database_sha256,
+            "database_schema_version": validation.user_version,
+            "database_relpath": database.relative_to(data_root).as_posix(),
+            "activated_at": "2099-01-01T00:00:00Z",
+        },
+    )
+    output = tmp_path / "agent-kit"
+
+    result = prepare_agent_kit(
+        None,
+        output,
+        python_executable=sys.executable,
+        clients=("codex", "claude"),
+        data_dir=data_root,
+    )
+
+    codex = tomllib.loads((output / "codex" / "config.toml").read_text(encoding="utf-8"))
+    claude = json.loads((output / "claude" / ".mcp.json").read_text(encoding="utf-8"))
+    assert result.data_dir == data_root.resolve()
+    assert codex["mcp_servers"]["pmgs-reference"]["args"][-2:] == [
+        "--data-dir",
+        str(data_root.resolve()),
+    ]
+    assert claude["mcpServers"]["pmgs-reference"]["args"][-2:] == [
+        "--data-dir",
+        str(data_root.resolve()),
+    ]
+    assert (
+        main(
+            [
+                "doctor",
+                "--data-dir",
+                str(data_root),
+                "--python-executable",
+                sys.executable,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
 def test_agent_skill_installer_is_idempotent_but_never_overwrites(tmp_path: Path) -> None:
     first = install_agent_skills(("codex", "claude"), home=tmp_path)
     second = install_agent_skills(("codex", "claude"), home=tmp_path)
@@ -89,6 +157,23 @@ def test_agent_skill_installer_removes_partial_copy_on_hash_mismatch(
         install_agent_skills(("codex",), home=tmp_path)
 
     assert not target.exists()
+
+
+def test_agent_skill_installer_retains_a_concurrent_conflicting_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def create_conflict_then_fail(target: Path) -> None:
+        target.mkdir(parents=True)
+        (target / "LOCAL.md").write_text("created concurrently\n", encoding="utf-8")
+        raise FileExistsError("concurrent skill")
+
+    monkeypatch.setattr(agent_kit_module, "_copy_skill", create_conflict_then_fail)
+    target = tmp_path / ".agents" / "skills" / "pmgs-reference"
+
+    with pytest.raises(FileExistsError, match="concurrent skill"):
+        install_agent_skills(("codex",), home=tmp_path)
+
+    assert (target / "LOCAL.md").read_text(encoding="utf-8") == "created concurrently\n"
 
 
 def test_doctor_sample_treats_null_edition_as_unspecified(tmp_path: Path) -> None:

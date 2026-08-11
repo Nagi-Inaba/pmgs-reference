@@ -1,25 +1,23 @@
 # 現在の状態
 
-- 更新日: 2026-08-10
-- 実装状態: v0.2.0のCodex・Claude Code向けagent kit、日本語既定、英語切替、Webセルフホスト資料を実装済み
-- 検証状態: 現行sourceはrepository全検査、Worker全検査、GitHub hosted CI、CodeQLに合格。日英Web入口追加後の実データ全量A/B監査はWeb公開時まで未実施
-- 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。R2、Worker、PyPI、独自domain、外部検索indexは未公開または未検証
+- 更新日: 2026-08-12
+- 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`をv0.3.0候補として実装済み。公開済みの`main`とGitHub Releaseはv0.2.0
+- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築に合格。v0.3.0差分のGitHub hosted CIとCodeQLは未実行
+- 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。v0.3.0、PyPI、R2、Worker、独自domain、外部検索indexは未公開
 
 ## 結論
 
-ローカル正本、Python API、CLI、stdio MCP、Codex・Claude Code用のclient別設定、共通skill、診断、評価ケースを実装した。
+v0.3.0候補では、取得済みPMGSパッケージを`pmgs setup`へ渡すだけで、棚卸し、SQLite構築、検証、実stdio MCP診断、現行版の切替までをWindows、macOS、Linuxで同じCLIから実行できる。
 
-README、CLI help、skill、Web top、`llms.txt`は日本語を既定とし、英語版README、英語版ガイド、`language=en`、`/en/`、`llms.en.txt`を切替先にした。
+SQLiteはrelease、source manifest SHA-256、database SHA-256を含む内容アドレス付きpathへ保存する。検証済みの`state/current.json`だけを原子的に切り替え、旧版は保持する。同じsourceを再実行した場合はdatabaseとpointerを書き換えず再利用する。
 
-Windows用setup scriptは、PMGS棚卸し、SQLite build、validation、実stdio診断、agent kit生成、skill導入を行う。既存DB、既存kit、内容の異なる同名skill、client設定は既定で上書きしない。
+CodexとClaude Codeを検出した場合は、MCP接続と共通skillを登録するか確認する。既に同じ設定があれば再利用し、内容の異なる同名設定やskillは上書きせず`conflict`として返す。Claude Codeの`CLAUDE_CONFIG_DIR`にも対応する。
 
-Web公開は停止したまま、第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界を日英で公開する。
+data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpackage versionを照合し、source、Worker、隔離wheelを再検証した後、承認付き`pypi` environmentとTrusted PublishingでPyPIへ公開し、同じ成果物からGitHub Releaseを作る。workflowは未実行であり、v0.3.0を公開済みとは扱わない。
 
-現行sourceと合成fixtureは`locally verified`である。2026-08-09に全量監査したSQLite正本と分類recordは回帰基準として有効だが、その後に追加した日英Web入口の公開bytesは実データ全量A/Bで再監査していない。
+Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
-source repositoryの外部状態は`GitHub public`である。v0.2.0差分は保護branchへのPull Request、hosted CI、CodeQLを通して`main`へmergeし、dataを含まないwheelとsdistをGitHub Releaseへ公開した。
-
-[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)は通常のHTML閲覧とcloneが可能である。R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は停止中の任意セルフホストgateであり、管理者は実施していない。
+[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)で現在公開されている安定版はv0.2.0である。R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
 
 ## 現在の公開契約
 
@@ -48,39 +46,41 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 詳細は[登録条件と公開形態](registered-use-terms.md)と[公開証跡](evidence/README.md)に記録した。
 
-## 現在差分の検査
+## v0.3.0候補のローカル検査
 
-2026-08-10時点で現行sourceのrepository標準検査に合格した。
+2026-08-12にWindowsで現在の作業treeを検査した。
 
-- repository boundary: trackedまたはuntrackedの候補155件、違反0
+- `uv lock --check`: 合格
+- repository boundary: trackedまたはuntrackedの候補167件、違反0
 - Ruff lint: 合格
-- Ruff format: 74 file、差分0
-- mypy: 24 source file、問題0
-- pytest: 56件合格
-- agent kit focus: 8件合格。実stdio、hash不変、TOML、JSON、skill冪等、途中失敗回収、日本語既定を確認
-- sdistとwheel: v0.2.0 build成功。sdist 33 file、wheel 32 file、skill resource同梱、禁止形式0
+- Ruff format: 85 file、差分0
+- mypy: 28 source file、問題0
+- pytest: 98件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
+- wheel導入試験: 空の隔離環境で初回setup=`ready`、再実行=`already_ready`、doctor=`true`、version=`pmgs 0.3.0`
+- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,152 bytes、SHA-256 `91EFE87CEFF0674666700FA0B1A23ABB507E7292CDDB8741D1F9EC022469A936`
+- `pmgs_reference-0.3.0.tar.gz`: 84,657 bytes、SHA-256 `14DEC15449638929158F026A7E28BC79D40D48E44E6AF3AA79FC67FF2B160003`
+- 配布内容: wheel 36 entry、sdist 37 entry、共通skill同梱、SQLite・source manifest・秘密鍵0件
 - Worker: TypeScript、oxlint、workerd test 23件、WebMCP test 3件、dry-run bundleに合格
 - npm audit: 脆弱性0
-- Markdown: 42 file、相対link 57件、欠損0
-- JSON: 12 file、parse error 0
-- YAML: 8 file、parse error 0
-- 配布skill validator: 合格
-- PowerShell setup: parser error 0、`-WhatIf`で外部変更なしの到達確認に合格
+- PowerShell wrapper: parser error 0、`-WhatIf`でsetupを実行せず終了
 - `git diff --check`: 合格
 
-現行treeの公開前文言scanでは、秘密情報、実在端末path、認証情報、無関係なproject識別子を検出しなかった。
+配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。GitHub ActionsのUbuntu、Windows、macOSでのv0.3.0候補検査は、branchをpushした後の外部gateとして残る。
 
-この検査は現在のfile内容を対象とする。
+## v0.3.0 setupの実データ全量検証
 
-公開用`main`は、現在の公開候補だけを持つclean root commit `c3f836b`から開始した。
+2026-08-11にJPPM2026002を二つの独立した空のdata directoryへsetupした。
 
-その後の`077ccc3`はWindows Python 3.12でCSV field size上限がoverflowする問題だけを修正し、同条件の回帰testを追加した。
+- source: 6,870 file、1,002,622,042 bytes、parsed 6,868、retained 2
+- source manifest SHA-256: `96AA322D8D916406F4166FE1CFC9F6A1B749D09AFFB82EACD7B6557ECC215B52`
+- A/B database: 各3,246,669,824 bytes
+- A/B database SHA-256: `6C73443650E0CFF812D49EA24CF505F278B154471CC0C2A2C8FB2EBFB8743FD4`で一致
+- setup: A/Bとも`ready`、validationと実stdio MCP診断に合格
+- 再実行: `already_ready`。databaseと`current.json`のbytesおよび更新時刻は不変
+- build issue: warning 41、error 0
+- row count: concept 1,207,960、concept_property 1,428,529、concept_text 1,746,489、document 6,667、document_link 1,399,695、document_text 1,665,758、reference_entry 729、relation 1,863,942、source_file 6,870、source_record 4,430,638
 
-旧履歴は外部backup bundleへ退避し、`main`から到達不能にした。
-
-公開用履歴と現在treeのcredential pattern、禁止形式file、端末固有path、公開対象外の運用記録を検査した。
-
-`origin`は`https://github.com/Nagi-Inaba/pmgs-reference.git`で、`main`をpush済みである。
+このA/Bは同じv0.3.0候補による決定性を確認した。以前の異なるtoolchainで生成したdatabaseとのbyte一致は確認していないため、cross-toolchain determinismは未検証として残す。検証用databaseと実PMGS sourceはGitへ追加していない。
 
 ## GitHub source repositoryの公開検証
 
@@ -152,7 +152,10 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. 第三者がWeb公開する場合だけ、実originでA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを外部確認する。
-2. Web公開者が検索エンジンとAI検索からの発見性を測定する。
+1. v0.3.0候補をPull Requestにし、Ubuntu、Windows、macOSのhosted CI、隔離wheel試験、CodeQLを確認する。
+2. GitHubの`pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。
+3. v0.3.0 tagを作成し、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
+4. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
+5. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub sourceとdata非同梱のv0.2.0 Releaseは公開済みである。GitHub以外の全量成果物公開、package index公開、deploy、index登録は完了扱いにしない。
+GitHub sourceとdata非同梱のv0.2.0 Releaseは公開済みである。v0.3.0、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。

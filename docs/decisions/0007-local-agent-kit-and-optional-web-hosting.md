@@ -28,6 +28,8 @@ Knowledge fileへの全量投入は規模に合わず、一般的なGemへ任意
 - Windowsで棚卸しから導入まで行う`setup_local_agent.ps1`
 - AIが分類を推測しないことを検査する評価ケース
 
+2026-08-11のv0.3設計では、上記の個別commandとagent kitを互換面として維持しつつ、全OS共通の`pmgs setup`を既定の導入口にした。版付きDB、原子的な現行版切替、client登録の詳細は[ADR 0008](0008-transactional-local-setup.md)に定める。Windows scriptは`pmgs setup`へ引数を渡す薄いadapterとする。
+
 日本語をREADME、skill、説明、検索応答、公開ページの既定言語とする。英語は`README.en.md`、英語版ガイド、`language=en`、`/en/`で選択できる状態を維持する。
 
 Web実装は削除しない。第三者が自分のdata、account、domain、予算で運用できるよう、セルフホスト手順とGPTs、Gem、Copilot Studioの互換性境界を公開する。
