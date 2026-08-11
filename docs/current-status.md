@@ -2,7 +2,7 @@
 
 - 更新日: 2026-08-12
 - 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`をv0.3.0候補として実装済み。公開済みの`main`とGitHub Releaseはv0.2.0
-- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築に合格。v0.3.0差分のGitHub hosted CIとCodeQLは未実行
+- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、v0.3.0 branchのGitHub hosted CI 10 jobに合格。v0.3.0差分のCodeQLはPRまたはmainでの実行待ち
 - 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。v0.3.0、PyPI、R2、Worker、独自domain、外部検索indexは未公開
 
 ## 結論
@@ -57,15 +57,33 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 - mypy: 28 source file、問題0
 - pytest: 98件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
 - wheel導入試験: 空の隔離環境で初回setup=`ready`、再実行=`already_ready`、doctor=`true`、version=`pmgs 0.3.0`
-- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,152 bytes、SHA-256 `91EFE87CEFF0674666700FA0B1A23ABB507E7292CDDB8741D1F9EC022469A936`
-- `pmgs_reference-0.3.0.tar.gz`: 84,657 bytes、SHA-256 `14DEC15449638929158F026A7E28BC79D40D48E44E6AF3AA79FC67FF2B160003`
+- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,127 bytes、SHA-256 `6E6C46068EC6D9DF7CD3D690FD27C6B12624F9E5B7362031D98E0ACCACB0F248`
+- `pmgs_reference-0.3.0.tar.gz`: 84,641 bytes、SHA-256 `0DC5B70D8B0147CCB40415D16C157E476498AB7528C40DF393DB9351AD951B50`
 - 配布内容: wheel 36 entry、sdist 37 entry、共通skill同梱、SQLite・source manifest・秘密鍵0件
 - Worker: TypeScript、oxlint、workerd test 23件、WebMCP test 3件、dry-run bundleに合格
 - npm audit: 脆弱性0
 - PowerShell wrapper: parser error 0、`-WhatIf`でsetupを実行せず終了
 - `git diff --check`: 合格
 
-配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。GitHub ActionsのUbuntu、Windows、macOSでのv0.3.0候補検査は、branchをpushした後の外部gateとして残る。
+配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。
+
+## v0.3.0 branchのhosted CIとfresh clone
+
+2026-08-12に`codex/pmgs-setup`をpublic repositoryへpushした。
+
+[Hosted CI run 31506514581](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31506514581)はcommit `013a5b2209d941d9fb738f17d3a0ddcfea47a8e0`を検査し、次の10 jobがすべて成功した。
+
+- Python 3.12と3.14 on Ubuntu、Windows、macOS: 6 job
+- 隔離wheelからのsetup、再実行、doctor on Ubuntu、Windows、macOS: 3 job
+- Cloudflare Worker on Node.js 22: 1 job
+
+最初のrunではUnix runnerのmypyが`os.name`分岐を絞り込めず失敗した。lock実装の型分岐を`sys.platform`へ変更し、Windows、Linux、macOSを指定したmypyをローカルでも追加確認した。
+
+次のrunでは既定DB探索のtestが`LOCALAPPDATA`だけを仮定してUnixで失敗した。OS非依存の既定data rootを注入するtestへ変更し、最終runで全OSが成功した。
+
+同じpublic branchを新しいdirectoryへcloneし、remote SHA一致、署名済みPython 3.14からの新規仮想環境、repository boundary、Ruff、format、mypy、pytest 98件、隔離wheelのsetup、再実行、doctorを確認した。上記wheelとsdistのbytes、SHA-256、entry数はこのfresh cloneから作成した成果物である。
+
+CodeQL default setupは有効だが、feature branchのpushには解析結果が作られず、default setupは手動dispatchにも対応しない。v0.3.0差分のCodeQLはPRまたはmainで確認する。
 
 ## v0.3.0 setupの実データ全量検証
 
@@ -152,8 +170,8 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. v0.3.0候補をPull Requestにし、Ubuntu、Windows、macOSのhosted CI、隔離wheel試験、CodeQLを確認する。
-2. GitHubの`pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。
+1. v0.3.0候補をPull Requestにし、CodeQLを確認する。mainのbranch protectionは旧5 checkのままなので、macOSと3 OS wheel checkを必須対象へ追加する。
+2. GitHubには2026-08-12時点でenvironmentが0件であり、PyPIの`pmgs-reference` project endpointも404を返す。`pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。404だけで将来の名前取得を保証しない。
 3. v0.3.0 tagを作成し、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
 4. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 5. Web公開者が検索エンジンとAI検索からの発見性を測定する。
