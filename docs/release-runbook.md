@@ -164,6 +164,8 @@ uv run --frozen python scripts/verify_wheel_install.py `
   --source tests/fixtures/synthetic_pmgs
 ```
 
+検証scriptは`pyproject.toml`のversionと一致するwheelだけを選ぶ。`dist/`に過去versionのwheelが残っていても対象に含めず、現行versionのwheelが0件または複数件なら停止する。
+
 ### 2. 外部設定を確認する
 
 GitHubに`pypi` environmentを作り、required reviewerと`v*` tagだけを許可するdeployment ruleを設定する。

@@ -14,6 +14,7 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from pmgs_reference.agent_kit import MCP_SERVER_NAME
+from pmgs_reference.data_paths import resolve_database
 from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 
 EXPECTED_MCP_TOOLS: Final = (
@@ -138,8 +139,11 @@ def doctor_database(
 ) -> DoctorResult:
     """Verify a database, real stdio handshake, read-only tools, and hash stability."""
     resolved_data_dir = Path(data_dir).expanduser().resolve() if data_dir is not None else None
+    target = resolve_database(database, data_dir=resolved_data_dir)
     store = PMGSStore.open(database, data_dir=resolved_data_dir)
     resolved_database = store.path
+    if resolved_database != target.path:
+        raise RuntimeError("managed current.json changed while doctor was starting")
     # Preserve the virtual-environment launcher instead of resolving its POSIX
     # symlink to a system interpreter that cannot import this package.
     resolved_python = Path(python_executable or sys.executable).expanduser().absolute()
@@ -176,6 +180,18 @@ def doctor_database(
         **stdio_checks,
         "database_unchanged": before == after,
     }
+    if resolved_data_dir is not None or target.pointer is not None:
+        try:
+            final_target = resolve_database(database, data_dir=resolved_data_dir)
+        except (OSError, ValueError):
+            pointer_unchanged = False
+        else:
+            pointer_unchanged = final_target == target
+        checks["current_pointer_unchanged"] = pointer_unchanged
+    if target.pointer is not None:
+        checks["database_matches_current_pointer"] = (
+            before == target.pointer.database_sha256.upper()
+        )
     for name, passed in checks.items():
         if not passed:
             errors.append(f"check failed: {name}")

@@ -311,6 +311,7 @@ def integrate_clients(
                 continue
             base["mcp"] = "installed"
             changed = True
+            base["restart_required"] = True
         else:
             base["mcp"] = "already_present"
         if skill_status == "missing":

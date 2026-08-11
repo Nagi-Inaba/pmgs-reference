@@ -114,7 +114,7 @@ codex mcp list
 claude mcp list
 ```
 
-`doctor` checks the SQLite schema and release, the exact three-tool contract, read-only annotations, a real stdio lookup, and the SQLite hash before and after the lookup.
+`doctor` checks the SQLite schema and release, the exact three-tool contract, read-only annotations, a real stdio lookup, and the SQLite hash before and after the lookup. For a managed data directory, it also compares the file SHA-256 with `current.json` and confirms that the current pointer did not switch during the diagnostic. Routine lookups do not rehash the entire large database, so run `doctor` first after any external database edit or when corruption is suspected.
 
 ## Run from the repository
 

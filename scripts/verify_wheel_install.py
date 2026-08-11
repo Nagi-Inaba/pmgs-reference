@@ -9,10 +9,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import cast
 
-import pymupdf
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(command: list[str], *, environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -43,6 +44,8 @@ def _json_command(command: list[str], *, environment: dict[str, str]) -> dict[st
 
 
 def _copy_synthetic_source(source: Path, target: Path) -> None:
+    import pymupdf
+
     shutil.copytree(source, target)
     pdf_path = target / "REFERENCE" / "IPC_TEIGI" / "G06F3-048.pdf"
     pdf_path.parent.mkdir(parents=True)
@@ -55,14 +58,35 @@ def _copy_synthetic_source(source: Path, target: Path) -> None:
         document.close()
 
 
+def _project_version() -> str:
+    payload = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = payload.get("project")
+    if not isinstance(project, dict) or not isinstance(project.get("version"), str):
+        raise RuntimeError("pyproject.toml does not declare a project version")
+    return project["version"]
+
+
+def _select_wheel(dist_dir: Path, version: str) -> Path:
+    prefix = f"pmgs_reference-{version}-"
+    wheels = sorted(
+        path.resolve()
+        for path in dist_dir.resolve().glob("pmgs_reference-*.whl")
+        if path.name.startswith(prefix)
+    )
+    if len(wheels) != 1:
+        raise RuntimeError(
+            f"expected exactly one PMGS wheel for version {version}, found {len(wheels)}"
+        )
+    return wheels[0]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist-dir", type=Path, required=True)
     parser.add_argument("--source", type=Path, required=True)
     args = parser.parse_args()
-    wheels = sorted(args.dist_dir.resolve().glob("pmgs_reference-*.whl"))
-    if len(wheels) != 1:
-        raise RuntimeError(f"expected exactly one PMGS wheel, found {len(wheels)}")
+    project_version = _project_version()
+    wheel = _select_wheel(args.dist_dir, project_version)
     uv = shutil.which("uv")
     if uv is None:
         raise RuntimeError("uv executable not found")
@@ -88,7 +112,7 @@ def main() -> int:
                 "--force",
                 "--python",
                 sys.executable,
-                str(wheels[0]),
+                str(wheel),
             ],
             environment=environment,
         )
@@ -125,7 +149,8 @@ def main() -> int:
             raise RuntimeError(f"second setup was not idempotent: {second.get('status')}")
         if doctor.get("ok") is not True:
             raise RuntimeError("installed-wheel doctor failed")
-        if version != "pmgs 0.3.0":
+        expected_version = f"pmgs {project_version}"
+        if version != expected_version:
             raise RuntimeError(f"unexpected installed version: {version}")
         print(
             json.dumps(

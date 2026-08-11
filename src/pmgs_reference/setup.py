@@ -735,10 +735,7 @@ def setup_reference(
                     any(item.get("restart_required") is True for item in client_statuses)
                     or (
                         pointer_changed
-                        and any(
-                            item.get("status") in {"installed", "already_present"}
-                            for item in client_statuses
-                        )
+                        and any(target.executable is not None for target in client_targets)
                     )
                 ),
                 errors=(),

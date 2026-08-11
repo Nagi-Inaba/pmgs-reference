@@ -114,7 +114,7 @@ codex mcp list
 claude mcp list
 ```
 
-`doctor`はSQLiteのschemaとrelease、MCP tool 3件、読み取り専用annotation、実stdio照会、照会前後のSQLiteハッシュを検査します。
+`doctor`はSQLiteのschemaとrelease、MCP tool 3件、読み取り専用annotation、実stdio照会、照会前後のSQLiteハッシュを検査します。管理ディレクトリを使う場合は、実ファイルのSHA-256が`current.json`の値と一致し、診断中に現在版が切り替わっていないことも確認します。通常のlookupは大きなDBを毎回全量hashしないため、DBを外部編集した場合や破損が疑われる場合は先に`doctor`を実行してください。
 
 ## リポジトリから実行する場合
 

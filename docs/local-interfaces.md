@@ -18,7 +18,9 @@
 
 OS既定の管理ディレクトリはWindowsが`%LOCALAPPDATA%\pmgs-reference`、macOSが`~/Library/Application Support/pmgs-reference`、Linuxが`${XDG_DATA_HOME:-~/.local/share}/pmgs-reference`である。
 
-`current.json`はrelease、source manifest SHA-256、database SHA-256、schema version、管理ディレクトリ内の相対DBパスを持つ。形式不正、管理ディレクトリ外への参照、欠損ファイル、DBとのidentity不一致はfail closedで拒否し、旧`current.sqlite`へ暗黙にfallbackしない。
+`current.json`はrelease、source manifest SHA-256、database SHA-256、schema version、管理ディレクトリ内の相対DBパスを持つ。通常のqueryは、形式不正、管理ディレクトリ外への参照、欠損ファイル、内容アドレス付きpathとDB内metadataの不一致をfail closedで拒否し、旧`current.sqlite`へ暗黙にfallbackしない。
+
+実DBの全量SHA-256は参照のたびには計算しない。`pmgs setup`は有効化または再利用前に、`pmgs doctor --data-dir ...`は診断時に、実ファイルhashを`current.json`の`database_sha256`と照合する。内容アドレス付きDBを外部編集した場合は、通常queryの前にこのどちらかを実行する。
 
 PythonパッケージにPMGS原資料やSQLiteは同梱しない。データベースが見つからない場合も自動ダウンロードしない。
 
@@ -86,7 +88,7 @@ pmgs doctor --json
 
 `lookup`と`search`の`--language`既定値は`ja`である。英語は`--language en`を指定する。
 
-`doctor`はSQLite schema、release、実stdio接続、tool 3件、read-only annotation、サンプル照会、照会前後hashを検査する。
+`doctor`はSQLite schema、release、実stdio接続、tool 3件、read-only annotation、サンプル照会、照会前後hashを検査する。管理ディレクトリを指定した場合は、実ファイルhashと`current.json`の`database_sha256`を照合し、診断中にcurrent pointerが切り替わっていないことも確認する。
 
 ## stdio MCP
 

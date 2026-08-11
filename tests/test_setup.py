@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -121,6 +122,43 @@ def test_setup_reuses_the_locked_current_validation(
 
     assert second.status == "already_ready"
     assert calls == 1
+
+
+def test_setup_rejects_a_current_database_whose_bytes_changed(
+    synthetic_pmgs: Path, tmp_path: Path
+) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    first = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+    assert first.database is not None
+    pointer_path = data_root / "state" / "current.json"
+    pointer_before = pointer_path.read_bytes()
+    connection = sqlite3.connect(first.database)
+    try:
+        connection.execute(
+            "UPDATE concept_text SET text = text || ' tampered' "
+            "WHERE rowid = (SELECT rowid FROM concept_text LIMIT 1)"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    second = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+
+    assert second.status == "failed"
+    assert any("current.json metadata does not match" in error for error in second.errors)
+    assert pointer_path.read_bytes() == pointer_before
 
 
 def test_setup_dry_run_performs_inventory_without_writing(
@@ -422,3 +460,32 @@ def test_client_failure_returns_partial_failed_but_keeps_the_database_ready(
     assert result.database is not None
     assert PMGSStore.open(data_dir=data_root).release_info()["release_id"] == "JPPM2099001"
     assert (data_root / "state" / "current.json").is_file()
+
+
+def test_pointer_switch_requires_restart_for_a_detected_declined_client(
+    synthetic_pmgs: Path, tmp_path: Path
+) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    first = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+    assert first.status == "ready"
+
+    updated_source = tmp_path / "updated" / "JPPM2099002"
+    shutil.copytree(synthetic_pmgs, updated_source)
+
+    second = setup_reference(
+        updated_source,
+        release_id="JPPM2099002",
+        data_dir=data_root,
+        client_targets=(ClientTarget("codex", tmp_path / "codex.exe"),),
+        approved_clients=(),
+    )
+
+    assert second.status == "ready"
+    assert second.clients[0]["status"] == "declined"
+    assert second.restart_required is True

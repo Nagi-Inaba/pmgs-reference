@@ -2,7 +2,7 @@
 
 - 更新日: 2026-08-12
 - 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`をv0.3.0候補として実装済み。公開済みの`main`とGitHub Releaseはv0.2.0
-- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、v0.3.0 branchのGitHub hosted CI 10 jobに合格。v0.3.0差分のCodeQLはPRまたはmainでの実行待ち
+- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、v0.3.0 branchのGitHub hosted CI 10 jobに合格。追加hardening後のhosted CIとv0.3.0差分のCodeQLはPR前後の実行待ち
 - 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。v0.3.0、PyPI、R2、Worker、独自domain、外部検索indexは未公開
 
 ## 結論
@@ -51,18 +51,21 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 2026-08-12にWindowsで現在の作業treeを検査した。
 
 - `uv lock --check`: 合格
-- repository boundary: trackedまたはuntrackedの候補167件、違反0
+- repository boundary: trackedまたはuntrackedの候補168件、違反0
 - Ruff lint: 合格
-- Ruff format: 85 file、差分0
+- Ruff format: 86 file、差分0
 - mypy: 28 source file、問題0
-- pytest: 98件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
+- pytest: 106件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
 - wheel導入試験: 空の隔離環境で初回setup=`ready`、再実行=`already_ready`、doctor=`true`、version=`pmgs 0.3.0`
-- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,127 bytes、SHA-256 `6E6C46068EC6D9DF7CD3D690FD27C6B12624F9E5B7362031D98E0ACCACB0F248`
-- `pmgs_reference-0.3.0.tar.gz`: 84,641 bytes、SHA-256 `0DC5B70D8B0147CCB40415D16C157E476498AB7528C40DF393DB9351AD951B50`
+- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,306 bytes、SHA-256 `7ADD4CEE72574B5544D71ABE5DC345A7EF807CCFA32D0F3420923E4D12A60F05`
+- `pmgs_reference-0.3.0.tar.gz`: 84,770 bytes、SHA-256 `EC4BADFA1A34237E641C4DCD2062FE375A8DF1BC6FC72121B7E07C2298FCBA0A`
 - 配布内容: wheel 36 entry、sdist 37 entry、共通skill同梱、SQLite・source manifest・秘密鍵0件
 - Worker: TypeScript、oxlint、workerd test 23件、WebMCP test 3件、dry-run bundleに合格
 - npm audit: 脆弱性0
 - PowerShell wrapper: parser error 0、`-WhatIf`でsetupを実行せず終了
+- managed DB integrity: 通常queryはpathとmetadataを高速照合し、setupとdoctorは実ファイルSHA-256をpointerと照合する。DB改変時のsetup拒否、doctor失敗、診断中のcurrent pointer切替拒否を回帰testで確認
+- client state: MCP登録後のskill失敗と、登録を見送った検出済みclientがある版切替でも`restart_required=true`を保持
+- wheel再検証: `dist/`に0.1.0、0.2.0、0.3.0のwheelが共存する状態で、`pyproject.toml`の現行versionだけを選択して隔離導入試験に合格。version表示の期待値も同じproject versionから導出する
 - `git diff --check`: 合格
 
 配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。

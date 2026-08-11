@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import pmgs_reference.client_integration as client_integration_module
 from pmgs_reference.agent_kit import install_agent_skills
 from pmgs_reference.client_integration import (
     ClientTarget,
@@ -180,6 +181,33 @@ def test_one_client_failure_does_not_undo_the_other_client(tmp_path: Path) -> No
     assert statuses[1]["status"] == "failed"
     assert runner.codex_config is not None
     assert not (home / ".claude.json").exists()
+
+
+def test_registration_keeps_restart_required_when_skill_install_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    runner = FakeClientRunner(home)
+
+    def fail_skill_install(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        raise OSError("simulated skill failure")
+
+    monkeypatch.setattr(client_integration_module, "install_agent_skills", fail_skill_install)
+
+    status = integrate_clients(
+        (ClientTarget("codex", tmp_path / "codex.exe"),),
+        ("codex",),
+        python_executable=tmp_path / "python.exe",
+        data_dir=tmp_path / "data-root",
+        home=home,
+        runner=runner,
+    )[0]
+
+    assert status["status"] == "failed"
+    assert status["mcp"] == "installed"
+    assert status["skill"] == "missing"
+    assert status["restart_required"] is True
+    assert runner.codex_config is not None
 
 
 def test_claude_custom_config_directory_is_used_consistently(

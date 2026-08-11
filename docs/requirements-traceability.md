@@ -28,7 +28,7 @@
 | MCP-01 | stdio MCPが三つの読み取り専用toolを提供する | verified | SDK tool testとstdio protocol smoke |
 | AGENT-01 | CodexとClaude Codeへclient別MCP設定を生成する | verified | TOMLとJSONのparser test、登録command test |
 | AGENT-02 | 同じ読み取り専用skillを両clientへ非破壊で導入する | verified | hash一致、冪等、上書き拒否、途中失敗回収、同時競合保持test |
-| AGENT-03 | 実stdio接続とSQLite不変性を診断する | verified | `pmgs doctor`の実client、tool契約、hash不変test |
+| AGENT-03 | 実stdio接続とSQLite不変性を診断する | verified | `pmgs doctor`の実client、tool契約、照会前後hash、managed pointer SHA不一致と診断中pointer切替の拒否test |
 | AGENT-04 | 日本語を既定にし、英語へ切り替えられる | verified | CLI、skill、日英README、Web top、`llms.txt`のtest |
 | AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
 | DOC-02 | 第三者向けWebセルフホストとGPTs、Gem、Copilot Studioの制約を公開する | verified | 日英ガイドと全Markdown相対link test |
@@ -43,7 +43,7 @@
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 98件、Ruff、mypy、boundary、sdist、wheelに合格 |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 106件、Ruff、mypy、boundary、sdist、wheelに合格 |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | implemented | [2026-08-09の監査](verification/public-release-2026-08-09.md)は当時の契約で`ready=true`。2026-08-10の日英入口追加後はWeb公開時に再監査する |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | Python標準検査とWorker `verify`に合格 |
 | RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | [Hosted CI run 31506514581](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31506514581)の3 OS `wheel-e2e` job |

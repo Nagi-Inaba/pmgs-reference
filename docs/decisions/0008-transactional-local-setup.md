@@ -24,6 +24,7 @@ Python CLIの`pmgs setup SOURCE`を、全OSと全インストール形態に共�
 7. MCP登録は個別DBではなく`--data-dir`を使う。既存の同名設定またはskillが異なる場合は上書きしない。
 8. 対話実行は検出したclientごとに`[Y/n]`で登録を確認する。JSONまたは非対話実行は`--register`か`--no-register`を必須にする。
 9. `--dry-run`はsource解決、棚卸し、予定したclient処理の表示だけを行い、管理ディレクトリやclient設定を変更しない。
+10. 通常queryはpointer pathとDB内metadataを高速照合する。実ファイルbytesとpointer SHA-256の全量照合は、有効化・再利用時のsetupと明示的なdoctorで行い、3 GiBを超えるDBをqueryごとに再hashしない。
 
 OS既定の管理ディレクトリは、Windowsが`%LOCALAPPDATA%\pmgs-reference`、macOSが`~/Library/Application Support/pmgs-reference`、Linuxが`${XDG_DATA_HOME:-~/.local/share}/pmgs-reference`とする。
 

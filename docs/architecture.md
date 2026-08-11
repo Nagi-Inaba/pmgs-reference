@@ -70,7 +70,9 @@ flowchart LR
 
 管理ディレクトリには、現行版を指す`state/current.json`、不変の`data/releases/<release>/<source-sha256>/<database-sha256>.sqlite`、run別report、所有marker付きstagingを置く。
 
-`current.json`は管理ディレクトリ内の相対DBパス、release、source manifest SHA-256、database SHA-256、schema versionを持つ。pointerとDBのidentityが一致しない場合、queryとsetupはいずれも暗黙のfallbackをせず停止する。
+`current.json`は管理ディレクトリ内の相対DBパス、release、source manifest SHA-256、database SHA-256、schema versionを持つ。通常のqueryは、pointerの形式、内容アドレス付きpath、DB内のrelease、source SHA、schema versionを照合し、不一致時は暗黙のfallbackをせず停止する。
+
+3 GiBを超えるDBの全量SHA-256をqueryごとに計算すると参照性能を損なうため、実ファイルbytesと`database_sha256`の暗号学的一致は`pmgs setup`と`pmgs doctor`で検証する。内容アドレス付きDBは有効化後に外部編集しない運用契約とし、変更や破損が疑われる場合はquery結果を利用する前に`pmgs doctor`または同じsourceでの`pmgs setup`を実行する。
 
 MCP登録は`python -m pmgs_reference.cli mcp --data-dir <managed-root>`を起動する。PMGS更新時はpointerだけが変わるため、client設定の再生成は不要である。詳細は[ADR 0008](decisions/0008-transactional-local-setup.md)に定める。
 
