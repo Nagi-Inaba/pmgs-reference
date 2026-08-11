@@ -7,13 +7,17 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
+from typing import Never, cast
 
+from pmgs_reference import __version__
 from pmgs_reference.agent_kit import (
+    AgentClient,
     install_agent_skills,
     prepare_agent_kit,
     resolve_clients,
 )
+from pmgs_reference.client_integration import ClientSelection, detect_client_targets
+from pmgs_reference.data_paths import CurrentPointerError, default_data_root
 from pmgs_reference.diagnostics import doctor_database
 from pmgs_reference.errors import PMGSQueryError
 from pmgs_reference.ingest.build import BuildError, build_database
@@ -26,14 +30,43 @@ from pmgs_reference.publication import (
     validate_public_export,
 )
 from pmgs_reference.publication.validation import write_public_validation_report
+from pmgs_reference.setup import (
+    SetupOperationError,
+    SetupResult,
+    SetupUsageError,
+    setup_reference,
+)
 from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 from pmgs_reference.validation import validate_database, write_validation_report
 
 
+class JapaneseArgumentParser(argparse.ArgumentParser):
+    """Keep the canonical CLI help headings and error prefix in Japanese."""
+
+    def format_help(self) -> str:
+        text = super().format_help()
+        for original, translated in (
+            ("usage:", "使い方:"),
+            ("positional arguments:", "位置引数:"),
+            ("options:", "オプション:"),
+            ("show this help message and exit", "このヘルプを表示して終了"),
+        ):
+            text = text.replace(original, translated)
+        return text
+
+    def format_usage(self) -> str:
+        return super().format_usage().replace("usage:", "使い方:", 1)
+
+    def error(self, message: str) -> Never:
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: エラー: {message}\n")
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = JapaneseArgumentParser(
         prog="pmgs", description="PMGS Referenceの構築と読み取り専用照会"
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     inventory = subparsers.add_parser("inventory", help="PMGS packageを棚卸しする")
@@ -46,6 +79,38 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--release", required=True)
     build.add_argument("--output", type=Path, required=True)
     build.add_argument("--report", type=Path)
+
+    setup = subparsers.add_parser("setup", help="PMGSを安全に構築しCodexやClaude Codeへ接続する")
+    setup.add_argument("source", type=Path, help="取得済みPMGSパッケージまたはその親ディレクトリ")
+    setup.add_argument("--release", help="PMGSの版。省略時はJPPMディレクトリ名から判定")
+    setup.add_argument(
+        "--data-dir",
+        type=Path,
+        default=default_data_root(),
+        help="SQLite、現行版pointer、検査reportの保存先",
+    )
+    setup.add_argument(
+        "--client",
+        choices=("auto", "none", "codex", "claude", "both"),
+        default="auto",
+        help="接続するAIクライアント。既定はインストール済みclientの自動検出",
+    )
+    registration = setup.add_mutually_exclusive_group()
+    registration.add_argument(
+        "--register", dest="register", action="store_true", help="確認せず選択clientへ登録"
+    )
+    registration.add_argument(
+        "--no-register", dest="register", action="store_false", help="client設定を変更しない"
+    )
+    setup.set_defaults(register=None)
+    setup.add_argument(
+        "--non-interactive", action="store_true", help="対話確認を行わない。登録方針の明示が必要"
+    )
+    setup.add_argument(
+        "--dry-run", action="store_true", help="入力を棚卸しして予定を表示し、変更は行わない"
+    )
+    setup.add_argument("--json", action="store_true", help="結果をJSONオブジェクト1件で出力")
+    setup.add_argument("--language", choices=("ja", "en"), default="ja", help="進捗と案内の言語")
 
     validate = subparsers.add_parser("validate", help="PMGS SQLiteを検証する")
     validate.add_argument("database", type=Path)
@@ -70,22 +135,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     document = subparsers.add_parser("document", help="特許庁提供のPMGS文書を読む")
     document.add_argument("document_id")
-    document.add_argument("--db", type=Path)
+    _add_database_options(document)
     document.add_argument("--page", type=int)
     document.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="読み取り専用stdio MCP serverを起動する")
-    mcp.add_argument("--db", type=Path)
+    _add_database_options(mcp)
 
     doctor = subparsers.add_parser("doctor", help="ローカルDBと実stdio MCP接続を診断する")
-    doctor.add_argument("--db", type=Path)
+    _add_database_options(doctor)
     doctor.add_argument("--python-executable", type=Path)
     doctor.add_argument("--json", action="store_true")
 
     agent_kit = subparsers.add_parser(
         "agent-kit", help="Codex・Claude Code用のローカル接続fileを生成する"
     )
-    agent_kit.add_argument("--db", type=Path, required=True)
+    _add_database_options(agent_kit, required=True)
     agent_kit.add_argument("--output", type=Path, required=True)
     agent_kit.add_argument("--python-executable", type=Path)
     agent_kit.add_argument("--client", choices=("codex", "claude", "both"), default="both")
@@ -125,9 +190,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _add_query_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--db", type=Path)
+    _add_database_options(parser)
     parser.add_argument("--release", default="current")
     parser.add_argument("--language", choices=("ja", "en"), default="ja")
+
+
+def _add_database_options(parser: argparse.ArgumentParser, *, required: bool = False) -> None:
+    database = parser.add_mutually_exclusive_group(required=required)
+    database.add_argument("--db", type=Path)
+    database.add_argument("--data-dir", type=Path)
 
 
 def _run_inventory(args: argparse.Namespace) -> int:
@@ -150,6 +221,119 @@ def _run_build(args: argparse.Namespace) -> int:
     return 0
 
 
+_SETUP_PROGRESS = {
+    "ja": {
+        "preflight": "入力と保存先を確認しています。",
+        "inventory": "PMGS原資料を棚卸ししています。",
+        "reuse": "既存の検証済みDBを確認しています。",
+        "build": "SQLiteを構築しています。",
+        "build_database": "PMGSレコードをSQLiteへ取り込んでいます。",
+        "source_check": "構築中に原資料が変わっていないか確認しています。",
+        "validate": "SQLiteを検証しています。",
+        "doctor": "stdio MCPの実接続を診断しています。",
+        "activate": "検証済みDBをcurrentへ切り替えています。",
+        "clients": "AIクライアントの接続状態を反映しています。",
+        "complete": "setupが完了しました。",
+    },
+    "en": {
+        "preflight": "Checking the source and data directory.",
+        "inventory": "Inventorying the PMGS source package.",
+        "reuse": "Checking for a verified existing database.",
+        "build": "Building SQLite.",
+        "build_database": "Importing PMGS records into SQLite.",
+        "source_check": "Checking that the source did not change during setup.",
+        "validate": "Validating SQLite.",
+        "doctor": "Running a real stdio MCP diagnostic.",
+        "activate": "Activating the verified database.",
+        "clients": "Reconciling AI client connections.",
+        "complete": "Setup completed.",
+    },
+}
+
+
+def _prompt_registration(client: str, language: str) -> bool:
+    if language == "en":
+        prompt = f"Register PMGS Reference with {client}? [Y/n] "
+    else:
+        prompt = f"{client}にPMGS Referenceを登録しますか? [Y/n] "
+    print(prompt, end="", file=sys.stderr, flush=True)
+    answer = sys.stdin.readline().strip().lower()
+    return answer not in {"n", "no"}
+
+
+def _setup_human_output(result: SetupResult, language: str) -> None:
+    if language == "en":
+        print(f"PMGS setup: {result.status}")
+        print(f"Release: {result.release_id}")
+        if result.database is not None:
+            print(f"Database: {result.database}")
+        if result.restart_required:
+            print("Restart or reconnect Codex/Claude Code before using the updated server.")
+    else:
+        print(f"PMGS setup: {result.status}")
+        print(f"リリース: {result.release_id}")
+        if result.database is not None:
+            print(f"データベース: {result.database}")
+        if result.restart_required:
+            print("更新した接続を使う前にCodexまたはClaude Codeを再起動してください。")
+    for error in result.errors:
+        print(f"error: {error}", file=sys.stderr)
+    for client in result.clients:
+        status = client.get("status")
+        client_error = client.get("error")
+        if status not in {"not_detected", "conflict", "failed"}:
+            continue
+        name = client.get("client", "unknown")
+        detail = f" - {client_error}" if isinstance(client_error, str) and client_error else ""
+        if language == "en":
+            print(f"client {name}: {status}{detail}", file=sys.stderr)
+        else:
+            print(f"クライアント {name}: {status}{detail}", file=sys.stderr)
+
+
+def _run_setup(args: argparse.Namespace) -> int:
+    non_interactive = bool(args.non_interactive or args.json)
+    if non_interactive and args.register is None:
+        raise SetupUsageError(
+            "--non-interactive and --json require either --register or --no-register"
+        )
+    targets = detect_client_targets(cast(ClientSelection, args.client))
+    approved: list[AgentClient] = []
+    if args.register is True:
+        approved = [target.client for target in targets]
+    elif args.register is None:
+        if not sys.stdin.isatty():
+            raise SetupUsageError("non-TTY setup requires --register or --no-register")
+        approved = [
+            target.client
+            for target in targets
+            if target.executable is not None
+            and _prompt_registration(target.client, str(args.language))
+        ]
+
+    messages = _SETUP_PROGRESS[str(args.language)]
+
+    def progress(stage: str) -> None:
+        message = messages.get(stage)
+        if message is not None:
+            print(message, file=sys.stderr, flush=True)
+
+    result = setup_reference(
+        args.source,
+        release_id=args.release,
+        data_dir=args.data_dir,
+        client_targets=targets,
+        approved_clients=approved,
+        dry_run=bool(args.dry_run),
+        progress=progress,
+    )
+    if args.json:
+        _json_output(result.as_dict())
+    else:
+        _setup_human_output(result, str(args.language))
+    return 0 if result.status in {"ready", "already_ready", "dry_run"} else 1
+
+
 def _run_validate(args: argparse.Namespace) -> int:
     result = validate_database(args.database)
     if args.report is not None:
@@ -168,7 +352,7 @@ def _list_items(payload: JSONDict, key: str) -> list[JSONValue]:
 
 
 def _run_lookup(args: argparse.Namespace) -> int:
-    store = PMGSStore.open(args.db)
+    store = PMGSStore.open(args.db, data_dir=args.data_dir)
     payload = store.lookup(args.scheme, args.code, args.release, args.edition, args.language)
     if args.json:
         _json_output(payload)
@@ -181,7 +365,7 @@ def _run_lookup(args: argparse.Namespace) -> int:
 
 
 def _run_search(args: argparse.Namespace) -> int:
-    store = PMGSStore.open(args.db)
+    store = PMGSStore.open(args.db, data_dir=args.data_dir)
     if args.content_type == "document":
         payload = store.search_documents(args.query, args.release, args.language, args.limit)
     else:
@@ -197,7 +381,9 @@ def _run_search(args: argparse.Namespace) -> int:
 
 
 def _run_document(args: argparse.Namespace) -> int:
-    payload = PMGSStore.open(args.db).get_document(args.document_id, args.page)
+    payload = PMGSStore.open(args.db, data_dir=args.data_dir).get_document(
+        args.document_id, args.page
+    )
     if args.json:
         _json_output(payload)
     else:
@@ -211,6 +397,7 @@ def _run_document(args: argparse.Namespace) -> int:
 def _run_doctor(args: argparse.Namespace) -> int:
     result = doctor_database(
         args.db,
+        data_dir=args.data_dir,
         python_executable=args.python_executable or sys.executable,
     )
     if args.json:
@@ -231,6 +418,7 @@ def _run_agent_kit(args: argparse.Namespace) -> int:
         args.output,
         python_executable=args.python_executable or sys.executable,
         clients=resolve_clients(args.client),
+        data_dir=args.data_dir,
     )
     _json_output(result.as_dict())
     return 0
@@ -293,6 +481,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_inventory(args)
         if args.command == "build":
             return _run_build(args)
+        if args.command == "setup":
+            return _run_setup(args)
         if args.command == "validate":
             return _run_validate(args)
         if args.command == "lookup":
@@ -302,7 +492,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "document":
             return _run_document(args)
         if args.command == "mcp":
-            run_stdio(args.db)
+            run_stdio(args.db, data_dir=args.data_dir)
             return 0
         if args.command == "doctor":
             return _run_doctor(args)
@@ -316,6 +506,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_validate_public(args)
         if args.command == "audit-public":
             return _run_audit_public(args)
+    except SetupUsageError as exc:
+        if getattr(args, "json", False):
+            _json_output(
+                {
+                    "schema_version": "1.0",
+                    "status": "failed",
+                    "error": {"code": "SETUP_USAGE", "message": str(exc)},
+                }
+            )
+            return 2
+        parser.error(str(exc))
+    except (SetupOperationError, CurrentPointerError) as exc:
+        if args.command == "setup" and getattr(args, "json", False):
+            _json_output(
+                {
+                    "schema_version": "1.0",
+                    "status": "failed",
+                    "error": {"code": "SETUP_FAILED", "message": str(exc)},
+                }
+            )
+            return 1
+        parser.exit(1, f"error: {exc}\n")
     except PMGSQueryError as exc:
         if getattr(args, "json", False):
             _json_output({"error": {"code": exc.code, "message": exc.message}})

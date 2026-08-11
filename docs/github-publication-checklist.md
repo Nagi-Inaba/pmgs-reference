@@ -102,6 +102,9 @@ patent-classification pmgs intellectual-property openapi mcp cloudflare-workers
 - Python 3.14 on Ubuntu
 - Python 3.12 on Windows
 - Python 3.14 on Windows
+- Python 3.12 on macOS
+- Python 3.14 on macOS
+- 隔離wheelからの`pmgs setup`、再実行、`doctor` on Ubuntu、Windows、macOS
 - Cloudflare Worker on Node.js 22
 
 local成功をhosted CI成功と読み替えない。
@@ -124,3 +127,13 @@ R2 uploadまたはWorker deployを行う場合は、実originを使った現行�
 公開repositoryのcloneを新しいdirectoryへ取得し、repository boundary、test、package contents、linkを再確認する。
 
 R2 upload、Worker deploy、custom domain、PyPI公開はGitHub repositoryの公開とは別のreleaseとして扱う。
+
+## PyPI公開を行う場合
+
+- `pypi` environmentにrequired reviewerと`v*` tag制限がある。
+- PyPI pending Trusted Publisherのowner、repository、workflow、environmentが[release runbook](release-runbook.md#pythonパッケージのリリース)と一致する。
+- `release.yml`の既定permissionは`contents: read`で、`id-token: write`はPyPI jobだけにある。
+- 外部actionは完全なcommit SHAへ固定されている。
+- tagと`pyproject.toml`のversion guardが成功する。
+- build jobとpublish jobが分離され、PyPIとGitHub Releaseが同じartifactを使う。
+- PyPI公開後の隔離インストールを確認するまで`published`と記録しない。

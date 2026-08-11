@@ -1,12 +1,40 @@
 # PMGS Reference
 
-**Search locally acquired JPO PMGS data from Codex, Claude Code, Python, or the command line.**
+**Search locally acquired JPO PMGS data from Codex and Claude Code with source evidence.**
 
 [日本語](README.md)
 
-PMGS Reference lets Codex and Claude Code answer questions about patent-classification definitions and hierarchy using your local PMGS data.
-The agent searches a local SQLite database and returns the matching wording, edition, related documents, and source information.
-This gives the agent a direct PMGS reference instead of relying only on general web search or model memory.
+PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex and Claude Code can then retrieve FI, F-term, and IPC definitions, hierarchy, editions, related documents, and source metadata through a read-only MCP server. This gives the agent a direct PMGS reference instead of relying only on general web search or model memory.
+
+## Quick setup
+
+After v0.3.0 is available on PyPI, installation takes two commands:
+
+```powershell
+uv tool install pmgs-reference
+pmgs setup C:\path\to\JPPM2026002
+```
+
+To try the current GitHub version:
+
+```powershell
+git clone https://github.com/Nagi-Inaba/pmgs-reference.git
+Set-Location pmgs-reference
+uv tool install .
+pmgs setup C:\path\to\JPPM2026002
+```
+
+`pmgs setup` inventories the source, builds and validates SQLite, and then activates the verified database. When Codex or Claude Code is detected, it asks whether to register the connection with a default-yes `[Y/n]` prompt. Open a new Codex or Claude Code session after setup.
+
+You can select registration behavior explicitly:
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --client codex --register
+pmgs setup C:\path\to\JPPM2026002 --client both --register
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register
+```
+
+Running setup again with the same PMGS package reuses the verified database. A new release is activated only after validation, while older databases remain available. See the [Codex and Claude Code setup guide](docs/local-agent-kit.en.md) for custom storage, non-interactive use, and JSON output.
 
 ## Questions you can ask
 
@@ -16,21 +44,11 @@ This gives the agent a direct PMGS reference instead of relying only on general 
 - “Find FI and IPC entries containing the phrase 相互作用技術.”
 - “Read the relevant page of the PMGS document linked to this classification.”
 
-## How it works
+For example, ask Codex:
 
-```mermaid
-flowchart LR
-    A["Acquired PMGS package"] --> B["Local SQLite database"]
-    B --> C["MCP"]
-    C --> D["Codex"]
-    C --> E["Claude Code"]
-    B --> F["Python API and CLI"]
-    B --> G["HTML and JSON for self-hosting"]
+```text
+Use $pmgs-reference to look up the definition, hierarchy, edition, and sources for FI G06F3/048.
 ```
-
-The setup script converts an acquired PMGS package into a searchable SQLite database.
-Codex and Claude Code query that database through MCP.
-The same database is available through Python and the CLI, and it can generate HTML, Markdown, JSON, and OpenAPI files for self-hosting.
 
 ## Features
 
@@ -41,39 +59,32 @@ The same database is available through Python and the CLI, and it can generate H
 | Hierarchy | Parent, child, and related classifications |
 | Related documents | Guides, revision material, and PDFs by page or section |
 | Codex and Claude Code | A read-only MCP server and shared skill |
-| Python and CLI | Direct programmatic and command-line access to the same data |
+| Python and CLI | Direct access to the same SQLite database |
 | Web export | HTML, Markdown, JSON, OpenAPI, and sitemaps for self-hosting |
 
-## Use with Codex
+## How it works
 
-You need an acquired PMGS package, Python 3.12 or 3.14, [uv](https://docs.astral.sh/uv/), and the Codex CLI.
-
-```powershell
-git clone https://github.com/Nagi-Inaba/pmgs-reference.git
-Set-Location pmgs-reference
-
-powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
-  -SourceDirectory C:\path\to\JPPM2026002 `
-  -ReleaseId JPPM2026002 `
-  -Client codex `
-  -RegisterClients
+```mermaid
+flowchart LR
+    A["Acquired PMGS"] --> B["pmgs setup"]
+    B --> C["Versioned SQLite"]
+    C --> D["Python and CLI"]
+    C --> E["Read-only MCP"]
+    E --> F["Codex"]
+    E --> G["Claude Code"]
+    C --> H["Optional web export"]
 ```
 
-After setup, ask Codex:
-
-```text
-Use $pmgs-reference to look up the definition, hierarchy, and sources for FI G06F3/048.
-```
-
-Use `-Client claude` for Claude Code or `-Client both` for both clients.
-See the [Codex and Claude Code setup guide](docs/local-agent-kit.en.md) for configuration and updates.
+SQLite remains on the user's machine. Python, the CLI, and MCP all resolve the same active release. MCP registrations point to the managed data directory instead of one database file, so a PMGS update does not require editing client configuration.
 
 ## Use with Python and the CLI
+
+After running `pmgs setup` with the default data directory, no database path is required:
 
 ```python
 from pmgs_reference import PMGSStore
 
-store = PMGSStore.open(r"C:\path\to\pmgs-reference.sqlite")
+store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048")
 results = store.search("interaction technology", schemes=["fi", "ipc"], language="en")
@@ -82,24 +93,21 @@ documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 ```
 
 ```powershell
-uv run pmgs lookup fi "G06F3/048" --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs search "interaction technology" --scheme fi --scheme ipc --language en --db C:\path\to\pmgs-reference.sqlite --json
-uv run pmgs document DOCUMENT_ID --page 1 --db C:\path\to\pmgs-reference.sqlite --json
+pmgs lookup fi "G06F3/048" --json
+pmgs search "interaction technology" --scheme fi --scheme ipc --language en --json
+pmgs document DOCUMENT_ID --page 1 --json
+pmgs doctor --json
 ```
 
-See [Local reference interfaces](docs/local-interfaces.md) for all methods and commands.
+See [Local reference interfaces](docs/local-interfaces.md) for custom data directories and existing SQLite files.
 
 ## Build a website for GPTs and Gems
 
-PMGS Reference can generate lightweight HTML, Markdown, and JSON pages for each classification.
-An operator can publish them with Cloudflare Worker and R2 so that GPTs and Gems can retrieve them through web search.
-See the [Web self-hosting guide](docs/self-hosting.en.md) for the architecture and deployment steps.
+PMGS Reference can generate lightweight HTML, Markdown, JSON, and OpenAPI resources for each classification. An operator can self-host these resources with Cloudflare Worker and R2 so that GPTs and Gems can retrieve definitions through web search or a supported API connection. See the [Web self-hosting guide](docs/self-hosting.en.md) for architecture, generation, and operating-cost considerations.
 
 ## PMGS data
 
-PMGS data is not included in this repository.
-Complete the JPO registration process and pass the acquired PMGS package to the setup script.
-The generated SQLite database remains in your local environment.
+PMGS data is not included in the repository or Python package. Complete the JPO registration process and pass the acquired PMGS package to `pmgs setup`.
 
 ## Documentation
 
@@ -112,5 +120,4 @@ The generated SQLite database remains in your local environment.
 
 ## License
 
-The source code is available under the [Apache License 2.0](LICENSE).
-See [Registered-use terms and publication](docs/registered-use-terms.md) for the PMGS data boundary.
+The source code is available under the [Apache License 2.0](LICENSE). See [Registered-use terms and publication](docs/registered-use-terms.md) for the PMGS data boundary.

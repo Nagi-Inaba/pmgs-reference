@@ -1,108 +1,139 @@
-# Local setup for Codex and Claude Code
+# Codex and Claude Code setup
 
-[日本語](local-agent-kit.md)
+## Start using PMGS Reference
 
-## Scope
+You need a PMGS package acquired after registration and [uv](https://docs.astral.sh/uv/).
 
-The local setup builds SQLite from a PMGS package that the user acquired legitimately and connects it to Codex or Claude Code through a read-only stdio MCP server.
-
-The agent receives only three tools: `lookup_classification`, `search_pmgs`, and `get_pmgs_document`. The shared skill answers in Japanese by default, switches to `language: en` when English is requested, separates official wording from derived analysis, and never guesses a classification.
-
-## Automated Windows setup
-
-Run this from the repository root:
+After v0.3.0 is available on PyPI:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
-  -SourceDirectory C:\path\to\JPPM2026002 `
-  -ReleaseId JPPM2026002 `
-  -Client both
+uv tool install pmgs-reference
+pmgs setup C:\path\to\JPPM2026002
 ```
 
-The script prepares the pinned virtual environment, verifies the stable Python interpreter, inventories the source, builds a new SQLite database, validates it, performs a real stdio MCP diagnostic, generates client-specific configuration, and installs the shared skill.
+To use the current GitHub source, run `uv tool install .` in the repository and then use the same `pmgs setup` command.
 
-It never overwrites an existing database, agent kit, or different skill with the same name. It does not change Codex or Claude Code MCP configuration unless `-RegisterClients` is supplied.
+Setup performs these stages:
 
-Generated files:
+1. Inventory the PMGS package and fix a logical SHA-256 for every source file.
+2. Reuse an identical verified SQLite database or build a new candidate.
+3. Re-inventory the source to detect changes during the build.
+4. Validate SQLite and run a real stdio MCP diagnostic.
+5. Activate only the verified database.
+6. Register the MCP server and shared skill with the selected clients.
+
+When Codex or Claude Code is detected, setup asks for confirmation. Press Enter to accept the default:
 
 ```text
-build/local-agent-kit/
-├── agent-kit.json
-├── codex/config.toml
-├── claude/.mcp.json
-└── skill/pmgs-reference/
+Register PMGS Reference with codex? [Y/n]
 ```
 
-`agent-kit.json` contains resolved local paths and must not be committed.
+Open a new agent session and ask:
 
-## Register MCP
+```text
+Use $pmgs-reference to look up the definition, hierarchy, edition, and sources for FI G06F3/048.
+```
 
-Add `-RegisterClients` to the setup command, or review the commands in `agent-kit.json` and run them manually:
+## Select clients
+
+`--client auto` is the default and detects installed Codex and Claude Code clients. Use explicit options when you want a fixed target or non-interactive behavior.
 
 ```powershell
-codex mcp add pmgs-reference -- C:\absolute\path\.venv\Scripts\python.exe -m pmgs_reference.cli mcp --db C:\absolute\path\current.sqlite
-
-claude mcp add --transport stdio --scope user pmgs-reference -- C:\absolute\path\.venv\Scripts\python.exe -m pmgs_reference.cli mcp --db C:\absolute\path\current.sqlite
+pmgs setup C:\path\to\JPPM2026002 --client codex --register
+pmgs setup C:\path\to\JPPM2026002 --client claude --register
+pmgs setup C:\path\to\JPPM2026002 --client both --register
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register
 ```
 
-Codex uses `~/.codex/config.toml` for user configuration or `.codex/config.toml` in a trusted project. Claude Code uses `.mcp.json` for project scope and `~/.claude.json` for user scope. User scope is recommended for personal PMGS paths so absolute paths do not enter a shared repository.
+An identical MCP registration or skill is reused. A different existing item with the same name is left unchanged and reported as a conflict.
 
-See the current [Codex MCP documentation](https://developers.openai.com/codex/mcp) and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
+When Claude Code uses `CLAUDE_CONFIG_DIR`, setup inspects and updates the MCP configuration and `skills/pmgs-reference` inside that custom profile.
 
-## Install the shared skill
+## Update the PMGS release
+
+Run setup with the new package:
 
 ```powershell
-uv run --frozen pmgs install-agent-skill --client both
+pmgs setup C:\path\to\JPPM2027001
 ```
 
-| Client | Personal skill directory |
+The new SQLite file is stored separately from older releases. Setup atomically changes only `current.json` after validation and the MCP diagnostic, so a failed update leaves the previous active release unchanged. Older databases are not deleted automatically.
+
+The MCP registration points to the managed data directory, so it does not need to be rewritten for each release. Restart an active Codex or Claude Code session after switching releases.
+
+## Data locations
+
+The default managed data directory depends on the operating system.
+
+| OS | Data directory |
 | --- | --- |
-| Codex | `~/.agents/skills/pmgs-reference/` |
-| Claude Code | `~/.claude/skills/pmgs-reference/` |
+| Windows | `%LOCALAPPDATA%\pmgs-reference` |
+| macOS | `~/Library/Application Support/pmgs-reference` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/pmgs-reference` |
 
-See the current [OpenAI skill documentation](https://learn.chatgpt.com/docs/build-skills) and [Claude Code skill documentation](https://code.claude.com/docs/en/skills).
+The main layout is:
 
-## Generate a kit manually
-
-```powershell
-uv sync --frozen --all-groups
-uv run --frozen pmgs validate C:\path\to\current.sqlite
-uv run --frozen pmgs doctor --db C:\path\to\current.sqlite --json
-uv run --frozen pmgs agent-kit `
-  --db C:\path\to\current.sqlite `
-  --output build\local-agent-kit `
-  --python-executable C:\absolute\path\.venv\Scripts\python.exe `
-  --client both
-uv run --frozen pmgs install-agent-skill --client both
+```text
+pmgs-reference/
+├── state/current.json
+├── data/releases/<release>/<source-sha256>/<database-sha256>.sqlite
+├── reports/<setup-run>/
+└── staging/
 ```
 
-On Linux and macOS, pass the absolute path to that repository's `.venv/bin/python`.
-
-## Verify
+Use `--data-dir` for another location:
 
 ```powershell
-uv run --frozen pmgs doctor --db C:\path\to\current.sqlite --json
+pmgs setup C:\path\to\JPPM2026002 --data-dir C:\path\to\pmgs-data
+pmgs doctor --data-dir C:\path\to\pmgs-data --json
+```
+
+Python accepts the same location through `PMGSStore.open(data_dir=...)`; CLI commands accept `--data-dir`.
+
+## Automation and JSON output
+
+Non-interactive setup must explicitly choose registration behavior:
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 `
+  --client both `
+  --register `
+  --non-interactive `
+  --json
+```
+
+Use `--client none --no-register` to prepare only the local database. Add `--dry-run` to resolve and inventory the source without changing the data directory or client configuration.
+
+Exit code `0` means setup completed or reused an existing database, `1` means a build, diagnostic, or registration failure, and `2` means invalid usage. JSON mode writes exactly one result object to standard output and sends progress to standard error.
+
+## Diagnose the installation
+
+```powershell
+pmgs doctor --json
 codex mcp list
 claude mcp list
 ```
 
-`doctor` checks the schema and release, server identity, exact three-tool contract, read-only annotations, a real stdio lookup, and the SQLite hash before and after the lookup.
+`doctor` checks the SQLite schema and release, the exact three-tool contract, read-only annotations, a real stdio lookup, and the SQLite hash before and after the lookup. For a managed data directory, it also compares the file SHA-256 with `current.json` and confirms that the current pointer did not switch during the diagnostic. Routine lookups do not rehash the entire large database, so run `doctor` first after any external database edit or when corruption is suspected.
 
-Example prompt:
+## Run from the repository
 
-```text
-Use $pmgs-reference and answer in English. Look up FI G06F3/048 and cite the PMGS release and source.
+The Windows script is a thin adapter over `pmgs setup`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
+  -SourceDirectory C:\path\to\JPPM2026002 `
+  -Client codex `
+  -RegisterClients
 ```
 
-## Update and remove
+On other operating systems, run `uv run --frozen pmgs setup ...` directly.
 
-Build a new database file instead of overwriting the current one. Validate and diagnose it before changing the MCP `--db` path.
-
-The skill installer is idempotent for identical content and refuses to overwrite a different skill. Compare the old and new copies, remove the old directory explicitly, and reinstall.
+## Remove client registrations
 
 ```powershell
 codex mcp remove pmgs-reference
 claude mcp remove pmgs-reference
 ```
 
-After removal, delete local skill directories and databases only after resolving and checking their exact paths. Never post PMGS source files, SQLite, or `agent-kit.json` in issues, pull requests, or public logs.
+Before deleting SQLite files, inspect `state/current.json` and remove only old releases that are no longer active.

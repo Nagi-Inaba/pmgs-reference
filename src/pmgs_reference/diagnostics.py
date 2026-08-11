@@ -14,6 +14,7 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from pmgs_reference.agent_kit import MCP_SERVER_NAME
+from pmgs_reference.data_paths import resolve_database
 from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 
 EXPECTED_MCP_TOOLS: Final = (
@@ -84,15 +85,17 @@ async def _check_stdio(
     database: Path,
     python_executable: Path,
     sample: JSONDict,
+    *,
+    data_dir: Path | None = None,
 ) -> tuple[dict[str, bool], tuple[str, ...], JSONDict]:
+    locator = ["--data-dir", str(data_dir)] if data_dir is not None else ["--db", str(database)]
     parameters = StdioServerParameters(
         command=str(python_executable),
         args=[
             "-m",
             "pmgs_reference.cli",
             "mcp",
-            "--db",
-            str(database),
+            *locator,
         ],
     )
     arguments: dict[str, JSONValue] = {
@@ -129,12 +132,18 @@ async def _check_stdio(
 
 
 def doctor_database(
-    database: str | Path,
+    database: str | Path | None = None,
     *,
+    data_dir: str | Path | None = None,
     python_executable: str | Path | None = None,
 ) -> DoctorResult:
     """Verify a database, real stdio handshake, read-only tools, and hash stability."""
-    resolved_database = Path(database).expanduser().resolve()
+    resolved_data_dir = Path(data_dir).expanduser().resolve() if data_dir is not None else None
+    target = resolve_database(database, data_dir=resolved_data_dir)
+    store = PMGSStore.open(database, data_dir=resolved_data_dir)
+    resolved_database = store.path
+    if resolved_database != target.path:
+        raise RuntimeError("managed current.json changed while doctor was starting")
     # Preserve the virtual-environment launcher instead of resolving its POSIX
     # symlink to a system interpreter that cannot import this package.
     resolved_python = Path(python_executable or sys.executable).expanduser().absolute()
@@ -142,13 +151,17 @@ def doctor_database(
         raise FileNotFoundError(f"Python executable not found: {resolved_python}")
 
     before = _sha256(resolved_database)
-    store = PMGSStore.open(resolved_database)
     release = store.release_info()
     sample_input = _sample_identity(resolved_database)
     errors: list[str] = []
     try:
         stdio_checks, tool_names, sample_output = asyncio.run(
-            _check_stdio(resolved_database, resolved_python, sample_input)
+            _check_stdio(
+                resolved_database,
+                resolved_python,
+                sample_input,
+                data_dir=resolved_data_dir,
+            )
         )
     except Exception as exc:  # pragma: no cover - platform failures remain in the report
         stdio_checks = {
@@ -167,6 +180,18 @@ def doctor_database(
         **stdio_checks,
         "database_unchanged": before == after,
     }
+    if resolved_data_dir is not None or target.pointer is not None:
+        try:
+            final_target = resolve_database(database, data_dir=resolved_data_dir)
+        except (OSError, ValueError):
+            pointer_unchanged = False
+        else:
+            pointer_unchanged = final_target == target
+        checks["current_pointer_unchanged"] = pointer_unchanged
+    if target.pointer is not None:
+        checks["database_matches_current_pointer"] = (
+            before == target.pointer.database_sha256.upper()
+        )
     for name, passed in checks.items():
         if not passed:
             errors.append(f"check failed: {name}")

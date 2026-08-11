@@ -1,170 +1,141 @@
-# Codex・Claude Code向けローカル導入
+# Codex・Claude Codeへの導入
 
-[English](local-agent-kit.en.md)
+## まず使い始める
 
-## 利用できる範囲
+必要なのは、利用登録後に取得したPMGSパッケージと[uv](https://docs.astral.sh/uv/)です。
 
-ローカル導入は、利用者が正規に取得したPMGS packageからSQLiteを生成し、CodexまたはClaude Codeへ読み取り専用stdio MCPとして接続する。
-
-AIエージェントが利用するtoolは次の3個に限る。
-
-- `lookup_classification`
-- `search_pmgs`
-- `get_pmgs_document`
-
-配布スキルは日本語回答を既定とし、利用者が英語を指定した場合は`language: en`へ切り替える。公式文言、AIによる説明、該当なしを混同せず、分類を推測しない。
-
-## Windowsの一括セットアップ
-
-リポジトリのrootで実行する。
+PyPIでv0.3.0が公開された後は、次のように導入できます。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
-  -SourceDirectory C:\path\to\JPPM2026002 `
-  -ReleaseId JPPM2026002 `
-  -Client both
+uv tool install pmgs-reference
+pmgs setup C:\path\to\JPPM2026002
 ```
 
-スクリプトは次の順で処理する。
+GitHubのソースから試す場合は、リポジトリで`uv tool install .`を実行してから同じ`pmgs setup`を使います。
 
-1. `uv sync --frozen --all-groups`でリポジトリ固有の仮想環境を準備する。
-2. `.venv\Scripts\python.exe`の署名と`.venv\pyvenv.cfg`を確認する。
-3. PMGS原資料を棚卸しし、SQLiteを新規生成して検証する。
-4. 実際のstdio MCP clientで初期化、tool列挙、サンプル照会を行う。
-5. 照会前後のSQLite SHA-256が一致することを確認する。
-6. Codex用TOML、Claude Code用JSON、共通スキル、登録commandを`build/local-agent-kit/`へ生成する。
-7. 共通スキルを個人用skill directoryへ導入する。
+セットアップは次の順に進みます。
 
-既存のSQLite、agent kit、内容の異なる同名スキルは上書きしない。既定ではCodex・Claude CodeのMCP設定も変更しない。
+1. PMGSパッケージを棚卸しし、全ファイルの論理SHA-256を固定する。
+2. 検証済みの同一SQLiteがあれば再利用し、なければ新しく構築する。
+3. 構築中に原資料が変わっていないことを再確認する。
+4. SQLiteの構造と内容を検証し、実際のstdio MCP接続を診断する。
+5. 合格したSQLiteだけを現行版へ切り替える。
+6. 選択したCodex・Claude CodeへMCPと共通スキルを登録する。
 
-## 生成物
+CodexまたはClaude Codeが見つかると、次のように確認します。Enterだけで登録します。
 
 ```text
-build/local-agent-kit/
-├── agent-kit.json
-├── codex/config.toml
-├── claude/.mcp.json
-└── skill/pmgs-reference/
-    ├── SKILL.md
-    └── agents/openai.yaml
+codexにPMGS Referenceを登録しますか? [Y/n]
 ```
 
-`agent-kit.json`には、解決済みのPython、SQLite、リリース、対象client、skill hash、登録commandが入る。ローカル絶対パスを含むためGitへ追加しない。
+セットアップ後、新しいAIセッションで次のように依頼できます。
 
-## MCPを登録する
+```text
+$pmgs-reference を使って、FI G06F3/048の定義、階層、版、出典を確認して。
+```
 
-セットアップ時に登録まで行う場合は`-RegisterClients`を追加する。このflagはclient設定を変更するため、利用者が明示的に選ぶ。
+## クライアントを指定する
+
+`--client auto`が既定で、端末にあるCodexとClaude Codeを検出します。対象や登録動作を固定したい場合は明示します。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
-  -SourceDirectory C:\path\to\JPPM2026002 `
-  -ReleaseId JPPM2026002 `
-  -Client both `
-  -RegisterClients
+pmgs setup C:\path\to\JPPM2026002 --client codex --register
+pmgs setup C:\path\to\JPPM2026002 --client claude --register
+pmgs setup C:\path\to\JPPM2026002 --client both --register
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register
 ```
 
-手動登録では、`agent-kit.json`の`registration_commands`を確認して使う。commandの形は次のとおりである。
+既に同じ接続とスキルがある場合はそのまま再利用します。同名で内容が異なる設定やスキルは上書きせず、結果を`conflict`として返します。
+
+Claude Codeで`CLAUDE_CONFIG_DIR`を設定している場合は、そのカスタムプロファイル内のMCP設定と`skills/pmgs-reference`を確認・更新します。
+
+## PMGSの版を更新する
+
+新しいPMGSパッケージを同じように指定します。
 
 ```powershell
-codex mcp add pmgs-reference -- C:\absolute\path\.venv\Scripts\python.exe -m pmgs_reference.cli mcp --db C:\absolute\path\current.sqlite
-
-claude mcp add --transport stdio --scope user pmgs-reference -- C:\absolute\path\.venv\Scripts\python.exe -m pmgs_reference.cli mcp --db C:\absolute\path\current.sqlite
+pmgs setup C:\path\to\JPPM2027001
 ```
 
-Codexは個人用`~/.codex/config.toml`または信頼済みprojectの`.codex/config.toml`を使う。Claude Codeのproject scopeはrepository rootの`.mcp.json`、user scopeは`~/.claude.json`を使う。PMGSの絶対パスを共有repositoryへ入れないため、個人利用ではuser scopeを推奨する。
+新しいSQLiteは旧版と別の場所へ作られます。検証とMCP診断が完了した時点で`current.json`だけを原子的に切り替えるため、途中で失敗してもそれまでの現行版は変わりません。旧版のSQLiteは自動削除しません。
 
-現行のクライアント仕様は、[Codex MCP](https://developers.openai.com/codex/mcp)と[Claude Code MCP](https://code.claude.com/docs/en/mcp)で確認する。
+MCP設定は管理ディレクトリを参照するので、更新ごとの再登録は不要です。現行版を切り替えた後は、実行中のCodexまたはClaude Codeセッションを再起動してください。
 
-## スキルを導入する
+## 保存先
 
-セットアップスクリプトを使わない場合は、次のcommandだけでも導入できる。
+既定の管理ディレクトリはOSごとに次の場所です。
 
-```powershell
-uv run --frozen pmgs install-agent-skill --client both
-```
-
-個人用の導入先は次のとおりである。
-
-| Client | 導入先 |
+| OS | 保存先 |
 | --- | --- |
-| Codex | `~/.agents/skills/pmgs-reference/` |
-| Claude Code | `~/.claude/skills/pmgs-reference/` |
+| Windows | `%LOCALAPPDATA%\pmgs-reference` |
+| macOS | `~/Library/Application Support/pmgs-reference` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/pmgs-reference` |
 
-CodexとClaude Codeで同じ`SKILL.md`を使う。client固有の設定形式を無理に共通化しない。
+主なファイルは次の構成になります。
 
-スキルの現行仕様は[OpenAIのSkills](https://learn.chatgpt.com/docs/build-skills)と[Claude CodeのSkills](https://code.claude.com/docs/en/skills)を参照する。
-
-## 手動でagent kitを作る
-
-Windows以外、またはSQLiteをすでに生成済みの場合は、次のcommandを個別に実行する。
-
-```powershell
-uv sync --frozen --all-groups
-uv run --frozen pmgs validate C:\path\to\current.sqlite
-uv run --frozen pmgs doctor --db C:\path\to\current.sqlite --json
-uv run --frozen pmgs agent-kit `
-  --db C:\path\to\current.sqlite `
-  --output build\local-agent-kit `
-  --python-executable C:\absolute\path\.venv\Scripts\python.exe `
-  --client both
-uv run --frozen pmgs install-agent-skill --client both
+```text
+pmgs-reference/
+├── state/current.json
+├── data/releases/<release>/<source-sha256>/<database-sha256>.sqlite
+├── reports/<setup-run>/
+└── staging/
 ```
 
-LinuxとmacOSでは、`python_executable`へそのリポジトリの`.venv/bin/python`の絶対パスを渡す。
-
-## 動作確認
+別の保存先を使う場合は`--data-dir`を指定します。
 
 ```powershell
-uv run --frozen pmgs doctor --db C:\path\to\current.sqlite --json
+pmgs setup C:\path\to\JPPM2026002 --data-dir C:\path\to\pmgs-data
+pmgs doctor --data-dir C:\path\to\pmgs-data --json
+```
+
+Pythonでは`PMGSStore.open(data_dir=...)`、CLIでは`--data-dir`で同じ現行版を参照できます。
+
+## 自動実行とJSON結果
+
+非対話実行では、登録するかどうかを必ず明示します。
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 `
+  --client both `
+  --register `
+  --non-interactive `
+  --json
+```
+
+ローカルDBだけを準備する場合は`--client none --no-register`を使います。`--dry-run`を加えると入力の解決と棚卸しだけを行い、保存先やクライアント設定を変更しません。
+
+終了コードは、完了または再利用が`0`、構築・診断・登録の失敗が`1`、引数の誤りが`2`です。JSONモードは標準出力へ結果オブジェクトを1件だけ出し、進捗は標準エラーへ出します。
+
+## 診断する
+
+```powershell
+pmgs doctor --json
 codex mcp list
 claude mcp list
 ```
 
-`doctor`の成功条件は次のとおりである。
+`doctor`はSQLiteのschemaとrelease、MCP tool 3件、読み取り専用annotation、実stdio照会、照会前後のSQLiteハッシュを検査します。管理ディレクトリを使う場合は、実ファイルのSHA-256が`current.json`の値と一致し、診断中に現在版が切り替わっていないことも確認します。通常のlookupは大きなDBを毎回全量hashしないため、DBを外部編集した場合や破損が疑われる場合は先に`doctor`を実行してください。
 
-- SQLite schemaとrelease metadataが有効である。
-- server identityが`pmgs-reference`である。
-- 3個のtoolが契約どおりの順序で公開される。
-- すべてのtoolがread-onlyかつnon-destructiveである。
-- 実stdio経由のサンプル照会が一致する。
-- SQLiteの照会前後SHA-256が一致する。
+## リポジトリから実行する場合
 
-クライアント側では、次のような依頼で試す。
+Windows用スクリプトは`pmgs setup`へ引数を渡す薄いラッパーです。
 
-```text
-$pmgs-reference を使って、FI G06F3/048の公式定義、階層、出典、PMGSリリースを確認してください。
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
+  -SourceDirectory C:\path\to\JPPM2026002 `
+  -Client codex `
+  -RegisterClients
 ```
 
-英語では次のように指定する。
+Windows以外では`uv run --frozen pmgs setup ...`を直接実行できます。
 
-```text
-Use $pmgs-reference and answer in English. Look up FI G06F3/048 and cite the PMGS release and source.
-```
+## 接続を外す
 
-## 更新と削除
-
-SQLiteを更新するときは、既存DBへ上書きせず新しいfileへbuild・validate・doctorを行う。検証後にMCP設定の`--db`を切り替え、旧DBは必要な期間だけ保持する。
-
-配布スキルのinstallerは同じ内容なら冪等で、内容が違う同名directoryは上書きしない。更新時は現行と新しいスキルの差分を確認してから、利用者が旧directoryを削除して再導入する。
-
-MCP登録を外す場合は、次のclient commandを使う。
+MCP登録だけを外す場合は、各クライアントのコマンドを使います。
 
 ```powershell
 codex mcp remove pmgs-reference
 claude mcp remove pmgs-reference
 ```
 
-その後、不要になった個人用skill directoryとローカルDBを、正確なpathを確認してから利用者が削除する。
-
-## 失敗時の確認箇所
-
-| 症状 | 確認箇所 |
-| --- | --- |
-| `database not found` | MCP設定の`--db`が絶対パスか、fileが存在するか |
-| clientからserverが見えない | `codex mcp list`または`claude mcp list`、client再起動 |
-| stdio protocol error | commandがログを標準出力へ出していないか |
-| skillが起動しない | 導入先、`SKILL.md` frontmatter、clientのskill一覧 |
-| IPCの結果が違う | `edition`を明示し、返された版を確認したか |
-| 定義が見つからない | schemeとcodeを確認し、`not_found`を推測で補っていないか |
-
-PMGS原資料、SQLite、`agent-kit.json`をIssue、Pull Request、公開ログへ貼り付けない。
+SQLiteや旧版を削除する場合は、`state/current.json`が参照している現行ファイルを確認してから、不要な版だけを明示的に削除します。

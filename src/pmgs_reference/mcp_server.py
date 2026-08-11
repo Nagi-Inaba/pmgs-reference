@@ -24,9 +24,13 @@ def _error_payload(error: PMGSQueryError) -> JSONDict:
     return {"error": {"code": error.code, "message": error.message}}
 
 
-def create_server(database: str | Path) -> MCPServer[None]:
+def create_server(
+    database: str | Path | None = None,
+    *,
+    data_dir: str | Path | None = None,
+) -> MCPServer[None]:
     """Create the three-tool PMGS stdio server for an already-built database."""
-    store = PMGSStore.open(database)
+    store = PMGSStore.open(database, data_dir=data_dir)
     server: MCPServer[None] = MCPServer(
         name="pmgs-reference",
         title="PMGS Reference",
@@ -127,6 +131,10 @@ def create_server(database: str | Path) -> MCPServer[None]:
     return server
 
 
-def run_stdio(database: str | Path) -> None:
+def run_stdio(
+    database: str | Path | None = None,
+    *,
+    data_dir: str | Path | None = None,
+) -> None:
     """Run the PMGS MCP server over stdin/stdout only."""
-    create_server(database).run(transport="stdio")
+    create_server(database, data_dir=data_dir).run(transport="stdio")

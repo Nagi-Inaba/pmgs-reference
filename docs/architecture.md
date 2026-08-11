@@ -38,6 +38,8 @@ Python API、CLI、stdio MCPは同じ`PMGSStore`検索層を呼ぶ。MCP固有�
 
 agent kitはCodex用TOMLとClaude Code用JSONを別々に生成し、同じ読み取り専用skillをclient固有の個人用directoryへ導入する。設定は既存fileを上書きせず、SQLiteの絶対pathを公開repositoryへ入れない。
 
+`pmgs setup`はinventory、build、validation、実stdio診断、現行版の切替、client登録を一つのトランザクションとして調整する。入力の意味解釈は既存のingestion、照会は`PMGSStore`、client固有処理はadapterへ委譲し、setup自体を別の分類正本にしない。
+
 分類と文書の日本語部分語検索にはFTS5 trigram索引を使う。3文字未満の語だけ、入力をリテラルとしてescapeしたSQLite部分一致へ切り替える。
 
 Workerは利用者入力を検証し、版付きR2 keyを選び、content negotiationとHTTP応答を処理する。
@@ -51,6 +53,28 @@ WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
 WebMCPは同一オリジンのJSON APIを呼ぶ追加層であり、通常ページの表示条件にはしない。
 
 Web経路は第三者が費用と運用責任を引き受ける場合だけdeployする任意セルフホスト面である。OpenAPI 3.1を受け付けないclientには互換定義を別途生成し、同じAPI契約との回帰testを必要とする。
+
+## ローカルセットアップと版切替
+
+```mermaid
+flowchart LR
+    A["PMGS source"] --> B["inventory A"]
+    B --> C["既存DB再利用またはstaging build"]
+    C --> D["inventory B"]
+    D --> E["SQLite validation"]
+    E --> F["実stdio doctor"]
+    F --> G["内容アドレス付きSQLite"]
+    G --> H["state/current.jsonを原子的に置換"]
+    H --> I["Codex・Claude Code adapter"]
+```
+
+管理ディレクトリには、現行版を指す`state/current.json`、不変の`data/releases/<release>/<source-sha256>/<database-sha256>.sqlite`、run別report、所有marker付きstagingを置く。
+
+`current.json`は管理ディレクトリ内の相対DBパス、release、source manifest SHA-256、database SHA-256、schema versionを持つ。通常のqueryは、pointerの形式、内容アドレス付きpath、DB内のrelease、source SHA、schema versionを照合し、不一致時は暗黙のfallbackをせず停止する。
+
+3 GiBを超えるDBの全量SHA-256をqueryごとに計算すると参照性能を損なうため、実ファイルbytesと`database_sha256`の暗号学的一致は`pmgs setup`と`pmgs doctor`で検証する。内容アドレス付きDBは有効化後に外部編集しない運用契約とし、変更や破損が疑われる場合はquery結果を利用する前に`pmgs doctor`または同じsourceでの`pmgs setup`を実行する。
+
+MCP登録は`python -m pmgs_reference.cli mcp --data-dir <managed-root>`を起動する。PMGS更新時はpointerだけが変わるため、client設定の再生成は不要である。詳細は[ADR 0008](decisions/0008-transactional-local-setup.md)に定める。
 
 ## 出典表示
 
@@ -84,3 +108,5 @@ inventoryは全ファイルを`parsed`、`retained`、`failed`のいずれかで
 公開APIは入力不正を400、該当なしを404、成果物不整合を503で返す。
 
 現在版の切替に失敗しても、既存の版付き成果物を削除しない。
+
+ローカルsetupでbuild、source再検査、validation、doctorのいずれかが失敗した場合は`current.json`を変更しない。client登録が一部失敗した場合は検証済みローカルDBを現行版として維持し、clientごとの結果を分けて報告する。

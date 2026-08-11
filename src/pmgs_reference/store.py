@@ -6,10 +6,12 @@ import json
 import os
 import re
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, cast
 
+from pmgs_reference.data_paths import resolve_database
 from pmgs_reference.errors import (
     DocumentNotFoundError,
     EditionNotFoundError,
@@ -18,9 +20,9 @@ from pmgs_reference.errors import (
 )
 from pmgs_reference.normalization import SUPPORTED_SCHEMES, normalize_code
 from pmgs_reference.schema import APPLICATION_ID, SCHEMA_VERSION
+from pmgs_reference.store_types import JSONDict as JSONDict
+from pmgs_reference.store_types import JSONValue as JSONValue
 
-type JSONValue = bool | int | float | str | list[JSONValue] | dict[str, JSONValue] | None
-type JSONDict = dict[str, JSONValue]
 Language = Literal["ja", "en"]
 
 _SUPPORTED_LANGUAGES: Final = frozenset({"ja", "en"})
@@ -111,46 +113,51 @@ class PMGSStore:
         self.search_tokenizer = search_tokenizer
 
     @classmethod
-    def open(cls, path: str | os.PathLike[str] | None = None) -> PMGSStore:
-        """Open a canonical store using explicit, environment, then Windows-local lookup."""
-        resolved = cls._resolve_path(path)
+    def open(
+        cls,
+        path: str | os.PathLike[str] | None = None,
+        *,
+        data_dir: str | os.PathLike[str] | None = None,
+    ) -> PMGSStore:
+        """Open a canonical store using explicit paths and managed current pointers."""
+        target = resolve_database(path, data_dir=data_dir)
+        resolved = target.path
         if not resolved.is_file():
             raise FileNotFoundError(f"PMGS Reference database not found: {resolved}")
         provisional = cls(resolved)
         with provisional._connect() as connection:
             application_id = int(connection.execute("PRAGMA application_id").fetchone()[0])
-            row = connection.execute("SELECT schema_version FROM release LIMIT 1").fetchone()
+            user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            row = connection.execute(
+                "SELECT schema_version, release_id, source_manifest_sha256 FROM release LIMIT 1"
+            ).fetchone()
             fts_row = connection.execute(
                 "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'concept_text_fts'"
             ).fetchone()
         if application_id != APPLICATION_ID or row is None or row[0] != SCHEMA_VERSION:
             raise ValueError("not a supported PMGS Reference database")
+        if target.pointer is not None and (
+            row[1] != target.pointer.release_id
+            or row[2] != target.pointer.source_manifest_sha256
+            or user_version != target.pointer.database_schema_version
+        ):
+            raise ValueError("managed current.json identity does not match its database")
         if fts_row is None:
             raise ValueError("PMGS Reference search index is missing")
         fts_sql = str(fts_row[0]).lower()
         tokenizer = "trigram" if "tokenize = 'trigram'" in fts_sql else "legacy"
         return cls(resolved, tokenizer)
 
-    @staticmethod
-    def _resolve_path(path: str | os.PathLike[str] | None) -> Path:
-        if path is not None:
-            return Path(path).expanduser().resolve()
-        configured = os.environ.get("PMGS_REFERENCE_DB")
-        if configured:
-            return Path(configured).expanduser().resolve()
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        if not local_app_data:
-            raise FileNotFoundError(
-                "PMGS Reference database path is not set and LOCALAPPDATA is unavailable"
-            )
-        return Path(local_app_data, "pmgs-reference", "data", "current.sqlite").resolve()
-
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(f"{self.path.as_uri()}?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only = ON")
         connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        try:
+            yield connection
+        finally:
+            connection.close()
 
     def __enter__(self) -> PMGSStore:
         return self

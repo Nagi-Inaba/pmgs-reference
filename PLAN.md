@@ -1,7 +1,7 @@
 # PMGS Reference v1 設計計画
 
 - 初版作成日: 2026-08-08
-- 最終更新日: 2026-08-10
+- 最終更新日: 2026-08-11
 - 対象: JPOの登録制一括ダウンロードサービスから取得したPMGSパッケージ
 - 利用者: Codex・Claude Code利用者、ローカル開発者、任意Web公開者、検索エンジン、GPTs、Gem、Copilot Studio、MCPクライアント
 
@@ -32,6 +32,8 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語切替先を追加した。この新しい入口契約は合成fixtureで検証し、Web公開時に実originで全量A/B監査を再実行する。
 
 ローカルSQLiteと分類recordの全量状態は`full-data audited`、現行Web入口の状態は`locally verified`である。
+
+2026-08-11に、全OS共通の`pmgs setup`、内容アドレス付きSQLite、原子的な`current.json`、Codex・Claude Codeの非破壊登録、wheel実環境test、PyPI Trusted Publishing用release workflowをv0.3.0として追加した。PyPI packageとv0.3.0 Releaseの外部公開はtagと承認環境による別状態として扱う。
 
 GitHub source repositoryを現在の配布面とする。Web deploy、domain公開、PyPI公開、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
 
@@ -212,7 +214,9 @@ validatorはこれらの表示が一つでも欠けた公開候補を不合格�
 
 Python APIは完全一致照会、文字列検索、上位下位、関連文書、文書取得、release情報を提供する。
 
-CLIはinventory、build、validate、lookup、search、document、doctor、agent kit生成、skill導入、export、公開検証、release audit、MCP起動を提供する。
+CLIはsetup、inventory、build、validate、lookup、search、document、doctor、agent kit生成、skill導入、export、公開検証、release audit、MCP起動を提供する。
+
+通常のローカル導入は`pmgs setup`を使う。setupはsourceを構築前後に棚卸しし、同一sourceの検証済みDBを再利用し、validationと実stdio診断に合格した内容アドレス付きSQLiteだけを`state/current.json`から有効化する。MCP設定は個別DBではなく管理ディレクトリを参照する。詳細は[ADR 0008](docs/decisions/0008-transactional-local-setup.md)に定める。
 
 stdio MCPは次の三つの読み取り専用toolを提供する。
 

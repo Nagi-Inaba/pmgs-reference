@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources import as_file, files
 from importlib.resources.abc import Traversable
@@ -22,12 +23,39 @@ SKILL_NAME: Final = "pmgs-reference"
 SUPPORTED_AGENT_CLIENTS: Final[tuple[AgentClient, ...]] = ("codex", "claude")
 
 
+def claude_config_directory(
+    home: Path,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve Claude's user configuration directory, including custom profiles."""
+    current_environ = os.environ if environ is None else environ
+    configured = current_environ.get("CLAUDE_CONFIG_DIR")
+    if configured:
+        return Path(configured).expanduser().absolute()
+    return home / ".claude"
+
+
+def claude_global_config_file(
+    home: Path,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve the user-scoped Claude MCP configuration file."""
+    current_environ = os.environ if environ is None else environ
+    configured = current_environ.get("CLAUDE_CONFIG_DIR")
+    if configured:
+        return claude_config_directory(home, environ=current_environ) / ".claude.json"
+    return home / ".claude.json"
+
+
 @dataclass(frozen=True)
 class AgentKitResult:
     """Measured paths and commands for one generated local agent kit."""
 
     output_dir: Path
     database: Path
+    data_dir: Path | None
     python_executable: Path
     release_id: str
     clients: tuple[AgentClient, ...]
@@ -39,6 +67,7 @@ class AgentKitResult:
             "schema_version": "1.0",
             "output_dir": str(self.output_dir),
             "database": str(self.database),
+            "data_dir": str(self.data_dir) if self.data_dir is not None else None,
             "python_executable": str(self.python_executable),
             "release_id": self.release_id,
             "clients": list(self.clients),
@@ -60,16 +89,18 @@ def resolve_clients(client: str) -> tuple[AgentClient, ...]:
 def registration_command(
     client: AgentClient,
     python_executable: Path,
-    database: Path,
+    database: Path | None = None,
+    *,
+    data_dir: Path | None = None,
 ) -> list[str]:
     """Return the current official CLI shape for registering the stdio server."""
+    locator = _database_locator_args(database, data_dir=data_dir)
     server = [
         str(python_executable),
         "-m",
         "pmgs_reference.cli",
         "mcp",
-        "--db",
-        str(database),
+        *locator,
     ]
     if client == "codex":
         return ["codex", "mcp", "add", MCP_SERVER_NAME, "--", *server]
@@ -87,7 +118,21 @@ def registration_command(
     ]
 
 
-def render_codex_config(python_executable: Path, database: Path) -> str:
+def _database_locator_args(database: Path | None, *, data_dir: Path | None) -> list[str]:
+    if (database is None) == (data_dir is None):
+        raise ValueError("exactly one of database or data_dir is required")
+    if data_dir is not None:
+        return ["--data-dir", str(data_dir)]
+    assert database is not None
+    return ["--db", str(database)]
+
+
+def render_codex_config(
+    python_executable: Path,
+    database: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> str:
     """Render a mergeable Codex config.toml fragment."""
 
     def quote(value: object) -> str:
@@ -97,8 +142,7 @@ def render_codex_config(python_executable: Path, database: Path) -> str:
         "-m",
         "pmgs_reference.cli",
         "mcp",
-        "--db",
-        str(database),
+        *_database_locator_args(database, data_dir=data_dir),
     ]
     rendered_arguments = ", ".join(quote(value) for value in arguments)
     return (
@@ -110,7 +154,12 @@ def render_codex_config(python_executable: Path, database: Path) -> str:
     )
 
 
-def render_claude_config(python_executable: Path, database: Path) -> str:
+def render_claude_config(
+    python_executable: Path,
+    database: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> str:
     """Render a Claude Code project-scoped .mcp.json document."""
     payload = {
         "mcpServers": {
@@ -121,8 +170,7 @@ def render_claude_config(python_executable: Path, database: Path) -> str:
                     "-m",
                     "pmgs_reference.cli",
                     "mcp",
-                    "--db",
-                    str(database),
+                    *_database_locator_args(database, data_dir=data_dir),
                 ],
             }
         }
@@ -164,14 +212,19 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def prepare_agent_kit(
-    database: str | Path,
+    database: str | Path | None,
     output_dir: str | Path,
     *,
     python_executable: str | Path,
     clients: Sequence[AgentClient],
+    data_dir: str | Path | None = None,
 ) -> AgentKitResult:
     """Create a non-destructive, import-ready local agent kit."""
-    resolved_database = Path(database).expanduser().resolve()
+    if database is not None and data_dir is not None:
+        raise ValueError("database and data_dir are mutually exclusive")
+    resolved_data_dir = Path(data_dir).expanduser().resolve() if data_dir is not None else None
+    store = PMGSStore.open(database, data_dir=resolved_data_dir)
+    resolved_database = store.path
     # Keep a virtual environment's interpreter path intact. On POSIX, resolving
     # the symlink can escape the environment and lose its installed packages.
     resolved_python = Path(python_executable).expanduser().absolute()
@@ -187,7 +240,6 @@ def prepare_agent_kit(
     ):
         raise ValueError("clients must contain codex and/or claude")
 
-    store = PMGSStore.open(resolved_database)
     release_id = str(store.release_info()["release_id"])
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(
@@ -199,20 +251,33 @@ def prepare_agent_kit(
             relative = Path("codex", "config.toml")
             _write_text(
                 temporary / relative,
-                render_codex_config(resolved_python, resolved_database),
+                render_codex_config(
+                    resolved_python,
+                    resolved_database if resolved_data_dir is None else None,
+                    data_dir=resolved_data_dir,
+                ),
             )
             config_files.append(resolved_output / relative)
         if "claude" in normalized_clients:
             relative = Path("claude", ".mcp.json")
             _write_text(
                 temporary / relative,
-                render_claude_config(resolved_python, resolved_database),
+                render_claude_config(
+                    resolved_python,
+                    resolved_database if resolved_data_dir is None else None,
+                    data_dir=resolved_data_dir,
+                ),
             )
             config_files.append(resolved_output / relative)
 
         _copy_skill(temporary / "skill" / SKILL_NAME)
         commands = {
-            client: registration_command(client, resolved_python, resolved_database)
+            client: registration_command(
+                client,
+                resolved_python,
+                resolved_database if resolved_data_dir is None else None,
+                data_dir=resolved_data_dir,
+            )
             for client in normalized_clients
         }
         manifest = {
@@ -220,6 +285,7 @@ def prepare_agent_kit(
             "server_name": MCP_SERVER_NAME,
             "release_id": release_id,
             "database": str(resolved_database),
+            "data_dir": str(resolved_data_dir) if resolved_data_dir is not None else None,
             "python_executable": str(resolved_python),
             "clients": list(normalized_clients),
             "skill_sha256": _resource_skill_sha256(),
@@ -243,6 +309,7 @@ def prepare_agent_kit(
     return AgentKitResult(
         output_dir=resolved_output,
         database=resolved_database,
+        data_dir=resolved_data_dir,
         python_executable=resolved_python,
         release_id=release_id,
         clients=normalized_clients,
@@ -254,7 +321,34 @@ def prepare_agent_kit(
 def _skill_target(client: AgentClient, home: Path) -> Path:
     if client == "codex":
         return home / ".agents" / "skills" / SKILL_NAME
-    return home / ".claude" / "skills" / SKILL_NAME
+    return claude_config_directory(home) / "skills" / SKILL_NAME
+
+
+def inspect_agent_skill(
+    client: AgentClient,
+    *,
+    home: str | Path | None = None,
+) -> JSONDict:
+    """Inspect one managed skill without changing the user's files."""
+    resolved_home = Path(home).expanduser().resolve() if home is not None else Path.home().resolve()
+    target = _skill_target(client, resolved_home)
+    expected_hash = _resource_skill_sha256()
+    if not target.exists():
+        status = "missing"
+        actual_hash: str | None = None
+    elif target.is_dir():
+        actual_hash = _tree_sha256(target)
+        status = "already_present" if actual_hash == expected_hash else "conflict"
+    else:
+        status = "conflict"
+        actual_hash = None
+    return {
+        "client": client,
+        "target": str(target),
+        "status": status,
+        "expected_sha256": expected_hash,
+        "actual_sha256": actual_hash,
+    }
 
 
 def install_agent_skills(
@@ -292,8 +386,11 @@ def install_agent_skills(
             if target.exists():
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            created.append(target)
             _copy_skill(target)
+            # Only roll back a tree after copytree returned successfully. If a
+            # different tree appeared concurrently, copytree raises before this
+            # point and that external tree must be retained.
+            created.append(target)
             if _tree_sha256(target) != expected_hash:
                 raise OSError(f"installed skill hash mismatch: {target}")
             statuses.append(
