@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pmgs-reference"
 version = "0.2.0"
-description = "JPO PMGSデータをローカルAI、Python、CLI、任意Webで参照する版付きリファレンス"
+description = "特許庁のPMGSデータからFI、Fターム、IPCの定義や階層をローカルで検索するツール"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"

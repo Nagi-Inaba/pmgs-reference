@@ -93,11 +93,14 @@ def test_japanese_is_default_and_english_surfaces_are_linked() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert "[English](README.en.md)" in readme
-    assert "日本語を既定言語" in readme
+    assert "AIにできる質問" in readme
+    assert "特許庁のPMGSデータ" in readme
     assert "[日本語](README.md)" in english_readme
     assert "回答は日本語を既定" in skill
     assert project["project"]["readme"] == "README.md"
-    assert "JPO PMGSデータ" in project["project"]["description"]
+    description = project["project"]["description"]
+    assert "特許庁のPMGSデータ" in description
+    assert all(term in description for term in ("FI", "Fターム", "IPC", "ローカル"))
 
 
 def test_all_markdown_relative_links_resolve() -> None:
