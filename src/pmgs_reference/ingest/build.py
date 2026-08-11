@@ -6,8 +6,10 @@ import hashlib
 import os
 import re
 import sqlite3
+import stat
 import tempfile
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -70,6 +72,57 @@ def _count_tables(connection: sqlite3.Connection) -> dict[str, int]:
         assert row is not None
         counts[table] = int(row[0])
     return counts
+
+
+def _file_identity(metadata: os.stat_result) -> tuple[int, int, int]:
+    return metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns
+
+
+def _remove_owned_reservation(
+    output_path: Path, reservation_identity: tuple[int, int, int]
+) -> None:
+    try:
+        current = os.lstat(output_path)
+    except FileNotFoundError:
+        return
+    if _file_identity(current) != reservation_identity:
+        return
+    with suppress(FileNotFoundError):
+        output_path.unlink()
+
+
+def _promote_database(temporary_path: Path, output_path: Path) -> None:
+    """Promote a complete database without replacing an existing destination."""
+    try:
+        os.link(temporary_path, output_path)
+    except FileExistsError:
+        raise FileExistsError(f"database output already exists: {output_path}") from None
+    except OSError:
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(output_path, flags, 0o600)
+        except FileExistsError:
+            raise FileExistsError(f"database output already exists: {output_path}") from None
+        try:
+            reservation_identity = _file_identity(os.fstat(descriptor))
+        finally:
+            os.close(descriptor)
+
+        try:
+            current = os.lstat(output_path)
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or _file_identity(current) != reservation_identity
+                or current.st_size != 0
+            ):
+                raise OSError("database output reservation changed before promotion")
+            os.replace(temporary_path, output_path)
+        except Exception:
+            _remove_owned_reservation(output_path, reservation_identity)
+            raise
+    else:
+        temporary_path.unlink()
 
 
 def build_database(
@@ -151,12 +204,10 @@ def build_database(
     database_sha256 = _sha256_file(temporary_path)
     database_size_bytes = temporary_path.stat().st_size
     try:
-        os.link(temporary_path, output_path)
-    except FileExistsError:
+        _promote_database(temporary_path, output_path)
+    except Exception:
         temporary_path.unlink(missing_ok=True)
-        raise FileExistsError(f"database output already exists: {output_path}") from None
-    else:
-        temporary_path.unlink()
+        raise
     result = BuildResult(
         schema_version="1.0",
         release_id=release_id,

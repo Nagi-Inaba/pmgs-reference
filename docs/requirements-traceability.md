@@ -19,7 +19,7 @@
 | DATA-04 | FI、Fターム、IPC、解説、改正、対応、定義文書をSQLiteへ格納する | verified | 1,207,960 concept、6,667 document、未表現source 0 |
 | DATA-05 | 旧DBの既知件数を回帰基準にする | verified | Fタームテーマ2,929、Fターム411,383、FI 190,384、IPC 8U 82,540が一致 |
 | STORE-01 | 版付きSQLiteとFTS5を生成する | verified | SQLite schema、FTS5 trigram、integrityと外部key検査 |
-| STORE-02 | 内容アドレス付きSQLiteを保持し、検証済み現行版を原子的に切り替える | verified | `data_paths.py`、`setup.py`、setupの再利用・source変更・lock・legacy・pointer test、3 OS hosted CI |
+| STORE-02 | 内容アドレス付きSQLiteを保持し、検証済み現行版を原子的に切り替える | verified | `data_paths.py`、`setup.py`、setupの再利用・source変更・lock・legacy・pointer・ハードリンク非対応・出力競合test、3 OS hosted CI |
 | NORM-01 | PythonとTypeScriptが同じ正規化vectorを通す | verified | `schemas/normalization-vectors.json`と両実装のtest |
 | API-01 | Python APIがlookup、search、階層、文書、release情報を提供する | verified | 合成fixture testと実データsmoke |
 | CLI-01 | inventory、build、validate、lookup、search、document、doctor、agent kit、skill導入、mcpを提供する | verified | CLI test、agent kit test、実stdio protocol smoke |
@@ -43,7 +43,7 @@
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 106件、Ruff、mypy、boundary、sdist、wheelに合格 |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 110件、Ruff、mypy、boundary、sdist、wheelに合格 |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | implemented | [2026-08-09の監査](verification/public-release-2026-08-09.md)は当時の契約で`ready=true`。2026-08-10の日英入口追加後はWeb公開時に再監査する |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | Python標準検査とWorker `verify`に合格 |
 | RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | [Hosted CI run 31506514581](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31506514581)の3 OS `wheel-e2e` job |

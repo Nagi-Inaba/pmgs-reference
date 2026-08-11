@@ -18,6 +18,8 @@ Python CLIの`pmgs setup SOURCE`を、全OSと全インストール形態に共�
 1. sourceは`JPPM`と数字からなる版ディレクトリ、明示した`--release`、または親直下の一意な版ディレクトリから解決する。曖昧な版、版の不一致、symlinkまたはjunctionを含むsourceは拒否する。
 2. source inventoryを構築前後に生成し、論理SHA-256が一致しない候補を有効化しない。
 3. SQLiteは`data/releases/<release>/<source-sha256>/<database-sha256>.sqlite`へ内容アドレス付きで保存し、既存ファイルを上書きしない。
+   ハードリンクを利用できないファイルシステムでは出力先を排他的に予約する。
+   予約したファイルが置き換えられていないことを確認してから、完成済みの一時ファイルを原子的に配置する。
 4. schema検証と実stdio MCP診断に合格したSQLiteだけを`state/current.json`から参照する。
 5. `current.json`は管理ディレクトリ内の相対パスとidentityを持ち、同一ディレクトリの一時ファイルから原子的に置き換える。
 6. setup lockは同じ管理ディレクトリへの同時実行を一つに制限する。所有を確認できるstagingだけを回収し、旧版SQLiteは自動削除しない。
@@ -29,6 +31,9 @@ Python CLIの`pmgs setup SOURCE`を、全OSと全インストール形態に共�
 OS既定の管理ディレクトリは、Windowsが`%LOCALAPPDATA%\pmgs-reference`、macOSが`~/Library/Application Support/pmgs-reference`、Linuxが`${XDG_DATA_HOME:-~/.local/share}/pmgs-reference`とする。
 
 旧構成の`data/current.sqlite`は、`current.json`が存在しない場合だけ読み取る。releaseとsource hashが要求と一致すれば移動や削除をせずに現行版としてpointerを作成し、一致しなければ保持して新しい候補を構築する。
+
+現在参照中のデータベースを再検証した場合と、旧`current.sqlite`を引き続き参照してpointerだけを作成した場合は`already_ready`を返す。
+保存済みのデータベースを再利用した場合でも、別のreleaseから切り替えたときは`ready`を返し、現行版が変わったことを隠さない。
 
 ## 結果
 

@@ -509,6 +509,7 @@ def setup_reference(
     selected_database: Path | None = None
     selected_validation: ValidationResult | None = None
     database_reused = False
+    legacy_database_reused = False
     client_statuses: tuple[JSONDict, ...] = ()
     try:
         with SetupLock(data_root / "setup.lock", run_id):
@@ -570,6 +571,7 @@ def setup_reference(
                             selected_database = legacy.resolve()
                             selected_validation = legacy_validation
                             database_reused = True
+                            legacy_database_reused = True
                         else:
                             warnings.append(
                                 "legacy current.sqlite belongs to a different source "
@@ -710,7 +712,7 @@ def setup_reference(
             status: SetupStatus
             if partial:
                 status = "partial_failed"
-            elif database_reused:
+            elif database_reused and (not pointer_changed or legacy_database_reused):
                 status = "already_ready"
             else:
                 status = "ready"

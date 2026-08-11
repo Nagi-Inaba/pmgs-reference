@@ -489,3 +489,38 @@ def test_pointer_switch_requires_restart_for_a_detected_declined_client(
     assert second.status == "ready"
     assert second.clients[0]["status"] == "declined"
     assert second.restart_required is True
+
+
+def test_reactivating_a_reused_database_reports_ready(synthetic_pmgs: Path, tmp_path: Path) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    first = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+    assert first.status == "ready"
+
+    updated_source = tmp_path / "updated" / "JPPM2099002"
+    shutil.copytree(synthetic_pmgs, updated_source)
+    second = setup_reference(
+        updated_source,
+        release_id="JPPM2099002",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+    assert second.status == "ready"
+
+    reactivated = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+
+    assert reactivated.database_reused is True
+    assert reactivated.status == "ready"
+    assert PMGSStore.open(data_dir=data_root).release_info()["release_id"] == "JPPM2099001"

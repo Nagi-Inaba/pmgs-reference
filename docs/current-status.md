@@ -55,17 +55,20 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 - Ruff lint: 合格
 - Ruff format: 86 file、差分0
 - mypy: 28 source file、問題0
-- pytest: 106件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
+- pytest: 110件合格、1件skip。skipはWindowsの現在の権限ではdirectory symlinkを作成できなかったためで、同じ試験をUbuntuとmacOSのhosted CIで実行する
 - wheel導入試験: 空の隔離環境で初回setup=`ready`、再実行=`already_ready`、doctor=`true`、version=`pmgs 0.3.0`
-- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,306 bytes、SHA-256 `7ADD4CEE72574B5544D71ABE5DC345A7EF807CCFA32D0F3420923E4D12A60F05`
-- `pmgs_reference-0.3.0.tar.gz`: 84,770 bytes、SHA-256 `EC4BADFA1A34237E641C4DCD2062FE375A8DF1BC6FC72121B7E07C2298FCBA0A`
-- 配布内容: wheel 36 entry、sdist 37 entry、共通skill同梱、SQLite・source manifest・秘密鍵0件
+- `pmgs_reference-0.3.0-py3-none-any.whl`: 98,788 bytes、SHA-256 `A852C1E9D478BD2F595FEA2BF6FBD4997A48A83DF6671A65E05507C409EABC42`
+- `pmgs_reference-0.3.0.tar.gz`: 85,319 bytes、SHA-256 `7C3D22C7F4102FE00AF9FF20BAC786773C04D477B54AAC593AAD54213746CF73`
+- 配布内容: wheel 36 entry、sdist 37 entry、共通skill同梱、SQLite、source manifest、秘密鍵は0件
 - Worker: TypeScript、oxlint、workerd test 23件、WebMCP test 3件、dry-run bundleに合格
 - npm audit: 脆弱性0
 - PowerShell wrapper: parser error 0、`-WhatIf`でsetupを実行せず終了
 - managed DB integrity: 通常queryはpathとmetadataを高速照合し、setupとdoctorは実ファイルSHA-256をpointerと照合する。DB改変時のsetup拒否、doctor失敗、診断中のcurrent pointer切替拒否を回帰testで確認
 - client state: MCP登録後のskill失敗と、登録を見送った検出済みclientがある版切替でも`restart_required=true`を保持
 - wheel再検証: `dist/`に0.1.0、0.2.0、0.3.0のwheelが共存する状態で、`pyproject.toml`の現行versionだけを選択して隔離導入試験に合格。version表示の期待値も同じproject versionから導出する
+- setup状態: 保存済みDBを使ってrelease AからBへ切り替え、再びAへ戻した場合は`already_ready`ではなく`ready`を返す。
+  旧`current.sqlite`へpointerを追加するだけの場合は`already_ready`を維持する
+- DB配置: ハードリンク非対応時の排他的配置、配置失敗時の一時ファイル回収、同時に作成された出力先の非上書きを回帰testで確認
 - `git diff --check`: 合格
 
 配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。

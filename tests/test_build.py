@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import errno
 import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
+import pmgs_reference.ingest.build as build_module
 from pmgs_reference.cli import main
 from pmgs_reference.ingest.build import build_database
 from pmgs_reference.ingest.inventory import build_inventory
@@ -190,3 +192,60 @@ def test_build_accepts_a_precomputed_inventory(
     )
 
     assert result.source_manifest_sha256 == inventory.logical_sha256
+
+
+def test_build_falls_back_when_hard_links_are_unavailable(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "pmgs-reference.sqlite"
+
+    def unsupported_link(_source: Path, _destination: Path) -> None:
+        raise OSError(errno.EXDEV, "simulated hard-link limitation")
+
+    monkeypatch.setattr(build_module.os, "link", unsupported_link)
+
+    result = build_database(synthetic_pmgs, "JPPM2099001", database_path)
+
+    assert validate_database(database_path).valid is True
+    assert result.database_sha256 == validate_database(database_path).database_sha256
+    assert not list(tmp_path.glob(f".{database_path.name}-*.tmp"))
+
+
+def test_build_cleans_temporary_files_when_fallback_promotion_fails(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "pmgs-reference.sqlite"
+
+    def unsupported_link(_source: Path, _destination: Path) -> None:
+        raise OSError(errno.EXDEV, "simulated hard-link limitation")
+
+    def failed_replace(_source: Path, _destination: Path) -> None:
+        raise OSError("simulated promotion failure")
+
+    monkeypatch.setattr(build_module.os, "link", unsupported_link)
+    monkeypatch.setattr(build_module.os, "replace", failed_replace)
+
+    with pytest.raises(OSError, match="simulated promotion failure"):
+        build_database(synthetic_pmgs, "JPPM2099001", database_path)
+
+    assert not database_path.exists()
+    assert not list(tmp_path.glob(f".{database_path.name}-*.tmp"))
+
+
+def test_build_fallback_does_not_overwrite_a_racing_destination(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "pmgs-reference.sqlite"
+    existing_bytes = b"concurrent writer"
+
+    def racing_link(_source: Path, destination: Path) -> None:
+        destination.write_bytes(existing_bytes)
+        raise OSError(errno.EXDEV, "simulated hard-link limitation")
+
+    monkeypatch.setattr(build_module.os, "link", racing_link)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        build_database(synthetic_pmgs, "JPPM2099001", database_path)
+
+    assert database_path.read_bytes() == existing_bytes
+    assert not list(tmp_path.glob(f".{database_path.name}-*.tmp"))
