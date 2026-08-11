@@ -1,9 +1,9 @@
 # 現在の状態
 
 - 更新日: 2026-08-12
-- 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`をv0.3.0候補として実装済み。公開済みの`main`とGitHub Releaseはv0.2.0
-- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、v0.3.0 branchのGitHub hosted CI 10 jobに合格。追加hardening後のhosted CIとv0.3.0差分のCodeQLはPR前後の実行待ち
-- 公開状態: GitHub source repositoryとv0.2.0 Releaseはpublic。v0.3.0、PyPI、R2、Worker、独自domain、外部検索indexは未公開
+- 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`を含むv0.3.0のソースコードを`main`へ統合済み。GitHub Releaseの最新版はv0.2.0
+- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、Pull Requestと`main`のGitHub Actions CI、CodeQLに合格
+- 公開状態: v0.3.0のソースコードを含むGitHub repositoryとv0.2.0 Releaseは公開済み。v0.3.0 Release、PyPI、R2、Worker、独自domain、外部検索indexは未公開
 
 ## 結論
 
@@ -17,7 +17,8 @@ data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpa
 
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
-[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)で現在公開されている安定版はv0.2.0である。R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
+[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`にはv0.3.0のソースコードが統合されている。
+GitHub Releaseとして公開済みの最新版はv0.2.0であり、R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
 
 ## 現在の公開契約
 
@@ -73,7 +74,7 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 配布物とrepositoryにはPMGS実データ、生成SQLite、全量export、登録情報、認証情報を含めていない。
 
-## v0.3.0 branchのhosted CIとfresh clone
+## v0.3.0のGitHub Actions検証、レビュー、main統合
 
 2026-08-12に`codex/pmgs-setup`をpublic repositoryへpushした。
 
@@ -87,9 +88,22 @@ JPOウェブサイトの利用案内は、出典の記載に加えて、編集�
 
 次のrunでは既定DB探索のtestが`LOCALAPPDATA`だけを仮定してUnixで失敗した。OS非依存の既定data rootを注入するtestへ変更し、最終runで全OSが成功した。
 
-同じpublic branchを新しいdirectoryへcloneし、remote SHA一致、署名済みPython 3.14からの新規仮想環境、repository boundary、Ruff、format、mypy、pytest 98件、隔離wheelのsetup、再実行、doctorを確認した。上記wheelとsdistのbytes、SHA-256、entry数はこのfresh cloneから作成した成果物である。
+同じpublic branchを新しいdirectoryへcloneし、remote SHA一致、署名済みPython 3.14からの新規仮想環境、repository boundary、Ruff、format、mypy、pytest 98件、隔離wheelのsetup、再実行、doctorを確認した。
+このfresh cloneはcommit `013a5b2209d941d9fb738f17d3a0ddcfea47a8e0`を対象とし、source checkoutに依存しない導入経路を確認した。
+最終commitの配布物は、上記のローカル検査で2回構築し、bytesとSHA-256の一致を確認した。
 
-CodeQL default setupは有効だが、feature branchのpushには解析結果が作られず、default setupは手動dispatchにも対応しない。v0.3.0差分のCodeQLはPRまたはmainで確認する。
+[Pull Request #4](https://github.com/Nagi-Inaba/pmgs-reference/pull/4)では、最終commit `efccc3ff8aca68e1c6b4ad0d7e0ca5c1ae844968`に対して、branchへのpush時とPull Request更新時の両方でCIを実行した。
+[Push CI run 31512828783](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31512828783)と[Pull Request CI run 31512833620](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31512833620)は、いずれも10 jobすべてが成功した。
+
+[CodeQL run 31512829489](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31512829489)はActions、Python、JavaScript/TypeScriptの3解析に成功し、未解決アラートは0件だった。
+初回の自動レビューによる2件の指摘を回帰test付きで修正し、[最終レビュー](https://github.com/Nagi-Inaba/pmgs-reference/pull/4#issuecomment-5256060409)は最終commitに重大な問題を検出しなかった。
+
+Pull Request #4は2026-08-12にsquash mergeされ、`main`はcommit `95a1d3eec7e9bfd805ea313ffe3b61974241d9ad`になった。
+[Main CI run 31513770595](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513770595)は10 jobすべてに成功した。
+[Main CodeQL run 31513778284](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513778284)も3解析すべてに成功した。
+
+`main`のbranch protectionとrulesetは、Python 6 job、3 OSのwheel 3 job、Worker 1 jobからなる同じ10件のcheckをstrictで必須化している。
+linear historyとレビュー会話の解決を要求し、force pushとbranchの削除を禁止している。
 
 ## v0.3.0 setupの実データ全量検証
 
@@ -119,7 +133,7 @@ CodeQL default setupは有効だが、feature branchのpushには解析結果が
 - Dependabot alertsとsecurity updates: enabled
 - secret scanningとpush protection: enabled
 - private vulnerability reporting: enabled
-- branch protection: 実在する5 hosted checkを必須化、force pushとbranch deletionを禁止
+- branch protectionとruleset: 実在する10件のhosted checkをstrictで必須化し、force pushとbranchの削除を禁止
 
 [Hosted CI run 31305434936](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31305434936)では、Python 3.12と3.14をUbuntuとWindowsで検査し、Cloudflare WorkerをNode.js 22で検査した。5 jobすべてが成功した。
 
@@ -176,10 +190,12 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. v0.3.0候補をPull Requestにし、CodeQLを確認する。mainのbranch protectionは旧5 checkのままなので、macOSと3 OS wheel checkを必須対象へ追加する。
-2. GitHubには2026-08-12時点でenvironmentが0件であり、PyPIの`pmgs-reference` project endpointも404を返す。`pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。404だけで将来の名前取得を保証しない。
-3. v0.3.0 tagを作成し、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
-4. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
-5. Web公開者が検索エンジンとAI検索からの発見性を測定する。
+1. GitHubには2026-08-12時点でenvironmentが0件であり、PyPIの`pmgs-reference` project endpointも404を返す。
+   `pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。
+   404だけで将来の名前取得を保証しない。
+2. v0.3.0 tagを作成し、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
+3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
+4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub sourceとdata非同梱のv0.2.0 Releaseは公開済みである。v0.3.0、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。
+GitHub repositoryの`main`にあるv0.3.0のソースコードと、data非同梱のv0.2.0 Releaseは公開済みである。
+v0.3.0 Release、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。
