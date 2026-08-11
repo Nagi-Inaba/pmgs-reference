@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
+import pmgs_reference.data_paths as data_paths_module
 from pmgs_reference import PMGSQueryError, PMGSStore
 from pmgs_reference.errors import DocumentNotFoundError, EditionNotFoundError
 from pmgs_reference.validation import validate_database
@@ -42,7 +43,7 @@ def test_open_lookup_and_database_discovery(
     default_database = tmp_path / "pmgs-reference" / "data" / "current.sqlite"
     default_database.parent.mkdir(parents=True)
     shutil.copy2(synthetic_database, default_database)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(data_paths_module, "default_data_root", lambda: tmp_path / "pmgs-reference")
     assert PMGSStore.open().release_info()["source_file_count"] == 26
 
 
