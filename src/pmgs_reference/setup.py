@@ -137,16 +137,16 @@ class SetupLock:
             stream.flush()
         stream.seek(0)
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 import msvcrt
 
                 msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
 
-                fcntl.flock(  # type: ignore[attr-defined]
+                fcntl.flock(
                     stream.fileno(),
-                    fcntl.LOCK_EX | fcntl.LOCK_NB,  # type: ignore[attr-defined]
+                    fcntl.LOCK_EX | fcntl.LOCK_NB,
                 )
         except OSError as exc:
             stream.close()
@@ -170,7 +170,7 @@ class SetupLock:
         stream = self._stream
         file_number = stream.fileno()
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 import msvcrt
 
                 stream.seek(0)
@@ -178,7 +178,7 @@ class SetupLock:
             else:
                 import fcntl
 
-                fcntl.flock(file_number, fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                fcntl.flock(file_number, fcntl.LOCK_UN)
         finally:
             stream.close()
             self._stream = None
