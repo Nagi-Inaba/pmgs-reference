@@ -74,7 +74,7 @@ npm --prefix worker run verify
 description例は次のとおりである。
 
 ```text
-JPO PMGSデータをCodex・Claude Code、Python、CLI、任意Webから参照する版付き特許分類リファレンス
+特許庁のPMGSデータをローカルに取り込み、CodexやClaude CodeからFI、Fターム、IPCの定義や階層を検索できるようにするツールです。
 ```
 
 topics例は次のとおりである。

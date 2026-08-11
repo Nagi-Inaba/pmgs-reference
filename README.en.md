@@ -1,29 +1,52 @@
 # PMGS Reference
 
+**Search locally acquired JPO PMGS data from Codex, Claude Code, Python, or the command line.**
+
 [日本語](README.md)
 
-PMGS Reference is open-source software for converting a JPO Patent Map Guidance System package obtained through the official registration process into a versioned, read-only reference.
+PMGS Reference lets Codex and Claude Code answer questions about patent-classification definitions and hierarchy using your local PMGS data.
+The agent searches a local SQLite database and returns the matching wording, edition, related documents, and source information.
+This gives the agent a direct PMGS reference instead of relying only on general web search or model memory.
 
-It serves source-backed FI, F-term, and IPC wording, hierarchy, editions, related documents, and attribution from one SQLite source of truth through Python, CLI, MCP, HTML, Markdown, JSON, and OpenAPI. Japanese is the default language; English is available on request.
+## Questions you can ask
 
-It does not classify patents, recommend filing classifications, or produce legal opinions. Its purpose is to keep official wording separate from AI analysis.
+- “What is the exact definition and parent of FI G06F3/048?”
+- “Show the meaning and related documents for F-term 4C083 AA01.”
+- “Look up G06F3/048 in IPC edition 8U.”
+- “Find FI and IPC entries containing the phrase 相互作用技術.”
+- “Read the relevant page of the PMGS document linked to this classification.”
 
-## Recommended interfaces
+## How it works
 
-| User or client | Interface |
+```mermaid
+flowchart LR
+    A["Acquired PMGS package"] --> B["Local SQLite database"]
+    B --> C["MCP"]
+    C --> D["Codex"]
+    C --> E["Claude Code"]
+    B --> F["Python API and CLI"]
+    B --> G["HTML and JSON for self-hosting"]
+```
+
+The setup script converts an acquired PMGS package into a searchable SQLite database.
+Codex and Claude Code query that database through MCP.
+The same database is available through Python and the CLI, and it can generate HTML, Markdown, JSON, and OpenAPI files for self-hosting.
+
+## Features
+
+| Feature | What it provides |
 | --- | --- |
-| Codex, Claude Code, and other local AI agents | read-only stdio MCP and shared skill |
-| Python applications and notebooks | `PMGSStore` Python API |
-| Shell scripts and local automation | `pmgs` CLI |
-| GPTs and Gems using web retrieval | optional self-hosted HTML and Markdown |
-| GPT Actions and Copilot Studio | optional JSON API and a client-compatible OpenAPI definition |
-| WebMCP-capable browsers | optional read-only WebMCP tool |
+| Classification lookup | Definitions, editions, and sources for FI, F-term, and IPC codes |
+| Text search | Lexical search over classification text and PMGS documents |
+| Hierarchy | Parent, child, and related classifications |
+| Related documents | Guides, revision material, and PDFs by page or section |
+| Codex and Claude Code | A read-only MCP server and shared skill |
+| Python and CLI | Direct programmatic and command-line access to the same data |
+| Web export | HTML, Markdown, JSON, OpenAPI, and sitemaps for self-hosting |
 
-The source repository is public. PMGS source packages, generated SQLite databases, and full web-export trees are not included. The maintainers do not currently operate a hosted website, R2 bucket, Worker, custom domain, or PyPI release for this project.
+## Use with Codex
 
-## Use with Codex and Claude Code
-
-On Windows, the setup script prepares the virtual environment, inventories the PMGS package, builds and validates SQLite, performs a real stdio MCP diagnostic, generates client-specific configuration, and installs the shared skill.
+You need an acquired PMGS package, Python 3.12 or 3.14, [uv](https://docs.astral.sh/uv/), and the Codex CLI.
 
 ```powershell
 git clone https://github.com/Nagi-Inaba/pmgs-reference.git
@@ -32,95 +55,62 @@ Set-Location pmgs-reference
 powershell -ExecutionPolicy Bypass -File scripts/setup_local_agent.ps1 `
   -SourceDirectory C:\path\to\JPPM2026002 `
   -ReleaseId JPPM2026002 `
-  -Client both
+  -Client codex `
+  -RegisterClients
 ```
 
-The script does not change client configuration by default. Review and merge `build/local-agent-kit/agent-kit.json` and the generated fragments. Add `-RegisterClients` only when you want the script to invoke the installed Codex or Claude Code CLI and register the server.
+After setup, ask Codex:
 
-```powershell
-.\.venv\Scripts\python.exe -m pmgs_reference.cli doctor `
-  --db "$env:LOCALAPPDATA\pmgs-reference\data\current.sqlite" `
-  --json
+```text
+Use $pmgs-reference to look up the definition, hierarchy, and sources for FI G06F3/048.
 ```
 
-See the [local AI agent guide](docs/local-agent-kit.en.md) for manual setup, client-specific locations, updates, and removal.
+Use `-Client claude` for Claude Code or `-Client both` for both clients.
+See the [Codex and Claude Code setup guide](docs/local-agent-kit.en.md) for configuration and updates.
 
-## Switch languages
-
-The Python API and CLI default to `ja`. Pass `--language en` to the CLI or `language="en"` to Python and MCP tools. The distributed skill answers in Japanese by default and switches to English when the user requests it. Web artifacts use `/` and `/ja/` for the Japanese home and `/en/` for the English home.
-
-```powershell
-uv run --frozen pmgs lookup fi "G06F3/048" --language en --db data\pmgs-reference.sqlite --json
-```
-
-## Build the local database manually
-
-Python 3.12 or 3.14 and [uv](https://docs.astral.sh/uv/) are required. Node.js 22 and npm 10 are only needed for Worker verification.
-
-```powershell
-uv sync --frozen --all-groups
-uv run --frozen pmgs inventory C:\path\to\JPPM2026002 --output build\source-manifest.jsonl
-uv run --frozen pmgs build C:\path\to\JPPM2026002 --release JPPM2026002 --output data\pmgs-reference.sqlite
-uv run --frozen pmgs validate data\pmgs-reference.sqlite
-uv run --frozen pmgs doctor --db data\pmgs-reference.sqlite --json
-```
-
-The package never downloads PMGS data automatically.
-
-## Python API
+## Use with Python and the CLI
 
 ```python
 from pmgs_reference import PMGSStore
 
 store = PMGSStore.open(r"C:\path\to\pmgs-reference.sqlite")
-record = store.lookup("fi", "G06F3/048", language="en")
+
+record = store.lookup("fi", "G06F3/048")
 results = store.search("interaction technology", schemes=["fi", "ipc"], language="en")
+parents = store.parents("fi", "G06F3/048")
+documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 ```
-
-Invalid input, unknown releases, unknown IPC editions, and valid but missing classifications remain distinct. See the [local interface contract](docs/local-interfaces.md).
-
-## Self-host for GPTs, Gems, and Copilot Studio
-
-The web implementation remains available for third-party deployment. An operator can use their own PMGS package, Cloudflare account, domain, and budget to generate static artifacts, upload them to R2, and serve HTML, Markdown, JSON, and OpenAPI through the Worker.
-
-This route has limits:
-
-- sitemap submission does not guarantee search indexing or AI retrieval;
-- GPT and Gem web retrieval does not guarantee that a particular site is consulted for every answer;
-- `/openapi.json` is a candidate for GPT Actions only when the current GPT editor exposes Actions and accepts OpenAPI;
-- classic Gems do not necessarily support an arbitrary OpenAPI endpoint as a custom tool;
-- Copilot Studio support depends on tenant policy, authentication, and connector restrictions.
-
-See the [web self-hosting guide](docs/self-hosting.en.md) for architecture, cost categories, deployment steps, GPT and Gem examples, and security boundaries. HTML, Markdown, JSON, and OpenAPI work without WebMCP.
-
-## Data and licensing boundary
-
-This repository includes code, schemas, policy, synthetic fixtures, public evidence, validation records, a shared agent skill, configuration generation, diagnostics, and evaluation cases.
-
-It excludes PMGS source packages, registration data, generated SQLite databases, full export trees, credentials, local absolute paths, and confidential patent material.
-
-Apache-2.0 applies to this project's source code. It does not relicense JPO, INPIT, WIPO, or PMGS data. See the [registered-use notes](docs/registered-use-terms.md) and [publication policy](config/publication-policy.yaml).
-
-## Verification
 
 ```powershell
-uv lock --check
-uv run --frozen python scripts/verify_repository_boundary.py
-uv run --frozen ruff check .
-uv run --frozen ruff format --check .
-uv run --frozen mypy src
-uv run --frozen pytest -q
-uv build
-npm --prefix worker ci
-npm --prefix worker run verify
+uv run pmgs lookup fi "G06F3/048" --db C:\path\to\pmgs-reference.sqlite --json
+uv run pmgs search "interaction technology" --scheme fi --scheme ipc --language en --db C:\path\to\pmgs-reference.sqlite --json
+uv run pmgs document DOCUMENT_ID --page 1 --db C:\path\to\pmgs-reference.sqlite --json
 ```
 
-See [current status](docs/current-status.md) for measured results and external operations not performed, and the [release runbook](docs/release-runbook.md) for public export generation and auditing.
+See [Local reference interfaces](docs/local-interfaces.md) for all methods and commands.
 
-## Contributing, security, and license
+## Build a website for GPTs and Gems
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Never attach PMGS source packages, generated databases, credentials, local paths, or confidential patent material to an issue or pull request.
+PMGS Reference can generate lightweight HTML, Markdown, and JSON pages for each classification.
+An operator can publish them with Cloudflare Worker and R2 so that GPTs and Gems can retrieve them through web search.
+See the [Web self-hosting guide](docs/self-hosting.en.md) for the architecture and deployment steps.
 
-Report suspected vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
+## PMGS data
 
-The source code is licensed under the [Apache License 2.0](LICENSE).
+PMGS data is not included in this repository.
+Complete the JPO registration process and pass the acquired PMGS package to the setup script.
+The generated SQLite database remains in your local environment.
+
+## Documentation
+
+- [Codex and Claude Code setup](docs/local-agent-kit.en.md)
+- [Python, CLI, and MCP interfaces](docs/local-interfaces.md)
+- [Web self-hosting](docs/self-hosting.en.md)
+- [Architecture](docs/architecture.md)
+- [Current implementation status](docs/current-status.md)
+- [Contributing](CONTRIBUTING.md)
+
+## License
+
+The source code is available under the [Apache License 2.0](LICENSE).
+See [Registered-use terms and publication](docs/registered-use-terms.md) for the PMGS data boundary.
