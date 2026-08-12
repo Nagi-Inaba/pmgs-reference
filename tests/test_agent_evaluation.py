@@ -252,6 +252,7 @@ def test_evaluation_environment_drops_ambient_secrets() -> None:
     environment = module._evaluation_environment(
         {
             "PATH": "bin",
+            "CLAUDE_CONFIG_DIR": "claude-config",
             "CODEX_HOME": "codex-home",
             "USERPROFILE": "profile",
             "PMGS_EVAL_SENTINEL_SECRET": "must-not-be-inherited",
@@ -261,6 +262,7 @@ def test_evaluation_environment_drops_ambient_secrets() -> None:
     )
 
     assert environment["PATH"] == "bin"
+    assert environment["CLAUDE_CONFIG_DIR"] == "claude-config"
     assert environment["CODEX_HOME"] == "codex-home"
     assert environment["USERPROFILE"] == "profile"
     assert environment["NO_COLOR"] == "1"

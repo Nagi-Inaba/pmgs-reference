@@ -50,6 +50,7 @@ _ENVIRONMENT_ALLOWLIST: Final = frozenset(
     {
         "ALLUSERSPROFILE",
         "APPDATA",
+        "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "COLORTERM",
         "COMSPEC",
