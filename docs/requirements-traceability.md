@@ -48,13 +48,13 @@
 | RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 219件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
-| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | external | v0.4.0 wheelはWindowsでsetup、再実行、doctor、lookup、MCPに合格。Ubuntu、Windows、macOSの現行commitに対するhosted `wheel-e2e`が残る |
+| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | [v0.4.0 PR CI run 31633062926](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633062926)でUbuntu、Windows、macOSのwheel E2Eと3 OS合成決定性比較を含む14 jobが成功 |
 | RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | implemented | SHA固定の`release.yml`。GitHub `pypi`環境、PyPI pending publisher、tag実行は外部設定待ち |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
-| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | [Main CI run 31513770595](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513770595)で10 jobが成功し、branch protectionとrulesetで同じ10 checkを必須化 |
+| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | [v0.4.0 PR CI run 31633062926](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633062926)で14 jobが成功。既存10 checkはbranch protectionで必須、追加の決定性4 jobもPR統合ゲートとして確認 |
 | GH-03 | contribution、security、Issue、PRのdata-safeな受付境界を定義する | verified | `CONTRIBUTING.md`、`SECURITY.md`、Issue forms、PR template、CODEOWNERS |
 | GH-04 | 公開用Git履歴から旧版の公開対象外運用記録を除去する | verified | clean root commit `c3f836b`から公開履歴を開始し、旧履歴を外部backupへ分離 |
-| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | [現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)と[GitHub公開チェックリスト](github-publication-checklist.md) |
+| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | [v0.4.0 CodeQL run 31633058874](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633058874)でActions、Python、JavaScript/TypeScriptが成功。ほかは[現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)を参照 |
 
 ## v1対象外
 

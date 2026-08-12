@@ -8,7 +8,7 @@
 ## 結論
 
 v0.4.0候補は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証と実データA/B監査に合格した。
-Claude Codeの実参照再評価、hosted CI、CodeQLがすべて完了するまで公開準備Holdを維持する。
+Claude Codeの実参照再評価が完了するまで公開準備Holdを維持する。
 
 2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
 NTFSとexFATの独立した空の出力先へそれぞれschema v2で再構築した。
@@ -21,6 +21,9 @@ Codexは隔離wheelを使った実MCP評価の全ケースに合格し、禁止t
 A/B各454,303 objectを再検証した。両方とも`valid=true`、全error群0で、tree SHA-256と
 validation report SHA-256が一致した。25条件のrelease auditも`ready=true`、failure 0で合格した。
 独立code reviewとsecurity reviewの未解決Critical、High、Mediumは0件である。
+commit `9dc0d03`は、GitHub ActionsのPython 6 job、3 OS wheel、3 OS合成決定性、
+決定性比較、Workerからなる14 jobすべてに合格した。CodeQLもActions、Python、
+JavaScript/TypeScriptの3解析すべてに合格した。
 Claude Codeは`claude auth status`ではログイン済みと表示されるが、最終wheelによる実評価は
 `unauthenticated`となり、10ケースすべてでMCP toolを呼び出せなかった。再認証後の再評価が必要である。
 
