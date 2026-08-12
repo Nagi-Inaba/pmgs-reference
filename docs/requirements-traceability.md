@@ -45,7 +45,7 @@
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 216件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 219件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
 | RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | external | v0.4.0 wheelはWindowsでsetup、再実行、doctor、lookup、MCPに合格。Ubuntu、Windows、macOSの現行commitに対するhosted `wheel-e2e`が残る |

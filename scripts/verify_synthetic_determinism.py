@@ -74,7 +74,7 @@ def build_report(
 ) -> dict[str, object]:
     """Build fresh artifacts and return only measured deterministic evidence."""
     with tempfile.TemporaryDirectory(prefix="pmgs-determinism-") as temporary_name:
-        temporary = Path(temporary_name)
+        temporary = Path(temporary_name).resolve()
         source_copy = temporary / RELEASE_ID
         _copy_synthetic_source(source.resolve(), source_copy)
         database = temporary / "pmgs.sqlite"

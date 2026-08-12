@@ -212,7 +212,7 @@ def _run_inventory(args: argparse.Namespace) -> int:
     summary_path: Path = args.summary or manifest_path.with_name("inventory-summary.json")
     inventory = build_inventory(args.source_dir)
     write_inventory(inventory, manifest_path, summary_path)
-    print(json.dumps(inventory.summary(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(inventory.summary(), ensure_ascii=True, sort_keys=True))
     return 1 if any(entry.status == "failed" for entry in inventory.entries) else 0
 
 
@@ -223,7 +223,7 @@ def _run_build(args: argparse.Namespace) -> int:
         output_path=args.output,
         report_path=args.report,
     )
-    print(json.dumps(result.as_dict(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(result.as_dict(), ensure_ascii=True, sort_keys=True))
     return 0
 
 
@@ -364,12 +364,12 @@ def _run_validate(args: argparse.Namespace) -> int:
     result = validate_database(args.database)
     if args.report is not None:
         write_validation_report(result, args.report)
-    print(json.dumps(result.as_dict(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(result.as_dict(), ensure_ascii=True, sort_keys=True))
     return 0 if result.valid else 1
 
 
 def _json_output(payload: JSONDict) -> None:
-    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
 
 
 def _list_items(payload: JSONDict, key: str) -> list[JSONValue]:

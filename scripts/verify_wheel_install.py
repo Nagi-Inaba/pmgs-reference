@@ -16,6 +16,12 @@ from typing import cast
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _utf8_environment(environment: dict[str, str]) -> dict[str, str]:
+    configured = environment.copy()
+    configured.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    return configured
+
+
 def _run(command: list[str], *, environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         command,
@@ -96,7 +102,7 @@ def main() -> int:
         temporary = Path(temporary_name)
         tool_dir = temporary / "tools"
         bin_dir = temporary / "bin"
-        environment = os.environ.copy()
+        environment = _utf8_environment(os.environ)
         environment.update(
             {
                 "UV_TOOL_DIR": str(tool_dir),

@@ -60,6 +60,20 @@ def test_wheel_verifier_does_not_hardcode_the_expected_cli_version() -> None:
     assert 'expected_version = f"pmgs {project_version}"' in raw
 
 
+def test_wheel_verifier_forces_utf8_in_child_processes() -> None:
+    module = _load_script()
+
+    environment = module._utf8_environment(
+        {"PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252", "KEEP": "value"}
+    )
+
+    assert environment == {
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "KEEP": "value",
+    }
+
+
 def test_synthetic_determinism_report_is_valid_and_path_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -127,6 +141,73 @@ def test_synthetic_determinism_report_is_valid_and_path_free(
     assert contract["public_export"]["object_count"] > 0
     assert contract["public_export"]["total_bytes"] > 0
     assert str(tmp_path) not in json.dumps(report)
+
+
+def test_synthetic_determinism_resolves_temporary_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_named_script("verify_synthetic_determinism.py")
+    lexical_root = tmp_path / "parent" / ".." / "canonical"
+    observed: dict[str, Path] = {}
+
+    class TemporaryDirectory:
+        def __init__(self, *, prefix: str) -> None:
+            assert prefix == "pmgs-determinism-"
+
+        def __enter__(self) -> str:
+            return str(lexical_root)
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setattr(module.tempfile, "TemporaryDirectory", TemporaryDirectory)
+    monkeypatch.setattr(
+        module,
+        "_copy_synthetic_source",
+        lambda _source, target: observed.setdefault("source", target),
+    )
+    monkeypatch.setattr(
+        module,
+        "build_database",
+        lambda _source, _release, database: (
+            observed.setdefault("database", database),
+            SimpleNamespace(source_manifest_sha256="A" * 64, logical_digest="B" * 64),
+        )[1],
+    )
+    counts = {name: 1 for name in module.SEMANTIC_TABLES}
+    monkeypatch.setattr(
+        module,
+        "validate_database",
+        lambda _path: SimpleNamespace(
+            valid=True, logical_digest="B" * 64, counts=counts, checks={}
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "export_public",
+        lambda _database, _policy, public_root, **_kwargs: (
+            observed.setdefault("public", public_root),
+            SimpleNamespace(tree_sha256="C" * 64, object_count=1, total_bytes=1),
+        )[1],
+    )
+    monkeypatch.setattr(
+        module,
+        "validate_public_export",
+        lambda public_root: (
+            observed.setdefault("validated", public_root),
+            SimpleNamespace(valid=True, tree_sha256="C" * 64, object_count=1, total_bytes=1),
+        )[1],
+    )
+
+    module.build_report(tmp_path / "source", tmp_path / "policy.yaml", platform_name="Windows")
+
+    resolved_root = lexical_root.resolve()
+    assert observed == {
+        "source": resolved_root / module.RELEASE_ID,
+        "database": resolved_root / "pmgs.sqlite",
+        "public": resolved_root / "public",
+        "validated": resolved_root / "public",
+    }
 
 
 def test_synthetic_pdf_generation_is_byte_reproducible(tmp_path: Path) -> None:
