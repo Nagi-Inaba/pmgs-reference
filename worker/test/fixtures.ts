@@ -29,58 +29,125 @@ function record(
 ) {
   const lookup = `${scheme}\u001f${edition ?? ""}\u001f${code}`;
   const fragment = `${scheme}-${code.replace("/", "_2F")}`;
+  const version = scheme === "ipc" ? "2021.01" : null;
+  const labels = [
+    {
+      kind: "label",
+      language: "ja",
+      text: `${text} 日本語`,
+      provenance: "official",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+    {
+      kind: "label",
+      language: "en",
+      text: `${text} English`,
+      provenance: "official",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+  ];
+  const texts = [
+    {
+      kind: "definition",
+      language: "ja",
+      text: `${text} 公式定義`,
+      provenance: "official",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+    {
+      kind: "definition",
+      language: "en",
+      text: `${text} official definition`,
+      provenance: "official",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+  ];
+  const properties = [
+    {
+      name: "scope",
+      value: "synthetic",
+      language: null,
+      provenance: "official",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+  ];
+  const documents = [
+    {
+      document_id: "doc-aaaaaaaaaaaaaaaaaaaaaaaa",
+      kind: "fi_handbook",
+      language: "ja",
+      title: "Synthetic handbook",
+      page_count: 2,
+      link_type: "fi_handbook",
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+  ];
+  const relations = [
+    {
+      type: "parent",
+      scheme,
+      code: `${code}-PARENT`,
+      edition,
+      version,
+      source_id: SOURCE.source_id,
+      locator: "row:1",
+    },
+    {
+      type: "child",
+      scheme,
+      code: `${code}-CHILD`,
+      edition,
+      version,
+      source_id: SOURCE.source_id,
+      locator: "row:2",
+    },
+  ];
   return {
-    schema_version: "1.0",
+    schema_version: "2.0",
     release_id: RELEASE,
+    reference_date: "2026-01-01",
     lookup_key: lookup,
     scheme,
     edition,
     code,
     normalized_code: code,
-    labels: [
-      { language: "ja", text: `${text} 日本語`, provenance: "official" },
-      { language: "en", text: `${text} English`, provenance: "official" },
+    record_status: "canonical",
+    match_status: "exact",
+    version,
+    valid_from: (version === null ? null : "2021-01-01") as string | null,
+    valid_to: (version === null ? null : "9999-12-31") as string | null,
+    available_versions: [
+      { version, valid_from: null as string | null, valid_to: null as string | null },
     ],
-    texts: [
-      {
-        kind: "definition",
-        language: "ja",
-        text: `${text} 公式定義`,
-        provenance: "official",
-        source_id: SOURCE.source_id,
-        locator: "row:1",
-      },
-      {
-        kind: "definition",
-        language: "en",
-        text: `${text} official definition`,
-        provenance: "official",
-        source_id: SOURCE.source_id,
-        locator: "row:1",
-      },
-    ],
-    properties: [
-      {
-        name: "scope",
-        value: "synthetic",
-        language: null,
-        provenance: "official",
-        source_id: SOURCE.source_id,
-        locator: "row:1",
-      },
-    ],
-    relations: [],
-    documents: [
-      {
-        document_id: "doc-aaaaaaaaaaaaaaaaaaaaaaaa",
-        kind: "fi_handbook",
-        language: "ja",
-        title: "Synthetic handbook",
-        page_count: 2,
-        link_type: "fi_handbook",
-      },
-    ],
+    labels,
+    texts,
+    properties,
+    relations,
+    relation_count: relations.length,
+    relation_offset: 0,
+    relation_limit: 50,
+    next_relation_offset: null,
+    documents,
     sources: [SOURCE],
+    revision_records: [
+      {
+        version,
+        valid_from: (version === null ? null : "2021-01-01") as string | null,
+        valid_to: (version === null ? null : "9999-12-31") as string | null,
+        labels,
+        texts,
+        properties,
+        relations,
+        documents,
+        sources: [SOURCE],
+      },
+    ],
     fragment,
     canonical_urls: {
       ja: `${BASE_URL}/ja/${pagePath}#${fragment}`,
@@ -97,7 +164,46 @@ const IPC_8U = record(
   "classification/G06F3/002",
   "IPC current interaction",
 );
+IPC_8U.available_versions.unshift({
+  version: "2006.01",
+  valid_from: "2006-01-01",
+  valid_to: "2020-12-31",
+});
+IPC_8U.revision_records.unshift({
+  ...IPC_8U.revision_records[0]!,
+  version: "2006.01",
+  valid_from: "2006-01-01",
+  valid_to: "2020-12-31",
+  texts: IPC_8U.texts.map((item) => ({ ...item, text: `${item.text} legacy` })),
+});
 const IPC_7E = record("ipc", "G06F3/048", "7E", "ipc/7E/G06F3", "IPC legacy interaction");
+const IPC_EXPIRED = record(
+  "ipc",
+  "G06F3/050",
+  "8U",
+  "classification/G06F3/003",
+  "IPC expired interaction",
+);
+IPC_EXPIRED.match_status = "not_valid_at_release";
+IPC_EXPIRED.version = null;
+IPC_EXPIRED.valid_from = null;
+IPC_EXPIRED.valid_to = null;
+IPC_EXPIRED.labels = [];
+IPC_EXPIRED.texts = [];
+IPC_EXPIRED.properties = [];
+IPC_EXPIRED.relations = [];
+IPC_EXPIRED.documents = [];
+IPC_EXPIRED.available_versions = [
+  { version: "2006.01", valid_from: "2006-01-01", valid_to: "2020-12-31" },
+];
+IPC_EXPIRED.revision_records = [
+  {
+    ...IPC_EXPIRED.revision_records[0]!,
+    version: "2006.01",
+    valid_from: "2006-01-01",
+    valid_to: "2020-12-31",
+  },
+];
 const FTERM = record("fterm", "4C083AA01", null, "fterm/4C083", "F-term cosmetic");
 
 const OBJECTS: Record<string, { body: string; contentType: string }> = {
@@ -139,7 +245,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
     contentType: "application/json; charset=utf-8",
   },
   [`releases/${RELEASE}/manifest.json`]: {
-    body: JSON.stringify({ schema_version: "1.0", release_id: RELEASE, objects: [] }),
+    body: JSON.stringify({ schema_version: "2.0", release_id: RELEASE, objects: [] }),
     contentType: "application/json; charset=utf-8",
   },
   [`releases/${RELEASE}/coverage.json`]: {
@@ -171,12 +277,12 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/classification/G06F3/manifest.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       group_kind: "classification",
       edition: null,
       group_key: "G06F3",
-      record_count: 2,
+      record_count: 3,
       chunks: [
         {
           chunk_id: "001",
@@ -196,13 +302,22 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
           json_bytes: 1,
           json_sha256: "B".repeat(64),
         },
+        {
+          chunk_id: "003",
+          first_lookup_key: IPC_EXPIRED.lookup_key,
+          last_lookup_key: IPC_EXPIRED.lookup_key,
+          record_count: 1,
+          json_key: `releases/${RELEASE}/groups/classification/G06F3/003.json`,
+          json_bytes: 1,
+          json_sha256: "C".repeat(64),
+        },
       ],
     }),
     contentType: "application/json; charset=utf-8",
   },
   [`releases/${RELEASE}/groups/classification/G06F3/001.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       chunk_id: "001",
       records: [FI],
@@ -211,16 +326,25 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/classification/G06F3/002.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       chunk_id: "002",
       records: [IPC_8U],
     }),
     contentType: "application/json; charset=utf-8",
   },
+  [`releases/${RELEASE}/groups/classification/G06F3/003.json`]: {
+    body: JSON.stringify({
+      schema_version: "2.0",
+      release_id: RELEASE,
+      chunk_id: "003",
+      records: [IPC_EXPIRED],
+    }),
+    contentType: "application/json; charset=utf-8",
+  },
   [`releases/${RELEASE}/groups/ipc/7E/G06F3/manifest.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       group_kind: "ipc",
       edition: "7E",
@@ -242,7 +366,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/ipc/7E/G06F3/001.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       chunk_id: "001",
       records: [IPC_7E],
@@ -251,7 +375,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/fterm/4C083/manifest.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       group_kind: "fterm",
       edition: null,
@@ -273,7 +397,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/fterm/4C083/001.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       chunk_id: "001",
       records: [FTERM],
@@ -282,7 +406,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/groups/classification/Z99Z99/manifest.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       group_kind: "classification",
       edition: null,
@@ -304,7 +428,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/documents/doc-aaaaaaaaaaaaaaaaaaaaaaaa/manifest.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       document_id: "doc-aaaaaaaaaaaaaaaaaaaaaaaa",
       kind: "ipc_definition",
@@ -333,7 +457,7 @@ const OBJECTS: Record<string, { body: string; contentType: string }> = {
   },
   [`releases/${RELEASE}/documents/doc-aaaaaaaaaaaaaaaaaaaaaaaa/001.json`]: {
     body: JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       document_id: "doc-aaaaaaaaaaaaaaaaaaaaaaaa",
       chunk_id: "001",
@@ -378,6 +502,67 @@ export async function seedFixture(): Promise<void> {
   );
 }
 
+export async function seedPagedIpcFixture(additionalRelations = 65): Promise<number> {
+  const candidate = structuredClone(IPC_8U);
+  const revision = candidate.revision_records.find(
+    (item) => item.version === candidate.version,
+  );
+  const template = revision?.relations[0];
+  if (revision === undefined || template === undefined) {
+    throw new Error("IPC fixture has no reference-date revision relation");
+  }
+  revision.relations.push(
+    ...Array.from({ length: additionalRelations }, (_, index) => ({
+      ...template,
+      code: `G06F3/${100 + index}`,
+      locator: `paging:${index}`,
+    })),
+  );
+  candidate.relations = revision.relations.slice(0, 50);
+  candidate.relation_count = revision.relations.length;
+  const pagedCandidate: Omit<typeof candidate, "next_relation_offset"> & {
+    next_relation_offset: number | null;
+  } = {
+    ...candidate,
+    next_relation_offset: candidate.relation_count > 50 ? 50 : null,
+  };
+  await env.PMGS_BUCKET.put(
+    `releases/${RELEASE}/groups/classification/G06F3/002.json`,
+    JSON.stringify({
+      schema_version: "2.0",
+      release_id: RELEASE,
+      chunk_id: "002",
+      records: [pagedCandidate],
+    }),
+    { httpMetadata: { contentType: "application/json; charset=utf-8" } },
+  );
+  return candidate.relation_count;
+}
+
+export async function seedMalformedClassificationFixture(
+  defect: "revision_relation" | "storage_schema",
+): Promise<void> {
+  const candidate = structuredClone(IPC_8U) as unknown as {
+    schema_version: string;
+    revision_records: Array<{ relations: unknown[] }>;
+  };
+  if (defect === "revision_relation") {
+    candidate.revision_records[0]!.relations = [{}];
+  } else {
+    candidate.schema_version = "9.9";
+  }
+  await env.PMGS_BUCKET.put(
+    `releases/${RELEASE}/groups/classification/G06F3/002.json`,
+    JSON.stringify({
+      schema_version: "2.0",
+      release_id: RELEASE,
+      chunk_id: "002",
+      records: [candidate],
+    }),
+    { httpMetadata: { contentType: "application/json; charset=utf-8" } },
+  );
+}
+
 export async function seedLargeLookupFixture(recordCount = 1_200): Promise<number> {
   const records = Array.from({ length: recordCount }, (_, index) => {
     const code = `A01B1/${String(index).padStart(4, "0")}`;
@@ -390,7 +575,7 @@ export async function seedLargeLookupFixture(recordCount = 1_200): Promise<numbe
   }
   const chunkKey = `releases/${RELEASE}/groups/classification/A01B1/001.json`;
   const body = JSON.stringify({
-    schema_version: "1.0",
+    schema_version: "2.0",
     release_id: RELEASE,
     chunk_id: "001",
     records,
@@ -398,7 +583,7 @@ export async function seedLargeLookupFixture(recordCount = 1_200): Promise<numbe
   await env.PMGS_BUCKET.put(
     `releases/${RELEASE}/groups/classification/A01B1/manifest.json`,
     JSON.stringify({
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: RELEASE,
       group_kind: "classification",
       edition: null,

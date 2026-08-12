@@ -7,4 +7,11 @@
     <trans>G06F   3/   048</trans>
     <date>2026-01-01</date>
   </infor>
+  <infor>
+    <FI attr="del">G06F   3/   040</FI>
+    <oldtitle>Synthetic reference-only source</oldtitle>
+    <newtitle>Synthetic reference-only target</newtitle>
+    <trans>G06F   3/   041</trans>
+    <date>2026-01-01</date>
+  </infor>
 </data>

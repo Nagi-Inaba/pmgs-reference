@@ -8,7 +8,7 @@ PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex a
 
 ## Quick setup
 
-After v0.3.0 is available on PyPI, installation takes two commands:
+After v0.4.0 is available on PyPI, installation takes two commands:
 
 ```powershell
 uv tool install pmgs-reference
@@ -87,7 +87,8 @@ from pmgs_reference import PMGSStore
 store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048")
-results = store.search("interaction technology", schemes=["fi", "ipc"], language="en")
+classifications = store.search("interaction technology", schemes=["fi", "ipc"], language="en")
+combined = store.search_pmgs("interaction technology", language="en")
 parents = store.parents("fi", "G06F3/048")
 documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 ```
@@ -99,7 +100,7 @@ pmgs document DOCUMENT_ID --page 1 --json
 pmgs doctor --json
 ```
 
-See [Local reference interfaces](docs/local-interfaces.md) for custom data directories and existing SQLite files.
+See [Local reference interfaces](docs/local-interfaces.en.md) for custom data directories and existing SQLite files.
 
 ## Build a website for GPTs and Gems
 
@@ -112,7 +113,8 @@ PMGS data is not included in the repository or Python package. Complete the JPO 
 ## Documentation
 
 - [Codex and Claude Code setup](docs/local-agent-kit.en.md)
-- [Python, CLI, and MCP interfaces](docs/local-interfaces.md)
+- [Python, CLI, and MCP interfaces](docs/local-interfaces.en.md)
+- [Public API contract](docs/public-api.en.md)
 - [Web self-hosting](docs/self-hosting.en.md)
 - [Architecture](docs/architecture.md)
 - [Current implementation status](docs/current-status.md)

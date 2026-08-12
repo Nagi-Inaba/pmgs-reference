@@ -5,15 +5,22 @@ from __future__ import annotations
 import csv
 import io
 import re
+import unicodedata
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import cast
 
 import pymupdf
-from lxml import etree, html
+from lxml import etree
 
 from pmgs_reference.ingest.csv_support import portable_csv_field_size_limit
-from pmgs_reference.ingest.database import DatabaseWriter, SourceRef, normalized_text
+from pmgs_reference.ingest.database import (
+    DatabaseWriter,
+    SourceRef,
+    normalize_version_indicator,
+    normalized_text,
+)
+from pmgs_reference.ingest.html_support import parse_html
 from pmgs_reference.ingest.inventory import SourceManifestEntry
 from pmgs_reference.normalization import normalize_code
 
@@ -46,13 +53,6 @@ def _parse_xml(raw: bytes) -> etree._Element:
         text = _XML_DECLARATION_TEXT.sub("", text, count=1)
         fallback = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
         return etree.fromstring(text, parser=fallback)
-
-
-def _decode_html(raw: bytes) -> str:
-    try:
-        return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return raw.decode("cp932")
 
 
 def _concept_type(code: str, level: int | None, scheme: str) -> str:
@@ -126,8 +126,10 @@ def _process_fi_codes(writer: DatabaseWriter, source: SourceRef, path: Path) -> 
         )
         if concept_id is not None and not was_known:
             _add_parent_from_stack(writer, stack, level, concept_id, source, locator)
+            revision_id = writer.base_revision(concept_id)
+            assert revision_id is not None
             writer.add_property(
-                concept_id=concept_id,
+                revision_id=revision_id,
                 name="fi_marker",
                 value=row[2],
                 language=None,
@@ -135,7 +137,7 @@ def _process_fi_codes(writer: DatabaseWriter, source: SourceRef, path: Path) -> 
                 source_locator=locator,
             )
             writer.add_property(
-                concept_id=concept_id,
+                revision_id=revision_id,
                 name="fi_status",
                 value=row[3],
                 language=None,
@@ -160,21 +162,73 @@ def _process_themes(writer: DatabaseWriter, source: SourceRef, path: Path, langu
         if not _THEME_CODE.fullmatch(code):
             continue
         locator = f"row:{row_number}"
+        sequence_number = _integer(row[1])
+        if language == "en":
+            concept_id = writer.find_concept("fterm", "", code)
+            if concept_id is None:
+                writer.add_issue(
+                    severity="error",
+                    code="THEME_TRANSLATION_CONCEPT_MISSING",
+                    message="English theme row has no canonical Japanese concept",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            revision_id = writer.base_revision(concept_id)
+            if revision_id is None:
+                writer.add_issue(
+                    severity="error",
+                    code="THEME_TRANSLATION_REVISION_MISSING",
+                    message="English theme row has no canonical Japanese revision",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            _canonical_level, canonical_sequence = writer.revision_structure(revision_id)
+            if canonical_sequence != sequence_number:
+                writer.add_issue(
+                    severity="warning",
+                    code="THEME_TRANSLATION_SEQUENCE_MISMATCH",
+                    message="English theme sequence differs from canonical Japanese source",
+                    source=source,
+                    source_locator=locator,
+                )
+            writer.add_concept_text(
+                revision_id=revision_id,
+                language="en",
+                kind="label",
+                sequence_number=1,
+                text=row[6],
+                source=source,
+                source_locator=locator,
+            )
+            for name, value in (("fi_scope", row[5]), ("remarks", row[7])):
+                writer.add_property(
+                    revision_id=revision_id,
+                    name=name,
+                    value=value,
+                    language="en",
+                    source=source,
+                    source_locator=locator,
+                )
+            continue
         concept_id = writer.add_concept(
             scheme="fterm",
             edition="",
             code=code,
             concept_type="theme",
             level=0,
-            sequence_number=_integer(row[1]),
+            sequence_number=sequence_number,
             source=source,
             source_locator=locator,
         )
         if concept_id is None:
             continue
+        revision_id = writer.base_revision(concept_id)
+        assert revision_id is not None
         writer.add_concept_text(
-            concept_id=concept_id,
-            language="en" if language == "en" else "ja",
+            revision_id=revision_id,
+            language="ja",
             kind="label",
             sequence_number=1,
             text=row[6],
@@ -183,10 +237,10 @@ def _process_themes(writer: DatabaseWriter, source: SourceRef, path: Path, langu
         )
         for name, value in (("fi_scope", row[5]), ("remarks", row[7])):
             writer.add_property(
-                concept_id=concept_id,
+                revision_id=revision_id,
                 name=name,
                 value=value,
-                language=language,
+                language="ja",
                 source=source,
                 source_locator=locator,
             )
@@ -220,6 +274,66 @@ def _process_fterms(writer: DatabaseWriter, source: SourceRef, path: Path, langu
         locator = f"row:{row_number}"
         theme_code = code[:5]
         aspect_code = code[:7]
+        depth = _integer(raw_depth) or 0
+        sequence_number = _integer(raw_sequence)
+        if language == "en":
+            existing_term = writer.find_concept("fterm", "", code)
+            if existing_term is None:
+                writer.add_issue(
+                    severity="error",
+                    code="FTERM_TRANSLATION_CONCEPT_MISSING",
+                    message="English F-term row has no canonical Japanese concept",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            existing_revision = writer.base_revision(existing_term)
+            if existing_revision is None:
+                writer.add_issue(
+                    severity="error",
+                    code="FTERM_TRANSLATION_REVISION_MISSING",
+                    message="English F-term row has no canonical Japanese revision",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            canonical_level, canonical_sequence = writer.revision_structure(existing_revision)
+            if canonical_sequence != sequence_number:
+                writer.add_issue(
+                    severity="error",
+                    code="FTERM_TRANSLATION_SEQUENCE_MISMATCH",
+                    message="English F-term sequence differs from canonical Japanese structure",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            if canonical_level != depth + 2:
+                writer.add_issue(
+                    severity="warning",
+                    code="FTERM_TRANSLATION_DEPTH_MISMATCH",
+                    message="English F-term depth differs from canonical Japanese structure",
+                    source=source,
+                    source_locator=locator,
+                )
+            writer.add_concept_text(
+                revision_id=existing_revision,
+                language="en",
+                kind="label",
+                sequence_number=1,
+                text=label,
+                source=source,
+                source_locator=locator,
+            )
+            writer.add_property(
+                revision_id=existing_revision,
+                name="fi_scope",
+                value=fi_scope,
+                language="en",
+                source=source,
+                source_locator=locator,
+            )
+            continue
+
         theme_id = writer.find_concept("fterm", "", theme_code)
         if theme_id is None:
             theme_id = writer.add_concept(
@@ -249,19 +363,20 @@ def _process_fterms(writer: DatabaseWriter, source: SourceRef, path: Path, langu
             source=source,
             source_locator=locator,
         )
-        depth = _integer(raw_depth) or 0
         term_id = writer.add_concept(
             scheme="fterm",
             edition="",
             code=code,
             concept_type="term",
             level=depth + 2,
-            sequence_number=_integer(raw_sequence),
+            sequence_number=sequence_number,
             source=source,
             source_locator=locator,
         )
         if term_id is None:
             continue
+        revision_id = writer.base_revision(term_id)
+        assert revision_id is not None
         if current_aspect != aspect_code:
             stack = []
             current_aspect = aspect_code
@@ -277,7 +392,7 @@ def _process_fterms(writer: DatabaseWriter, source: SourceRef, path: Path, langu
         )
         stack.append((depth, term_id))
         writer.add_concept_text(
-            concept_id=term_id,
+            revision_id=revision_id,
             language="en" if language == "en" else "ja",
             kind="label",
             sequence_number=1,
@@ -286,7 +401,7 @@ def _process_fterms(writer: DatabaseWriter, source: SourceRef, path: Path, langu
             source_locator=locator,
         )
         writer.add_property(
-            concept_id=term_id,
+            revision_id=revision_id,
             name="fi_scope",
             value=fi_scope,
             language=language,
@@ -325,6 +440,16 @@ def _process_ipc(
                 source_locator=locator,
             )
             continue
+        text_sequence = _integer(sequence)
+        if text_sequence is None or text_sequence <= 0:
+            writer.add_issue(
+                severity="error",
+                code="IPC_SEQUENCE_INVALID",
+                message="IPC text sequence must be a positive integer",
+                source=source,
+                source_locator=locator,
+            )
+            continue
         level = _integer(raw_level)
         was_known = writer.find_concept("ipc", edition, code) is not None
         concept_id = writer.add_concept(
@@ -333,34 +458,33 @@ def _process_ipc(
             code=code,
             concept_type=_concept_type(code, level, "ipc"),
             level=level,
-            sequence_number=_integer(sequence),
+            # IPCのsequenceは同一revision内の本文行順であり、revision自体の
+            # 構造属性ではない。実値はconcept_textへ保存する。
+            sequence_number=None,
             source=source,
             source_locator=locator,
         )
         if concept_id is None:
             continue
+        revision_id = writer.add_revision(
+            concept_id=concept_id,
+            version_indicator=version if edition == "8U" else "",
+            valid_from=valid_from or None,
+            valid_to=valid_to or None,
+            level=level,
+            sequence_number=None,
+            source=source,
+            source_locator=locator,
+        )
         if not was_known:
             _add_parent_from_stack(writer, stack, level, concept_id, source, locator)
-            for name, value in (
-                ("version", version),
-                ("valid_from", valid_from),
-                ("valid_to", valid_to),
-            ):
-                writer.add_property(
-                    concept_id=concept_id,
-                    name=name,
-                    value=value,
-                    language=None,
-                    source=source,
-                    source_locator=locator,
-                )
-        if version:
-            writer.register_ipc_version(concept_id, code, version)
+        else:
+            _add_parent_from_stack(writer, stack, level, concept_id, source, locator)
         writer.add_concept_text(
-            concept_id=concept_id,
+            revision_id=revision_id,
             language="en" if language == "en" else "ja",
             kind=f"ipc_text_type_{text_type.strip() or 'unknown'}",
-            sequence_number=_integer(sequence) or 1,
+            sequence_number=text_sequence,
             text=text,
             source=source,
             source_locator=locator,
@@ -390,8 +514,10 @@ def _process_fi_text(writer: DatabaseWriter, source: SourceRef, path: Path, lang
                 source_locator=locator,
             )
             continue
+        revision_id = writer.base_revision(concept_id)
+        assert revision_id is not None
         writer.add_concept_text(
-            concept_id=concept_id,
+            revision_id=revision_id,
             language="en" if language == "en" else "ja",
             kind=f"fi_text_type_{row[2].strip() or 'unknown'}",
             sequence_number=_integer(row[1]) or 1,
@@ -441,15 +567,18 @@ def _process_document_csv(
                 scheme="fterm",
                 edition="",
                 code=code,
-                concept_type=f"explanation_{base_type}_reference",
+                concept_type=base_type,
                 level=None,
                 sequence_number=None,
                 source=source,
                 source_locator=locator,
+                record_status="reference_only",
             )
         if normalized_text(row[text_column]) == "(Not Translated)" and concept_id is not None:
+            revision_id = writer.base_revision(concept_id)
+            assert revision_id is not None
             writer.add_property(
-                concept_id=concept_id,
+                revision_id=revision_id,
                 name=f"{kind}_translation_status",
                 value="not_translated",
                 language=language,
@@ -526,22 +655,24 @@ def _process_concordance(writer: DatabaseWriter, source: SourceRef, path: Path) 
                 scheme=left_scheme,
                 edition=left_edition,
                 code=row[1],
-                concept_type="concordance_reference",
+                concept_type=_concept_type(row[1], None, left_scheme),
                 level=None,
                 sequence_number=None,
                 source=source,
                 source_locator=locator,
+                record_status="reference_only",
             )
         if right is None:
             right = writer.add_concept(
                 scheme=right_scheme,
                 edition=right_edition,
                 code=row[3],
-                concept_type="concordance_reference",
+                concept_type=_concept_type(row[3], None, right_scheme),
                 level=None,
                 sequence_number=None,
                 source=source,
                 source_locator=locator,
+                record_status="reference_only",
             )
         writer.add_relation(
             from_concept_id=left,
@@ -593,13 +724,18 @@ def _process_xml(writer: DatabaseWriter, source: SourceRef, path: Path) -> None:
     )
     for record_number, element in enumerate(root.findall("infor"), 1):
         locator = f"element:infor[{record_number}]"
+        code = normalize_code("fi", element.findtext("FI") or "")
+        translated = normalize_code("fi", element.findtext("trans") or "")
         writer.add_source_record(
             source,
             record_number,
             "xml-element",
-            {"xml": etree.tostring(element, encoding="unicode")},
+            {
+                "code": code,
+                "translated": translated,
+                "xml": etree.tostring(element, encoding="unicode"),
+            },
         )
-        code = element.findtext("FI") or ""
         text_parts = []
         for raw_value in element.itertext():
             value = cast(str, raw_value)
@@ -608,36 +744,90 @@ def _process_xml(writer: DatabaseWriter, source: SourceRef, path: Path) -> None:
         writer.add_document_text(
             document_id=document_id,
             sequence_number=record_number,
-            locator=f"code:{normalize_code('fi', code)};{locator}",
-            heading=normalize_code("fi", code) or None,
+            locator=f"code:{code};{locator}",
+            heading=code or None,
             text="\n".join(text_parts),
             source_locator=locator,
         )
-        concept_id = writer.find_concept("fi", "", code)
-        writer.add_document_link(
-            document_id=document_id,
-            concept_id=concept_id,
-            kind="fi_amendment",
-            source=source,
-            source_locator=locator,
-        )
-        translated = element.findtext("trans") or ""
-        target_id = writer.find_concept("fi", "", translated)
-        writer.add_relation(
-            from_concept_id=concept_id,
-            to_concept_id=target_id,
-            kind="amended_to",
-            source=source,
-            source_locator=locator,
-        )
+        endpoints: list[tuple[str, int]] = []
+        for endpoint_role, endpoint in (("source", code), ("target", translated)):
+            normalized = normalize_code("fi", endpoint)
+            if not normalized:
+                continue
+            concept_id = writer.find_concept("fi", "", normalized)
+            if concept_id is None:
+                concept_id = writer.add_concept(
+                    scheme="fi",
+                    edition="",
+                    code=normalized,
+                    concept_type=_concept_type(normalized, None, "fi"),
+                    level=None,
+                    sequence_number=None,
+                    source=source,
+                    source_locator=locator,
+                    record_status="reference_only",
+                )
+            if concept_id is None:
+                writer.add_issue(
+                    severity="error",
+                    code="FI_AMENDMENT_ENDPOINT_UNRESOLVED",
+                    message="non-empty FI amendment endpoint could not be resolved",
+                    source=source,
+                    source_locator=locator,
+                )
+                continue
+            endpoints.append((normalized, concept_id))
+            if endpoint_role == "source":
+                writer.add_document_link(
+                    document_id=document_id,
+                    concept_id=concept_id,
+                    kind="fi_amendment",
+                    source=source,
+                    source_locator=locator,
+                )
+        if normalize_code("fi", translated):
+            source_id = next(
+                (item[1] for item in endpoints if item[0] == normalize_code("fi", code)), None
+            )
+            target_id = next(
+                (item[1] for item in endpoints if item[0] == normalize_code("fi", translated)), None
+            )
+            if not writer.add_relation(
+                from_concept_id=source_id,
+                to_concept_id=target_id,
+                kind="amended_to",
+                source=source,
+                source_locator=locator,
+            ):
+                writer.add_issue(
+                    severity="error",
+                    code="FI_AMENDMENT_ENDPOINT_UNRESOLVED",
+                    message="non-empty FI amendment relation endpoint could not be resolved",
+                    source=source,
+                    source_locator=locator,
+                )
 
 
 def _html_language(source: SourceRef) -> str:
     return "en" if source.data_group.endswith("_E") else "ja"
 
 
+def _ipc_amendment_header(cells: list[str]) -> bool:
+    normalized = [unicodedata.normalize("NFKC", value).strip() for value in cells]
+    return normalized == ["旧IPC", "分類の発効日", "新IPC", "分類の発効日"]
+
+
 def _process_html(writer: DatabaseWriter, source: SourceRef, path: Path) -> None:
-    document_tree = html.fromstring(_decode_html(path.read_bytes()))
+    parsed = parse_html(path.read_bytes())
+    document_tree = parsed.root
+    if parsed.recovery_used:
+        writer.add_issue(
+            severity="warning",
+            code="HTML_RECOVERY_USED",
+            message=parsed.diagnostic_summary or "HTML recovery parser reported diagnostics",
+            source=source,
+            source_locator="file",
+        )
     title_nodes = cast(list[etree._Element], document_tree.xpath("//title"))
     title = (
         normalized_text(" ".join(cast(Iterable[str], title_nodes[0].itertext())))
@@ -655,6 +845,10 @@ def _process_html(writer: DatabaseWriter, source: SourceRef, path: Path) -> None
     sequence = 0
     table_rows = cast(list[etree._Element], document_tree.xpath("//tr"))
     for row_number, table_row in enumerate(table_rows, 1):
+        old_id: int | None = None
+        new_id: int | None = None
+        old_code = ""
+        new_code = ""
         cell_nodes = cast(list[etree._Element], table_row.xpath("./th|./td"))
         cells = []
         for cell in cell_nodes:
@@ -662,9 +856,58 @@ def _process_html(writer: DatabaseWriter, source: SourceRef, path: Path) -> None
             cells.append(normalized_text(" ".join(values)))
         if not cells:
             continue
-        writer.add_source_record(source, row_number, "html-table-row", cells)
         if all(not cell for cell in cells):
+            writer.add_source_record(source, row_number, "html-empty-row", cells)
             continue
+        if kind == "ipc_amendment":
+            if len(cells) != 4:
+                if (
+                    len(cell_nodes) == 1
+                    and cell_nodes[0].tag.lower() == "td"
+                    and cell_nodes[0].get("colspan") == "4"
+                ):
+                    writer.add_source_record(source, row_number, "html-retained-row", cells)
+                    continue
+                writer.add_source_record(source, row_number, "html-unrecognized-row", cells)
+                writer.add_issue(
+                    severity="error",
+                    code="IPC_AMENDMENT_COLUMN_COUNT",
+                    message="IPC amendment data rows must contain exactly four cells",
+                    source=source,
+                    source_locator=f"table-row:{row_number}",
+                )
+                continue
+            if _ipc_amendment_header(cells) or any(node.tag.lower() == "th" for node in cell_nodes):
+                writer.add_source_record(source, row_number, "html-header-row", cells)
+                continue
+            old_code = normalize_code("ipc", cells[0])
+            new_code = normalize_code("ipc", cells[2])
+            try:
+                old_version = normalize_version_indicator(cells[1])
+                new_version = normalize_version_indicator(cells[3])
+                old_id = writer.ipc_versions.get((old_code, old_version))
+                new_id = writer.ipc_versions.get((new_code, new_version))
+            except ValueError:
+                old_id = None
+                new_id = None
+            if not old_code or not new_code or old_id is None or new_id is None:
+                writer.add_issue(
+                    severity="error",
+                    code="IPC_AMENDMENT_ENDPOINT_UNRESOLVED",
+                    message="IPC amendment code and version endpoint could not be resolved",
+                    source=source,
+                    source_locator=f"table-row:{row_number}",
+                )
+                continue
+        source_payload: object = cells
+        if kind == "ipc_amendment":
+            source_payload = {
+                "from_code": old_code,
+                "from_version": cells[1].strip().strip("()"),
+                "to_code": new_code,
+                "to_version": cells[3].strip().strip("()"),
+            }
+        writer.add_source_record(source, row_number, "html-table-row", source_payload)
         sequence += 1
         writer.add_document_text(
             document_id=document_id,
@@ -684,24 +927,19 @@ def _process_html(writer: DatabaseWriter, source: SourceRef, path: Path) -> None
                     source=source,
                     source_locator=f"table-row:{row_number}",
                 )
-        if kind == "ipc_amendment" and len(cells) >= 4:
-            old_code = normalize_code("ipc", cells[0])
-            new_code = normalize_code("ipc", cells[2])
-            if not old_code or not new_code or old_code.lower().startswith("old"):
-                continue
-            old_id = writer.ipc_versions.get((old_code, cells[1].strip()))
-            new_id = writer.ipc_versions.get((new_code, cells[3].strip()))
-            writer.add_relation(
-                from_concept_id=old_id,
-                to_concept_id=new_id,
+        if kind == "ipc_amendment":
+            if not writer.add_revision_relation(
+                from_revision_id=old_id,
+                to_revision_id=new_id,
                 kind="amended_to",
                 source=source,
                 source_locator=f"table-row:{row_number}",
-            )
-            for concept_id in (old_id, new_id):
-                writer.add_document_link(
+            ):
+                continue
+            for revision_id in (old_id, new_id):
+                writer.add_document_revision_link(
                     document_id=document_id,
-                    concept_id=concept_id,
+                    revision_id=revision_id,
                     kind=kind,
                     source=source,
                     source_locator=f"table-row:{row_number}",
@@ -779,7 +1017,7 @@ def _process_fi_amendment_links(writer: DatabaseWriter, source: SourceRef, path:
         concept_id = writer.find_concept("fi", "", code)
         if document_id is None:
             writer.add_issue(
-                severity="warning",
+                severity="error",
                 code="FI_AMENDMENT_LINK_TARGET_MISSING",
                 message=f"amendment document not found for {code}",
                 source=source,
@@ -791,11 +1029,12 @@ def _process_fi_amendment_links(writer: DatabaseWriter, source: SourceRef, path:
                 scheme="fi",
                 edition="",
                 code=code,
-                concept_type="amendment_reference",
+                concept_type=_concept_type(code, None, "fi"),
                 level=None,
                 sequence_number=None,
                 source=source,
                 source_locator=f"row:{row_number}",
+                record_status="reference_only",
             )
         writer.add_document_link(
             document_id=document_id,
@@ -812,14 +1051,18 @@ def _process_copyright(writer: DatabaseWriter, source: SourceRef, path: Path) ->
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = raw.decode("cp932")
+    clean = normalized_text(text)
+    if not clean:
+        raise ValueError("COPYRGHT attribution must not be empty")
     writer.add_reference_entry(
         category="copyright",
         key="COPYRGHT",
         language="und",
-        value=text,
+        value=clean,
         source=source,
         source_locator="file",
     )
+    writer.add_release_source(attribution=clean, source=source)
 
 
 def process_sources(
@@ -828,6 +1071,11 @@ def process_sources(
     """Process every inventoried source exactly once in dependency order."""
     ordered = tuple(entries)
     processed: set[str] = set()
+    copyright_entries = [
+        entry for entry in ordered if Path(entry.relative_path).name.upper() == "COPYRGHT"
+    ]
+    if len(copyright_entries) != 1:
+        raise ValueError("source package must contain exactly one COPYRGHT file")
 
     def run(prefix: str, handler: object) -> None:
         for entry in ordered:

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import os
 import re
 import sqlite3
-import stat
 import tempfile
+import time
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -17,19 +17,44 @@ from pmgs_reference.data_paths import write_json_atomic
 from pmgs_reference.ingest.adapters import process_sources
 from pmgs_reference.ingest.database import DatabaseWriter
 from pmgs_reference.ingest.inventory import SourceInventory, build_inventory
+from pmgs_reference.schema import SCHEMA_VERSION
+from pmgs_reference.validation import logical_digest
 
 _RELEASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_WINDOWS = os.name == "nt"
+_REFERENCE_DATE_GROUPS = frozenset(
+    {
+        "FI/FI",
+        "FI/FI_TEXT",
+        "FI/FI_TEXT_E",
+        "FTERM/THEME",
+        "FTERM/THEME_E",
+        "FTERM/FTERM",
+        "FTERM/FTERM_E",
+        "IPC/IPC4_TEXT",
+        "IPC/IPC5_TEXT",
+        "IPC/IPC6_TEXT",
+        "IPC/IPC7_TEXT",
+        "IPC/IPC7E_TEXT",
+        "IPC/IPC8B_TEXT",
+        "IPC/IPC8U_TEXT",
+    }
+)
 _COUNTED_TABLES = (
     "release",
     "source_file",
     "source_record",
+    "release_source",
     "concept",
+    "concept_revision",
     "concept_text",
     "concept_property",
     "relation",
+    "revision_relation",
     "document",
     "document_text",
     "document_link",
+    "document_revision_link",
     "reference_entry",
     "build_issue",
 )
@@ -43,12 +68,14 @@ class BuildError(RuntimeError):
 class BuildResult:
     schema_version: str
     release_id: str
+    reference_date: str
     source_manifest_sha256: str
     source_file_count: int
     source_total_bytes: int
     database_file: str
     database_size_bytes: int
     database_sha256: str
+    logical_digest: str
     table_counts: dict[str, int]
     warning_count: int
     error_count: int
@@ -65,6 +92,36 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def _reference_date(inventory: SourceInventory) -> str:
+    values: set[dt.date] = set()
+    for entry in inventory.entries:
+        if entry.file_type != "csv" or entry.data_group not in _REFERENCE_DATE_GROUPS:
+            continue
+        match = re.search(r"_([0-9]{8})\.csv$", entry.relative_path, re.IGNORECASE)
+        if match is None:
+            # Some registered PMGS packages contain isolated malformed filenames.
+            # The release date is selected only from exact, parseable filename dates;
+            # all such dates must still agree, so no value is inferred from a typo.
+            continue
+        try:
+            values.add(dt.datetime.strptime(match.group(1), "%Y%m%d").date())
+        except ValueError as exc:
+            raise BuildError("recognized classification CSV has an invalid YYYYMMDD date") from exc
+    if len(values) != 1:
+        raise BuildError(
+            "source package must contain exactly one valid classification CSV reference date"
+        )
+    return next(iter(values)).isoformat()
+
+
+def _same_inventory(left: SourceInventory, right: SourceInventory) -> bool:
+    return (
+        left.logical_sha256 == right.logical_sha256
+        and left.total_bytes == right.total_bytes
+        and left.entries == right.entries
+    )
+
+
 def _count_tables(connection: sqlite3.Connection) -> dict[str, int]:
     counts: dict[str, int] = {}
     for table in _COUNTED_TABLES:
@@ -74,55 +131,44 @@ def _count_tables(connection: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
-def _file_identity(metadata: os.stat_result) -> tuple[int, int, int]:
-    return metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns
+def _retry_permission_error(operation: Callable[[], None], *, attempts: int) -> None:
+    delay = 0.05
+    for attempt in range(attempts):
+        try:
+            operation()
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 1.5, 0.5)
 
 
-def _remove_owned_reservation(
-    output_path: Path, reservation_identity: tuple[int, int, int]
+def promote_database_exclusive(
+    temporary_path: Path, output_path: Path, *, permission_attempts: int = 1
 ) -> None:
-    try:
-        current = os.lstat(output_path)
-    except FileNotFoundError:
-        return
-    if _file_identity(current) != reservation_identity:
-        return
-    with suppress(FileNotFoundError):
-        output_path.unlink()
-
-
-def _promote_database(temporary_path: Path, output_path: Path) -> None:
     """Promote a complete database without replacing an existing destination."""
+    if permission_attempts < 1:
+        raise ValueError("permission_attempts must be positive")
     try:
         os.link(temporary_path, output_path)
     except FileExistsError:
         raise FileExistsError(f"database output already exists: {output_path}") from None
     except OSError:
-        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
-        flags |= getattr(os, "O_NOFOLLOW", 0)
+        if not _WINDOWS:
+            raise
         try:
-            descriptor = os.open(output_path, flags, 0o600)
+            # Windows rename is atomic within one volume and never replaces an
+            # existing destination. This is the safe fallback for FAT/exFAT,
+            # which do not support hard links. POSIX rename may overwrite, so
+            # non-Windows platforms fail closed above.
+            _retry_permission_error(
+                lambda: os.rename(temporary_path, output_path), attempts=permission_attempts
+            )
         except FileExistsError:
             raise FileExistsError(f"database output already exists: {output_path}") from None
-        try:
-            reservation_identity = _file_identity(os.fstat(descriptor))
-        finally:
-            os.close(descriptor)
-
-        try:
-            current = os.lstat(output_path)
-            if (
-                not stat.S_ISREG(current.st_mode)
-                or _file_identity(current) != reservation_identity
-                or current.st_size != 0
-            ):
-                raise OSError("database output reservation changed before promotion")
-            os.replace(temporary_path, output_path)
-        except Exception:
-            _remove_owned_reservation(output_path, reservation_identity)
-            raise
     else:
-        temporary_path.unlink()
+        _retry_permission_error(temporary_path.unlink, attempts=permission_attempts)
 
 
 def build_database(
@@ -137,7 +183,7 @@ def build_database(
     """Build and atomically install a canonical database from one PMGS package."""
     if not _RELEASE_ID.fullmatch(release_id):
         raise ValueError("release_id must be 1-64 URL-safe characters")
-    source_root = source_root.resolve()
+    source_root = source_root.expanduser().absolute()
     output_path = output_path.resolve()
     if output_path.exists():
         raise FileExistsError(f"database output already exists: {output_path}")
@@ -150,11 +196,17 @@ def build_database(
 
     if progress is not None:
         progress("inventory")
-    source_inventory = inventory if inventory is not None else build_inventory(source_root)
+    source_inventory = build_inventory(source_root)
+    if inventory is not None and not _same_inventory(source_inventory, inventory):
+        temporary_path.unlink(missing_ok=True)
+        raise BuildError(
+            "supplied source inventory does not match the immediate pre-build snapshot"
+        )
     failures = [entry for entry in source_inventory.entries if entry.status == "failed"]
     if failures:
         temporary_path.unlink(missing_ok=True)
         raise BuildError(f"source inventory contains {len(failures)} failed file(s)")
+    reference_date = _reference_date(source_inventory)
 
     if progress is not None:
         progress("database")
@@ -164,10 +216,14 @@ def build_database(
         connection.execute("PRAGMA synchronous = OFF")
         connection.execute("PRAGMA temp_store = MEMORY")
         connection.execute("PRAGMA foreign_keys = ON")
-        writer = DatabaseWriter(connection, release_id, source_inventory)
+        writer = DatabaseWriter(connection, release_id, reference_date, source_inventory)
         writer.initialize()
         process_sources(writer, source_root, source_inventory.entries)
         connection.commit()
+
+        post_inventory = build_inventory(source_root)
+        if not _same_inventory(source_inventory, post_inventory):
+            raise BuildError("source package changed during database construction")
 
         foreign_key_errors = list(connection.execute("PRAGMA foreign_key_check"))
         integrity_row = connection.execute("PRAGMA integrity_check").fetchone()
@@ -189,34 +245,39 @@ def build_database(
                 f"build_errors={error_count}"
             )
         table_counts = _count_tables(connection)
+        database_logical_digest = logical_digest(connection)
         connection.execute("ANALYZE")
         connection.execute("PRAGMA optimize")
         connection.commit()
         connection.execute("VACUUM")
-    except Exception:
+    except Exception as exc:
         connection.close()
         if temporary_path.exists():
             temporary_path.unlink()
-        raise
+        if isinstance(exc, BuildError):
+            raise
+        raise BuildError(f"source processing failed: {type(exc).__name__}") from exc
     else:
         connection.close()
 
     database_sha256 = _sha256_file(temporary_path)
     database_size_bytes = temporary_path.stat().st_size
     try:
-        _promote_database(temporary_path, output_path)
+        promote_database_exclusive(temporary_path, output_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)
         raise
     result = BuildResult(
-        schema_version="1.0",
+        schema_version=SCHEMA_VERSION,
         release_id=release_id,
+        reference_date=reference_date,
         source_manifest_sha256=source_inventory.logical_sha256,
         source_file_count=len(source_inventory.entries),
         source_total_bytes=source_inventory.total_bytes,
         database_file=output_path.name,
         database_size_bytes=database_size_bytes,
         database_sha256=database_sha256,
+        logical_digest=database_logical_digest,
         table_counts=table_counts,
         warning_count=warning_count,
         error_count=error_count,

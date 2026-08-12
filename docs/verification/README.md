@@ -6,6 +6,11 @@
 
 ## 現在の境界
 
+[v0.4.0の正確性検証](v0.4-correctness-2026-08-12.md)は、schema v2の全量A/B再構築、
+公開export、AI client評価、release gateを一つの記録へまとめる。
+
+完了していないゲートは成功扱いにせず、現在のHold理由を同じ記録へ明示する。
+
 2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語topと英語`llms.en.txt`を切替先として追加した。
 
 この入口変更後の契約は合成fixtureによるrepository全検査とWorker回帰検査で検証した。実データ全量A/B監査は、第三者が実originでWeb公開する場合に再実行する。

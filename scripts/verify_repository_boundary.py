@@ -47,6 +47,11 @@ ALLOWED_LOCAL_PATH_PREFIXES = {
         "C:" + "\\path\\to\\",
         "C:" + "\\\\path\\\\to\\\\",
     ),
+    "docs/local-interfaces.en.md": (
+        "C:" + "\\absolute\\",
+        "C:" + "\\path\\to\\",
+        "C:" + "\\\\path\\\\to\\\\",
+    ),
     "docs/local-agent-kit.md": (
         "C:" + "\\absolute\\",
         "C:" + "\\path\\to\\",

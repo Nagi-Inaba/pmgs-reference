@@ -39,7 +39,7 @@ class DoctorResult:
 
     def as_dict(self) -> JSONDict:
         return {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "ok": self.ok,
             "database": str(self.database),
             "database_sha256": self.database_sha256,
@@ -64,20 +64,34 @@ def _sample_identity(database: Path) -> JSONDict:
     connection.row_factory = sqlite3.Row
     try:
         connection.execute("PRAGMA query_only = ON")
-        row = connection.execute(
-            "SELECT scheme, normalized_code, edition FROM concept "
-            "ORDER BY CASE scheme WHEN 'fi' THEN 0 WHEN 'fterm' THEN 1 ELSE 2 END, "
-            "edition, normalized_code LIMIT 1"
-        ).fetchone()
+        try:
+            row = connection.execute(
+                "SELECT c.scheme, c.normalized_code, c.edition, cr.version_indicator "
+                "FROM concept c JOIN release r ON r.release_id = c.release_id "
+                "JOIN concept_revision cr ON cr.concept_id = c.concept_id "
+                "WHERE c.record_status = 'canonical' "
+                "AND (cr.valid_from IS NULL OR cr.valid_from <= r.reference_date) "
+                "AND (cr.valid_to IS NULL OR cr.valid_to >= r.reference_date) "
+                "ORDER BY CASE c.scheme WHEN 'fi' THEN 0 WHEN 'fterm' THEN 1 ELSE 2 END, "
+                "c.edition, c.normalized_code, cr.version_indicator LIMIT 1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Preserve the small helper's compatibility with isolated unit fixtures.
+            row = connection.execute(
+                "SELECT scheme, normalized_code, edition, NULL AS version_indicator "
+                "FROM concept LIMIT 1"
+            ).fetchone()
     finally:
         connection.close()
     if row is None:
         raise ValueError("PMGS Reference database contains no classifications")
     raw_edition = row["edition"]
+    raw_version = row["version_indicator"]
     return {
         "scheme": str(row["scheme"]),
         "code": str(row["normalized_code"]),
         "edition": None if raw_edition in {None, ""} else str(raw_edition),
+        "version": None if raw_version in {None, ""} else str(raw_version),
     }
 
 
@@ -105,6 +119,8 @@ async def _check_stdio(
     }
     if sample["edition"] is not None:
         arguments["edition"] = sample["edition"]
+    if sample["version"] is not None:
+        arguments["version"] = sample["version"]
     async with (
         stdio_client(parameters) as (read_stream, write_stream),
         ClientSession(read_stream, write_stream) as session,
@@ -121,7 +137,11 @@ async def _check_stdio(
         for tool in listed.tools
     )
     payload = cast(JSONDict, lookup.structured_content or {})
-    sample_ok = payload.get("match_status") in {"exact", "normalized_exact"}
+    sample_ok = (
+        payload.get("schema_version") == "2.0"
+        and payload.get("match_status") in {"exact", "normalized_exact"}
+        and bool(payload.get("reference_date"))
+    )
     checks = {
         "mcp_server_identity": initialized.server_info.name == MCP_SERVER_NAME,
         "mcp_tool_contract": names == EXPECTED_MCP_TOOLS,

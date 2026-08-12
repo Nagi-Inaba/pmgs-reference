@@ -2,7 +2,7 @@ schema_version: "1.0"
 release_id: JPPM2099001
 sources:
   - source_id: synthetic-pmgs
-    owner: Test Fixture
+    owner: JPO
     acquisition_basis: registered_bulk_download
     policy_status: registered_use
     delivery:
@@ -15,7 +15,7 @@ sources:
       source_archive_download: false
       canonical_database_download: false
     attribution: Copyright (C) TEST 2026
-    source_url: https://example.test/synthetic-pmgs
+    source_url: https://www.jpo.go.jp/system/laws/sesaku/data/download.html
     processing_notice:
       ja: このページは、合成テストデータを変換して作成しています。
       en: This page is generated from transformed synthetic test data.

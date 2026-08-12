@@ -16,6 +16,10 @@ Worker は PMGS 原資料を解析しない。分類照会は group manifest と
 - `/openapi.json`、`/llms.txt`、`/llms.en.txt`、`/robots.txt`、`/sitemap.xml`
 - `/assets/webmcp.js`：対応ブラウザだけが利用する任意の WebMCP 登録スクリプト
 
+分類照会はschema 2.0の一コード一bundleを読み、Worker内で有効期間を計算しない。
+IPCの`version=YYYY.MM`、`relation_limit`（既定50、最大200）、`relation_offset`に対応する。
+version不存在または基準日に有効な版がない場合はHTTP 200の構造化recordを返す。
+
 ## 版の切替
 
 `wrangler.jsonc` の `RELEASE_CATALOG_JSON` が公開可能な版の allowlist、`CURRENT_RELEASE` が `current` の実体である。R2 上の可変ファイルから現在版を自動判定しない。

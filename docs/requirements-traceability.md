@@ -8,6 +8,8 @@
 
 `external`は、GitHubまたは本番環境での外部確認が必要な状態である。
 
+`hold`は、旧契約の証拠はあるが、現在開発中のschemaまたはinterface契約での再検証が必要な状態である。
+
 ## v1要件
 
 | ID | 要件 | 状態 | 証拠または残作業 |
@@ -16,37 +18,37 @@
 | DATA-01 | 全入力をhash付きmanifestへ記録する | verified | 6,870 source、論理SHA-256を検証記録へ保存 |
 | DATA-02 | 全入力を`parsed`、`retained`、`failed`で説明する | verified | parsed 6,868、retained 2、failed 0 |
 | DATA-03 | CSV、XML、HTML、PDFを専用adapterで処理する | verified | 合成fixtureと実データprofile |
-| DATA-04 | FI、Fターム、IPC、解説、改正、対応、定義文書をSQLiteへ格納する | verified | 1,207,960 concept、6,667 document、未表現source 0 |
+| DATA-04 | FI、Fターム、IPC、解説、改正、対応、定義文書をSQLiteへ格納する | verified | schema v2候補Aの全量54チェックでIPC revision 84,195件、FI改正関係39,428件、未解決endpoint 0件を確認 |
 | DATA-05 | 旧DBの既知件数を回帰基準にする | verified | Fタームテーマ2,929、Fターム411,383、FI 190,384、IPC 8U 82,540が一致 |
-| STORE-01 | 版付きSQLiteとFTS5を生成する | verified | SQLite schema、FTS5 trigram、integrityと外部key検査 |
-| STORE-02 | 内容アドレス付きSQLiteを保持し、検証済み現行版を原子的に切り替える | verified | `data_paths.py`、`setup.py`、setupの再利用・source変更・lock・legacy・pointer・ハードリンク非対応・出力競合test、3 OS hosted CI |
+| STORE-01 | 版付きSQLiteとFTS5を生成する | verified | schema v2候補AでSQLite integrity、FTS parity、lineage、logical digestを含む54チェックに合格 |
+| STORE-02 | 内容アドレス付きSQLiteを保持し、検証済み現行版を原子的に切り替える | verified | `data_paths.py`、`setup.py`、setupの再利用・source変更・lock・legacy・pointer・出力競合test、Windowsの実exFAT構築。現行commitの3 OS hosted CIは`RELEASE-04`で追跡する |
 | NORM-01 | PythonとTypeScriptが同じ正規化vectorを通す | verified | `schemas/normalization-vectors.json`と両実装のtest |
-| API-01 | Python APIがlookup、search、階層、文書、release情報を提供する | verified | 合成fixture testと実データsmoke |
+| API-01 | Python APIがlookup、search、階層、文書、release情報を提供する | verified | IPC基準日版・明示版・無効版、relation pagination、分類・文書分離検索の合成回帰と実データsmokeに合格 |
 | CLI-01 | inventory、build、validate、lookup、search、document、doctor、agent kit、skill導入、mcpを提供する | verified | CLI test、agent kit test、実stdio protocol smoke |
-| CLI-02 | export、公開検証、release auditを提供する | verified | 合成fixture testと2026-08-08の全量回帰記録 |
+| CLI-02 | export、公開検証、release auditを提供する | verified | 合成fixture testと最終実データA/B各454,303 objectの全件validation、25条件release audit |
 | CLI-03 | `pmgs setup`が全OSで構築、検証、切替、client接続を一つの入口から実行する | verified | setup CLI、JSON・対話契約、dry-run、Ubuntu・Windows・macOSのwheel E2E |
-| MCP-01 | stdio MCPが三つの読み取り専用toolを提供する | verified | SDK tool testとstdio protocol smoke |
+| MCP-01 | stdio MCPが三つの読み取り専用toolを提供する | verified | typed input、protocol error、version、複合検索、prompt injection境界の回帰とCodex実MCP評価に合格 |
 | AGENT-01 | CodexとClaude Codeへclient別MCP設定を生成する | verified | TOMLとJSONのparser test、登録command test |
 | AGENT-02 | 同じ読み取り専用skillを両clientへ非破壊で導入する | verified | hash一致、冪等、上書き拒否、途中失敗回収、同時競合保持test |
 | AGENT-03 | 実stdio接続とSQLite不変性を診断する | verified | `pmgs doctor`の実client、tool契約、照会前後hash、managed pointer SHA不一致と診断中pointer切替の拒否test |
 | AGENT-04 | 日本語を既定にし、英語へ切り替えられる | verified | CLI、skill、日英README、Web top、`llms.txt`のtest |
 | AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
 | DOC-02 | 第三者向けWebセルフホストとGPTs、Gem、Copilot Studioの制約を公開する | verified | 日英ガイドと全Markdown相対link test |
-| PUB-01 | 公開分類をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証。実データは2026-08-09の直前契約で全件監査済みで、Web公開時に現行契約を再監査する |
-| PUB-02 | 公開文書をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証。実データは2026-08-09の直前契約で全件監査済みで、Web公開時に現行契約を再監査する |
+| PUB-01 | 公開分類をHTML、Markdown、JSONで生成する | verified | classification record 2.0とrevision bundleを実データA/B各454,303 objectで最終validatorにより全件再検証し、全error群0、tree SHA-256一致 |
+| PUB-02 | 公開文書をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証し、分類と文書を含む最終実データA/B公開treeを全件validation |
 | PUB-03 | 元archive、正本DB、一括JSONを公開成果物へ含めない | verified | repository boundaryと公開validator |
 | PUB-04 | OpenAPI、`llms.txt`、`robots.txt`、sitemapを生成する | verified | JSON、XML、HTML parser test |
 | PUB-05 | 帰属、原典URL、加工表示、非公式サービス表示を全公開ページへ出す | verified | policy schema、21対象pytest、validatorの`notice_errors`反証test |
 | PUB-06 | JSON sourceにowner、原典URL、attributionを含める | verified | classification schemaと公開record test |
 | PUB-07 | v1で曖昧な複数source policyを拒否する | verified | schema `maxItems: 1`とfail-closed loader test |
-| PUB-08 | 公開attributionを入力releaseの権利表示と一致させる | verified | SQLite `COPYRGHT`との事前照合と不一致反証test |
+| PUB-08 | 公開attributionを入力releaseの権利表示と一致させる | verified | DB由来のowner、URL、COPYRGHTとpolicyをA/B export前に完全一致で照合し、全公開notice error 0 |
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 110件、Ruff、mypy、boundary、sdist、wheelに合格 |
-| RELEASE-02 | 実データのA/B buildと全件監査を通す | implemented | [2026-08-09の監査](verification/public-release-2026-08-09.md)は当時の契約で`ready=true`。2026-08-10の日英入口追加後はWeb公開時に再監査する |
-| RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | Python標準検査とWorker `verify`に合格 |
-| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | [Main CI run 31513770595](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513770595)の3 OS `wheel-e2e` job |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 216件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
+| RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
+| RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
+| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | external | v0.4.0 wheelはWindowsでsetup、再実行、doctor、lookup、MCPに合格。Ubuntu、Windows、macOSの現行commitに対するhosted `wheel-e2e`が残る |
 | RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | implemented | SHA固定の`release.yml`。GitHub `pypi`環境、PyPI pending publisher、tag実行は外部設定待ち |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
 | GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | [Main CI run 31513770595](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513770595)で10 jobが成功し、branch protectionとrulesetで同じ10 checkを必須化 |

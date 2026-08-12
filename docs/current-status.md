@@ -1,11 +1,33 @@
 # 現在の状態
 
-- 更新日: 2026-08-12
-- 実装状態: 1コマンドでローカル環境を構築する`pmgs setup`を含むv0.3.0のソースコードを`main`へ統合済み。GitHub Releaseの最新版はv0.2.0
-- 検証状態: Windowsのローカル全検査、隔離wheel導入試験、JPPM2026002の独立A/B全量構築、Pull Requestと`main`のGitHub Actions CI、CodeQLに合格
+- 更新日: 2026-08-13
+- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約を専用branchで改修中。`main`の公開ソースはv0.3.0、GitHub Releaseの最新版はv0.2.0
+- 検証状態: **Hold**。v0.3.0の検証記録は回帰資料として保持するが、schema v2と分類record 2.0の合格証拠には継承しない
 - 公開状態: v0.3.0のソースコードを含むGitHub repositoryとv0.2.0 Releaseは公開済み。v0.3.0 Release、PyPI、R2、Worker、独自domain、外部検索indexは未公開
 
 ## 結論
+
+v0.4.0候補は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証と実データA/B監査に合格した。
+Claude Codeの実参照再評価、hosted CI、CodeQLがすべて完了するまで公開準備Holdを維持する。
+
+2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
+NTFSとexFATの独立した空の出力先へそれぞれschema v2で再構築した。
+両候補はdatabase、build report、validation reportのbytesとSHA-256が一致し、
+同じlogical digestになった。両候補とも54件のvalidation、7件のdoctor検査すべてに合格した。
+Codexは隔離wheelを使った実MCP評価の全ケースに合格し、禁止tool呼出しは0件だった。
+公開exportのA/Bも454,303 object、14,406,835,616 bytes、tree SHA-256まで一致し、
+全件validationと25条件のrelease auditに合格した。
+その後追加したlink・reparse・読込時identity検査とHTML/CSS拒否条件を含む最終validatorで、
+A/B各454,303 objectを再検証した。両方とも`valid=true`、全error群0で、tree SHA-256と
+validation report SHA-256が一致した。25条件のrelease auditも`ready=true`、failure 0で合格した。
+独立code reviewとsecurity reviewの未解決Critical、High、Mediumは0件である。
+Claude Codeは`claude auth status`ではログイン済みと表示されるが、最終wheelによる実評価は
+`unauthenticated`となり、10ケースすべてでMCP toolを呼び出せなかった。再認証後の再評価が必要である。
+
+測定値と残るゲートは
+[v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md)へ記録する。
+
+以下のv0.3.0記録は、旧契約の回帰基準と外部公開状態を示すものであり、v0.4.0の完成を意味しない。
 
 v0.3.0候補では、取得済みPMGSパッケージを`pmgs setup`へ渡すだけで、棚卸し、SQLite構築、検証、実stdio MCP診断、現行版の切替までをWindows、macOS、Linuxで同じCLIから実行できる。
 
@@ -103,7 +125,9 @@ Pull Request #4は2026-08-12にsquash mergeされ、`main`はcommit `95a1d3eec7e
 [Main CodeQL run 31513778284](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31513778284)も3解析すべてに成功した。
 
 `main`のbranch protectionとrulesetは、Python 6 job、3 OSのwheel 3 job、Worker 1 jobからなる同じ10件のcheckをstrictで必須化している。
-linear historyとレビュー会話の解決を要求し、force pushとbranchの削除を禁止している。
+force pushとbranchの削除を禁止している。2026年8月13日の再確認では、Pull Request review、
+レビュー会話の解決、linear historyはrepository ruleとして必須化されていない。v0.4.0では
+Pull Requestと独立reviewを手動の統合ゲートとして扱う。
 
 ## v0.3.0 setupの実データ全量検証
 
@@ -193,9 +217,9 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 1. GitHubには2026-08-12時点でenvironmentが0件であり、PyPIの`pmgs-reference` project endpointも404を返す。
    `pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。
    404だけで将来の名前取得を保証しない。
-2. v0.3.0 tagを作成し、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
+2. tag、GitHub Release、PyPI公開はv0.4.0のmain統合には含めない。将来、別途公開を承認した場合だけ、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
 GitHub repositoryの`main`にあるv0.3.0のソースコードと、data非同梱のv0.2.0 Releaseは公開済みである。
-v0.3.0 Release、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。
+v0.3.0以降のRelease、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。

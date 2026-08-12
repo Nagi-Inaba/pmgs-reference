@@ -17,7 +17,7 @@ describe("optional WebMCP registration", () => {
       },
     };
     const apiRecord = {
-      schema_version: "1.0",
+      schema_version: "2.0",
       release_id: "JPPM2099001",
       scheme: "fi",
       code: "G06F3/048",
@@ -35,6 +35,14 @@ describe("optional WebMCP registration", () => {
       required: ["scheme", "code"],
       additionalProperties: false,
     });
+    expect(registered?.inputSchema).toMatchObject({ properties: {
+      version: {
+        type: "string",
+        pattern: "^(?:[0-9]{4}\\.[0-9]{2}|\\([0-9]{4}\\.[0-9]{2}\\))$",
+      },
+      relation_limit: { maximum: 200, default: 50 },
+      relation_offset: { minimum: 0, default: 0 },
+    } });
 
     const result = await registered?.execute({ scheme: "fi", code: "G06F3/048" });
     expect(result).toMatchObject({ structuredContent: apiRecord, isError: false });
@@ -46,6 +54,17 @@ describe("optional WebMCP registration", () => {
       method: "GET",
       credentials: "omit",
     });
+
+    await registered?.execute({
+      scheme: "ipc",
+      code: "G06F3/048",
+      version: "2006.01",
+      relation_limit: 25,
+      relation_offset: 50,
+    });
+    expect(fetchFunction.mock.calls[1]?.[0]).toContain("version=2006.01");
+    expect(fetchFunction.mock.calls[1]?.[0]).toContain("relation_limit=25");
+    expect(fetchFunction.mock.calls[1]?.[0]).toContain("relation_offset=50");
   });
 
   it("returns safe tool errors for invalid input, HTTP errors, and registration rejection", async () => {
@@ -64,6 +83,12 @@ describe("optional WebMCP registration", () => {
     await registerPmgsWebMcp(registrar, fetchFunction);
 
     expect(await registered?.execute({ scheme: "fi", code: "" })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "INVALID_INPUT" } },
+    });
+    expect(
+      await registered?.execute({ scheme: "ipc", code: "G06F3/048", version: "(2021.01" }),
+    ).toMatchObject({
       isError: true,
       structuredContent: { error: { code: "INVALID_INPUT" } },
     });

@@ -4,7 +4,7 @@
 
 必要なのは、利用登録後に取得したPMGSパッケージと[uv](https://docs.astral.sh/uv/)です。
 
-PyPIでv0.3.0が公開された後は、次のように導入できます。
+PyPIでv0.4.0が公開された後は、次のように導入できます。
 
 ```powershell
 uv tool install pmgs-reference

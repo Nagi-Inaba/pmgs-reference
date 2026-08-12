@@ -7,6 +7,7 @@
   "required": [
     "schema_version",
     "release_id",
+    "reference_date",
     "source_manifest_sha256",
     "database_schema_version",
     "generated_at",
@@ -17,13 +18,14 @@
     "objects"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "2.0" },
     "release_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "reference_date": { "type": "string", "format": "date" },
     "source_manifest_sha256": { "$ref": "#/$defs/sha256" },
-    "database_schema_version": { "type": "integer", "minimum": 1 },
+    "database_schema_version": { "const": 2 },
     "generated_at": { "type": "string", "format": "date-time" },
     "base_url": { "type": "string", "format": "uri", "pattern": "^https?://[^/]+$" },
-    "max_json_chunk_bytes": { "type": "integer", "minimum": 4096, "maximum": 8388608 },
+    "max_json_chunk_bytes": { "type": "integer", "minimum": 256, "maximum": 8388608 },
     "publication_policy_sha256": { "$ref": "#/$defs/sha256" },
     "coverage": {
       "type": "object",

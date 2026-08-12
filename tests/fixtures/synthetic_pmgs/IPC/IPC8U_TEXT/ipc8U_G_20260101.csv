@@ -1,2 +1,4 @@
 G              ,(2006.01), 1, 1,01, , ,20060101,99991231, 0,"Synthetic physics section"
-G06F   3/048    ,(2021.01), 1, 1,07,1, ,20210101,99991231, 0,"Synthetic input method"
+G06F   3/048    ,(2006.01), 1, 1,07,1, ,20060101,20201231, 0,"Synthetic legacy input method"
+G06F   3/048    ,(2021.01), 2, 1,07,1, ,20210101,99991231, 0,"Synthetic current input method"
+G06F   3/050    ,(2006.01), 3, 1,07,1, ,20060101,20201231, 0,"Synthetic expired input method"

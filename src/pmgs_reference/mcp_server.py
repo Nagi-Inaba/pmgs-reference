@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from pathlib import Path
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import MCPServer
-from mcp_types import ToolAnnotations
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp_types import CallToolResult, InputRequiredResult, TextContent, ToolAnnotations
+from pydantic import Field
 
 from pmgs_reference import __version__
 from pmgs_reference.errors import PMGSQueryError
-from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
+from pmgs_reference.store import JSONValue, PMGSStore
 
 _READ_ONLY = ToolAnnotations(
     read_only_hint=True,
@@ -17,11 +22,58 @@ _READ_ONLY = ToolAnnotations(
     idempotent_hint=True,
     open_world_hint=False,
 )
-_CONTENT_TYPES = frozenset({"classification", "document"})
+Scheme = Literal["fi", "fterm", "ipc"]
+Language = Literal["ja", "en"]
+ContentType = Literal["classification", "document"]
+Code = Annotated[str, Field(min_length=1, max_length=128)]
+Query = Annotated[str, Field(min_length=1, max_length=500)]
+Release = Annotated[str, Field(min_length=1, max_length=64)]
+Edition = Annotated[str, Field(min_length=1, max_length=64)]
+Version = Annotated[
+    str,
+    Field(pattern=r"^(?:[0-9]{4}\.[0-9]{2}|\([0-9]{4}\.[0-9]{2}\))$"),
+]
+Section = Annotated[str, Field(min_length=1, max_length=128)]
+Limit = Annotated[int, Field(ge=1, le=100)]
+RelationLimit = Annotated[int, Field(ge=1, le=200)]
+Offset = Annotated[int, Field(ge=0)]
+Schemes = Annotated[list[Scheme], Field(min_length=1, max_length=3)]
+ContentTypes = Annotated[list[ContentType], Field(min_length=1, max_length=2)]
 
 
-def _error_payload(error: PMGSQueryError) -> JSONDict:
-    return {"error": {"code": error.code, "message": error.message}}
+def _tool_error(error: PMGSQueryError) -> ToolError:
+    return ToolError(json.dumps(error.as_dict(), ensure_ascii=False, sort_keys=True))
+
+
+def _database_tool_error() -> ToolError:
+    return ToolError(
+        json.dumps(
+            {
+                "code": "DATABASE_ERROR",
+                "message": "PMGS Reference database query failed",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+
+
+class PMGSMCPServer(MCPServer[None]):
+    """Expose direct calls with the same isError shape as protocol calls."""
+
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        context: Any = None,
+    ) -> CallToolResult | InputRequiredResult:
+        try:
+            return await super().call_tool(name, arguments, context)
+        except ToolError as error:
+            return CallToolResult(
+                content=[TextContent(type="text", text=str(error))],
+                is_error=True,
+            )
 
 
 def create_server(
@@ -31,7 +83,7 @@ def create_server(
 ) -> MCPServer[None]:
     """Create the three-tool PMGS stdio server for an already-built database."""
     store = PMGSStore.open(database, data_dir=data_dir)
-    server: MCPServer[None] = MCPServer(
+    server: MCPServer[None] = PMGSMCPServer(
         name="pmgs-reference",
         title="PMGS Reference",
         description="Exact, versioned reference access to registered PMGS data",
@@ -49,16 +101,30 @@ def create_server(
         structured_output=True,
     )
     def lookup_classification(
-        scheme: str,
-        code: str,
-        release: str = "current",
-        edition: str | None = None,
-        language: str = "ja",
+        scheme: Scheme,
+        code: Code,
+        release: Release = "current",
+        edition: Edition | None = None,
+        version: Version | None = None,
+        language: Language = "ja",
+        relation_limit: RelationLimit = 50,
+        relation_offset: Offset = 0,
     ) -> dict[str, JSONValue]:
         try:
-            return store.lookup(scheme, code, release, edition, language)
+            return store.lookup(
+                scheme,
+                code,
+                release,
+                edition,
+                language,
+                version=version,
+                relation_limit=relation_limit,
+                relation_offset=relation_offset,
+            )
         except PMGSQueryError as error:
-            return _error_payload(error)
+            raise _tool_error(error) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise _database_tool_error() from error
 
     @server.tool(
         name="search_pmgs",
@@ -70,47 +136,19 @@ def create_server(
         structured_output=True,
     )
     def search_pmgs(
-        query: str,
-        schemes: list[str] | None = None,
-        content_types: list[str] | None = None,
-        release: str = "current",
-        language: str = "ja",
-        limit: int = 20,
+        query: Query,
+        schemes: Schemes | None = None,
+        content_types: ContentTypes | None = None,
+        release: Release = "current",
+        language: Language = "ja",
+        limit: Limit = 20,
     ) -> dict[str, JSONValue]:
-        requested_types = content_types or ["classification", "document"]
-        invalid_types = sorted(set(requested_types) - _CONTENT_TYPES)
-        if invalid_types or not requested_types:
-            return _error_payload(
-                PMGSQueryError(
-                    "INVALID_CONTENT_TYPE",
-                    "content_types must contain classification and/or document",
-                )
-            )
         try:
-            payloads: list[JSONDict] = []
-            if "classification" in requested_types:
-                payloads.append(store.search(query, schemes, release, language, limit))
-            if "document" in requested_types:
-                payloads.append(store.search_documents(query, release, language, limit))
+            return store.search_pmgs(query, schemes, content_types, release, language, limit)
         except PMGSQueryError as error:
-            return _error_payload(error)
-        results: list[JSONValue] = []
-        for payload in payloads:
-            payload_results = payload.get("results")
-            if isinstance(payload_results, list):
-                results.extend(payload_results)
-        results = results[:limit]
-        release_id = str(payloads[0]["release_id"])
-        search_modes = sorted({str(payload["search_mode"]) for payload in payloads})
-        return {
-            "schema_version": "1.0",
-            "release_id": release_id,
-            "query": query,
-            "search_mode": search_modes[0] if len(search_modes) == 1 else "mixed_lexical",
-            "content_types": [item for item in requested_types],
-            "count": len(results),
-            "results": results,
-        }
+            raise _tool_error(error) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise _database_tool_error() from error
 
     @server.tool(
         name="get_pmgs_document",
@@ -119,14 +157,16 @@ def create_server(
         structured_output=True,
     )
     def get_pmgs_document(
-        document_id: str,
-        page: int | None = None,
-        section: str | None = None,
+        document_id: Code,
+        page: Annotated[int, Field(ge=1)] | None = None,
+        section: Section | None = None,
     ) -> dict[str, JSONValue]:
         try:
             return store.get_document(document_id, page, section)
         except PMGSQueryError as error:
-            return _error_payload(error)
+            raise _tool_error(error) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise _database_tool_error() from error
 
     return server
 

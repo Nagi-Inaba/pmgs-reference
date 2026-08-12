@@ -4,7 +4,7 @@
 
 You need a PMGS package acquired after registration and [uv](https://docs.astral.sh/uv/).
 
-After v0.3.0 is available on PyPI:
+After v0.4.0 is available on PyPI:
 
 ```powershell
 uv tool install pmgs-reference

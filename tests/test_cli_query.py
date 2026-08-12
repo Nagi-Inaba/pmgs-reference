@@ -19,6 +19,24 @@ def test_lookup_search_and_document_cli(
     assert (
         main(
             [
+                "lookup",
+                "ipc",
+                "G06F3/048",
+                "--ipc-version",
+                "2006.01",
+                "--db",
+                database,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    historical = json.loads(capsys.readouterr().out)
+    assert historical["version"] == "2006.01"
+
+    assert (
+        main(
+            [
                 "search",
                 "Synthetic interaction",
                 "--scheme",

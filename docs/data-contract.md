@@ -42,17 +42,48 @@ CSVはUTF-8 BOMの有無を吸収し、Python標準`csv`で改行を含むセル
 FI改正XMLの宣言はShift_JISであり、通常は`lxml`へbytesを渡して宣言を尊重する。
 通常の厳格解析が失敗し、CP932として厳格デコードと厳格XML解析の両方が成功した場合だけ、CP932互換経路を使う。
 
-HTMLはbytesから解析し、本文、表、リンク、見出しを保持する。
+HTMLは共有parserへbytesを渡し、`recover=True`と`no_network=True`で解析する。
+parserのerror logが空でないファイルは、回復できた場合も`HTML_RECOVERY_USED`を1件記録する。
+本文、表、リンク、見出しと解析diagnosticを保持し、回復を無警告の成功として隠さない。
+表の空行も原資料監査用の`html-empty-row`として`source_record`へ保持し、表示本文や関係には変換しない。
 
 PDFはPyMuPDFでページ単位に本文を抽出し、空ページと例外を`build_issue`へ記録する。
+
+Fタームのtheme、level、sequence、parentは日本語`FTERM/THEME`と`FTERM/FTERM`を
+構造正本とする。英語`FTERM/THEME_E`と`FTERM/FTERM_E`は同じコードとsequenceで
+解決した日本語revisionへ英語本文と言語別属性を追加する。英語側の未知コードと`FTERM_E`の
+sequence不一致はerror、`FTERM_E`のdepth差はwarningとして記録し、いずれも原行を
+`source_record`へ保持する。`THEME_E`はコード集合を日本語側と照合し、sequence差を構造へ
+採用せずwarningとして記録する。
+
+FI改正文書は各改正要素の元コードへ接続する。非空の変換先コードもconceptとして解決し、
+元コードから変換先コードへの`amended_to`関係として保持するが、文書との重複リンクは作らない。
+
+IPC 8Uの有効性は全conceptについてrelease基準日とrevisionの`valid_from`、`valid_to`を照合する。
+単一revisionしかないcodeも、有効期間外なら旧本文へfallbackしない。
+
+IPC CSVのsequenceは、同一code・versionに属する複数の本文行の順序として
+`concept_text.sequence_number`へ保存する。revision自体の構造sequenceとは扱わず、
+IPCの`concept_revision.sequence_number`は空にする。FIとFタームの構造sequenceは
+`concept_revision`へ保存し、同一revisionで値が競合した場合はbuild errorにする。
+IPCのsequenceが空、非整数、0以下の場合も推測で補わずbuild errorにする。
 
 ## 完全性
 
 source manifestは相対パス、bytes、SHA-256、形式、データ群、parser、処理状態を1ファイル1行で記録する。
 
+`source_file.record_count`は全source fileについて保存し、対応する`source_record`件数と一致させる。
+
+`release_source`はowner、原典案内URL、COPYRGHT本文、COPYRGHTのsource fileとlocatorを持つ。
+COPYRGHTが空、0件、複数、またはlineage不整合の場合はbuildを拒否する。
+
 処理状態は`parsed`、`retained`、`failed`の三値に限定する。
 
 同じ入力から生成した論理manifestは同じSHA-256にならなければならない。
+
+releaseの基準日は、FI、Fターム、IPCの分類コードまたは分類本文を持つ認識済みCSVの
+ファイル名日付から導出する。判定区分、解説、改正文書リンクなど分類以外のCSV日付は
+基準日の候補に含めない。分類CSVの日付が一意でない場合はbuild errorにする。
 
 全件プロファイルの行数、要素数、PDFページ数、既知例外は[source-profile.md](source-profile.md)に固定する。
 

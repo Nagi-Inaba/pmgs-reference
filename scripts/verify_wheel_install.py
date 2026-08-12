@@ -53,7 +53,8 @@ def _copy_synthetic_source(source: Path, target: Path) -> None:
     try:
         page = document.new_page()
         page.insert_text((72, 72), "Synthetic IPC definition G06F3/048")
-        document.save(pdf_path)
+        document.set_metadata({})
+        document.save(pdf_path, no_new_id=True, reproducible=True)
     finally:
         document.close()
 
@@ -142,6 +143,18 @@ def main() -> int:
             [str(executable), "doctor", "--data-dir", str(data_root), "--json"],
             environment=environment,
         )
+        lookup = _json_command(
+            [
+                str(executable),
+                "lookup",
+                "fi",
+                "G06F3/048",
+                "--data-dir",
+                str(data_root),
+                "--json",
+            ],
+            environment=environment,
+        )
         version = _run([str(executable), "--version"], environment=environment).stdout.strip()
         if first.get("status") != "ready":
             raise RuntimeError(f"first setup did not become ready: {first.get('status')}")
@@ -149,6 +162,19 @@ def main() -> int:
             raise RuntimeError(f"second setup was not idempotent: {second.get('status')}")
         if doctor.get("ok") is not True:
             raise RuntimeError("installed-wheel doctor failed")
+        if (
+            lookup.get("schema_version") != "2.0"
+            or lookup.get("match_status") not in {"exact", "normalized_exact"}
+            or not lookup.get("reference_date")
+        ):
+            raise RuntimeError("installed-wheel lookup failed")
+        tool_names = doctor.get("tool_names")
+        if tool_names != [
+            "lookup_classification",
+            "search_pmgs",
+            "get_pmgs_document",
+        ]:
+            raise RuntimeError("installed-wheel MCP tool contract failed")
         expected_version = f"pmgs {project_version}"
         if version != expected_version:
             raise RuntimeError(f"unexpected installed version: {version}")
@@ -160,6 +186,8 @@ def main() -> int:
                     "first_setup": first["status"],
                     "second_setup": second["status"],
                     "doctor": doctor["ok"],
+                    "lookup": lookup["match_status"],
+                    "mcp_tools": tool_names,
                     "version": version,
                 },
                 ensure_ascii=False,

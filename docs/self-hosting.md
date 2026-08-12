@@ -24,6 +24,10 @@ flowchart LR
 
 Pythonはローカルで原資料を解析し、公開可能なbytesを事前生成する。Workerは原資料を解析せず、検証済みmanifestと固定prefixからR2 objectを選んで返す。分類照会と文書照会の正常応答は、最大2回のR2 readで完了する。
 
+schema 2.0では同一分類codeの全revisionを一つのbundleへ保持する。Workerは有効期間を再計算せず、
+基準日用recordまたは指定されたIPC `version=YYYY.MM`を選ぶ。`relation_limit`は既定50、最大200である。
+単一bundleが256 KiBを超えるrelease候補はexport段階で拒否される。
+
 通常のHTML、Markdown、JSON、OpenAPIはWebMCPに依存しない。WebMCPは対応ブラウザが存在するときだけ登録する任意機能であり、GPTsやGemとの接続を保証する仕組みではない。
 
 ## 公開前提
@@ -139,7 +143,9 @@ Invoke-WebRequest https://pmgs.example.jp/robots.txt
 Invoke-WebRequest https://pmgs.example.jp/sitemap.xml
 ```
 
-確認対象はstatus、Content-Type、canonical URL、出典表示、CORS、cache、security header、404、400、503、API response schema、旧版URLである。外部からの実測前に「公開済み」「GPTから利用可能」と報告しない。
+確認対象はstatus、Content-Type、canonical URL、出典表示、CORS、cache、security header、
+version選択、relation pagination、HTTP 200の`version_not_found`と`not_valid_at_release`、404、400、503、
+API response schema、旧版URLである。外部からの実測前に「公開済み」「GPTから利用可能」と報告しない。
 
 ## 5. 検索エンジンへ発見させる
 

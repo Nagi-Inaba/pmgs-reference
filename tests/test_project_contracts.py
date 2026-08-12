@@ -110,14 +110,14 @@ def test_japanese_is_default_and_english_surfaces_are_linked() -> None:
 def test_package_version_has_one_public_value() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["version"] == "0.3.0"
+    assert project["project"]["version"] == "0.4.0"
     assert __version__ == project["project"]["version"]
 
 
 def test_release_tag_guard_accepts_only_the_package_version() -> None:
     script = ROOT / "scripts" / "verify_release_tag.py"
     accepted = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.3.0"],
+        [sys.executable, str(script), "--tag", "v0.4.0"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -125,7 +125,7 @@ def test_release_tag_guard_accepts_only_the_package_version() -> None:
         encoding="utf-8",
     )
     rejected = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.3.1"],
+        [sys.executable, str(script), "--tag", "v0.4.1"],
         cwd=ROOT,
         check=False,
         capture_output=True,
