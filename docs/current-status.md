@@ -1,11 +1,13 @@
 # 現在の状態
 
-- 更新日: 2026-08-13
+- 更新日: 2026-08-14
 - 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約、PMGS保有者向け導線をPull Request #6と#8からmainへ統合済み
 - 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
 - 公開状態: GitHub source repository、[PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)は公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
+
+2026年8月14日に、別のPMGS releaseを使う手順を日英READMEと導入ガイドへ追加した。実際の`JPPM`版directoryを直接指定する方法、任意名directoryだけで`--release`を使う方法、名前だけでは版を確認できない境界、複数版の安全な切替、未知形式のfail-closed、固定v0.4.0導入、独自`--data-dir`でのlookup、Codex・Claude Code CLIの前提、macOS・Linuxの一行例を同じオンボーディング契約として記録した。
 
 ユーザーは2026年8月13日にv0.4.0のPyPI公開、tag、GitHub Releaseを承認した。[Release run 31677401736](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677401736)は、required reviewer付き`pypi`環境、`v*` tag制限、Trusted Publishing、digital attestationを通過し、同じwheelとsdistをPyPIとGitHub Releaseへ公開した。両配布面のSHA-256、PyPI provenance、空環境からの`uv tool install`、setup、doctor、lookup、MCP tool 3件を外部確認した。
 

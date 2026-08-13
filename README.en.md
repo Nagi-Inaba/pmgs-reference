@@ -29,6 +29,7 @@ You need:
 - [uv](https://docs.astral.sh/uv/)
 - an extracted PMGS directory (a ZIP file cannot be passed directly)
 - enough free space at the database destination
+- when registering with Codex or Claude Code, the selected CLI is installed and available on `PATH`
 
 The PMGS directory must use a release name made of `JPPM` followed by digits, such as `JPPM2026002`; otherwise pass the release explicitly, for example `--release JPPM2026002`.
 For JPPM2026002, the measured pre-build requirement is about 7.56 GB of free space and the completed SQLite database is about 3.37 GB.
@@ -37,6 +38,13 @@ First, install the command persistently from PyPI:
 
 ```powershell
 uv tool install pmgs-reference
+```
+
+This command installs the latest release available from PyPI when you run it.
+To pin the verified v0.4.0 release, run this command instead:
+
+```powershell
+uv tool install "pmgs-reference==0.4.0"
 ```
 
 If you do not use PyPI, install the same command from the fixed GitHub tag:
@@ -71,6 +79,7 @@ If you specify `--data-dir`, pass the same destination to the real build and doc
 ```powershell
 pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
 pmgs doctor --data-dir .\pmgs-data --json
+pmgs lookup fi G06F3/048 --data-dir .\pmgs-data --json
 ```
 
 After the preflight passes, choose the setup that matches your use case:
@@ -83,10 +92,39 @@ pmgs setup C:\path\to\JPPM2026002 --client codex --register
 pmgs setup C:\path\to\JPPM2026002 --client none --no-register
 ```
 
+macOS and Linux use the same options. Replace the path with a POSIX path and run the command on one line:
+
+```bash
+pmgs setup /path/to/JPPM2026002 --client codex --register
+```
+
 `pmgs setup` inventories the source, builds and validates SQLite, and then activates the verified database.
 Running setup again with the same PMGS package reuses the verified database.
 A new release is activated only after validation, while older databases remain available.
 Run `pmgs doctor --json` after setup, and open a new Codex session if you registered Codex.
+
+### Use another PMGS release
+
+If another release uses a supported input structure, replace the source path in the command with the actual release directory.
+`pmgs setup` uses a directory name made of `JPPM` followed by digits as the release ID. It does not verify the release number from the PMGS contents.
+
+```powershell
+pmgs setup C:\path\to\JPPM2027001 --client none --no-register --dry-run --json
+pmgs setup C:\path\to\JPPM2027001 --client codex --register
+```
+
+Only when the extracted directory has another name, keep that name and pass the actual release explicitly:
+
+```powershell
+pmgs setup C:\path\to\pmgs-download --release JPPM2027001 --client none --no-register --dry-run --json
+pmgs setup C:\path\to\pmgs-download --release JPPM2027001 --client codex --register
+```
+
+Pass the release actually verified by the user, and do not relabel the source directory with another release name.
+The release ID is stored in SQLite and used to manage the active release, while the reference date is derived from classification CSV files inside PMGS.
+Before building another release, first run `--dry-run --json` to inspect the input and required capacity.
+The directory layout may stay the same while CSV columns or additional file formats change. Unsupported input formats or inconsistent records fail the build instead of being guessed.
+When another release is built in the same managed data directory, only the validated database becomes active and older databases remain available.
 
 Git is required only when cloning the source for development:
 
@@ -108,10 +146,22 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
+    verified_pin: "uv tool install pmgs-reference==0.4.0"
     fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.4.0.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false
+  release_selection:
+    directory_name_pattern: "^JPPM[0-9]+$"
+    explicit_option: "--release JPPM<digits>"
+    generic_directory_requires_explicit_release: true
+    content_based_release_detection: false
+    never_relabel_mismatched_source: true
+  clients:
+    shared_read_only_stdio_mcp: [codex, claude]
+    codex_live_mcp: verified
+    claude_configuration_and_registration: verified
+    claude_live_mcp: not_observed
   workflow: [install, preflight, setup, doctor, lookup]
   data_boundary:
     source_archive: local_only_never_upload

@@ -13,6 +13,7 @@ v0.4.0の第一選択はPyPI版です。
 - PMGSをZIPから展開し、ディレクトリとして参照できる。ZIPファイルは`pmgs setup`へ直接指定できない。
 - PMGSディレクトリ名が`JPPM`と数字からなる版名（例：`JPPM2026002`）である。異なる名前の場合は`--release JPPM2026002`のように版を明示する。
 - 構築先に十分な空き容量がある。JPPM2026002の実測では、構築前に約7.56 GBが必要で、完成したSQLiteは約3.37 GBだった。
+- CodexまたはClaude Codeへ登録する場合は、対象のCLIがインストール済みで`PATH`から実行できる。SQLiteだけを構築する場合は不要である。
 
 Gitは、後述するクローン方式を選ぶ場合だけ必要です。
 
@@ -22,6 +23,13 @@ PyPIから永続インストールします。
 
 ```powershell
 uv tool install pmgs-reference
+```
+
+このコマンドは、実行時点でPyPIに公開されている最新版を導入します。
+検証済みのv0.4.0へ固定する場合は、代わりに次を実行します。
+
+```powershell
+uv tool install "pmgs-reference==0.4.0"
 ```
 
 PyPIを利用しない場合は、GitHubの固定タグから同じようにインストールできます。
@@ -78,6 +86,7 @@ pmgs setup C:\path\to\JPPM2026002 `
 ```powershell
 pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
 pmgs doctor --data-dir .\pmgs-data --json
+pmgs lookup fi G06F3/048 --data-dir .\pmgs-data --json
 ```
 
 ### 実際に構築する
@@ -90,6 +99,12 @@ pmgs setup C:\path\to\JPPM2026002 --client codex --register
 
 # クライアント設定を変えず、ローカルSQLiteだけを構築する
 pmgs setup C:\path\to\JPPM2026002 --client none --no-register
+```
+
+macOSとLinuxでも同じオプションを使えます。パスだけをPOSIX形式に置き換えて一行で実行します。
+
+```bash
+pmgs setup /path/to/JPPM2026002 --client codex --register
 ```
 
 セットアップは次の順に進みます。
@@ -123,10 +138,22 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
+    verified_pin: "uv tool install pmgs-reference==0.4.0"
     fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.4.0.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false
+  release_selection:
+    directory_name_pattern: "^JPPM[0-9]+$"
+    explicit_option: "--release JPPM<digits>"
+    generic_directory_requires_explicit_release: true
+    content_based_release_detection: false
+    never_relabel_mismatched_source: true
+  clients:
+    shared_read_only_stdio_mcp: [codex, claude]
+    codex_live_mcp: verified
+    claude_configuration_and_registration: verified
+    claude_live_mcp: not_observed
   workflow: [install, preflight, setup, doctor, lookup]
   data_boundary:
     source_archive: local_only_never_upload
@@ -164,6 +191,9 @@ MCPを接続できないAIは、`pmgs ... --json`の結果またはPython APIを
 
 `--client auto`が既定で、端末にあるCodexとClaude Codeを検出します。対象や登録動作を固定したい場合は明示します。
 
+CodexとClaude Codeには、同じ読み取り専用stdio MCPサーバー実装と共通スキルを登録します。
+Codexからのlive MCP利用は検証済みです。Claude Code向けの設定生成と登録処理は自動試験済みですが、Claude CodeのモデルからMCPを実際に呼び出す評価は、評価用アカウントの制約により`not_observed`です。
+
 ```powershell
 pmgs setup C:\path\to\JPPM2026002 --client codex --register
 pmgs setup C:\path\to\JPPM2026002 --client claude --register
@@ -177,11 +207,40 @@ Claude Codeで`CLAUDE_CONFIG_DIR`を設定している場合は、そのカス�
 
 ## PMGSの版を更新する
 
-新しいPMGSパッケージを同じように指定します。
+別のPMGS版を使うときは、`pmgs setup`へ実際に展開したその版のディレクトリを指定します。
+入力構造が対応済み形式と同じなら、コマンド中のパスを置き換えるだけで構築できます。
+`pmgs setup`は、`JPPM`と数字からなるディレクトリ名をrelease IDとして使います。これは、PMGSの内容から版を確認する処理ではありません。
 
 ```powershell
-pmgs setup C:\path\to\JPPM2027001
+pmgs setup C:\path\to\JPPM2027001 `
+  --client none `
+  --no-register `
+  --dry-run `
+  --json
+
+pmgs setup C:\path\to\JPPM2027001 --client codex --register
 ```
+
+展開先のディレクトリ名が任意名の場合だけ、名前を変更せず実際の版を`--release`で指定します。
+
+```powershell
+pmgs setup C:\path\to\pmgs-download `
+  --release JPPM2027001 `
+  --client none `
+  --no-register `
+  --dry-run `
+  --json
+
+pmgs setup C:\path\to\pmgs-download --release JPPM2027001 --client codex --register
+```
+
+親ディレクトリではなく、使うPMGSの版ディレクトリを直接指定してください。
+明示したrelease IDと`JPPM`形式のディレクトリ名が異なる場合は、取り違えとして拒否されます。
+
+利用者が確認した実際の版を指定し、フォルダ名を実際とは異なる版へ付け替えないでください。
+release IDはSQLiteと現行版の管理に使われ、基準日はPMGS内の認識済み分類CSVから取得されます。
+JPPM2026002には実データの固定件数を含む追加回帰検査があります。
+その他のreleaseでも共通のschema、lineage、coverage、FTS、build error検査を行います。フォルダ構成が同じでもCSV列や追加ファイルの形式が変わっていれば、推測せず停止します。
 
 新しいSQLiteは旧版と別の場所へ作られます。検証とMCP診断が完了した時点で`current.json`だけを原子的に切り替えるため、途中で失敗してもそれまでの現行版は変わりません。旧版のSQLiteは自動削除しません。
 
@@ -212,6 +271,7 @@ pmgs-reference/
 ```powershell
 pmgs setup C:\path\to\JPPM2026002 --data-dir C:\path\to\pmgs-data
 pmgs doctor --data-dir C:\path\to\pmgs-data --json
+pmgs lookup fi G06F3/048 --data-dir C:\path\to\pmgs-data --json
 ```
 
 Pythonでは`PMGSStore.open(data_dir=...)`、CLIでは`--data-dir`で同じ現行版を参照できます。
