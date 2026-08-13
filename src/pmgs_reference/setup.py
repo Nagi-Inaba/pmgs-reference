@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import sqlite3
 import sys
-import time
 import uuid
 from collections.abc import Callable, Sequence
 from contextlib import suppress
@@ -30,8 +30,13 @@ from pmgs_reference.data_paths import (
     write_json_atomic,
 )
 from pmgs_reference.diagnostics import DoctorResult, doctor_database
-from pmgs_reference.ingest.build import BuildResult, build_database
-from pmgs_reference.ingest.inventory import SourceInventory, build_inventory, write_inventory
+from pmgs_reference.ingest.build import (
+    BuildResult,
+    build_database,
+    promote_database_exclusive,
+)
+from pmgs_reference.ingest.inventory import build_inventory, reject_source_links, write_inventory
+from pmgs_reference.schema import APPLICATION_ID
 from pmgs_reference.store import PMGSStore
 from pmgs_reference.store_types import JSONDict, JSONValue
 from pmgs_reference.validation import ValidationResult, validate_database, write_validation_report
@@ -42,6 +47,10 @@ ProgressCallback = Callable[[str], None]
 
 _SETUP_RELEASE_ID = re.compile(r"^JPPM[0-9]+$")
 _SHA256 = re.compile(r"^[A-F0-9]{64}$")
+_SCHEMA_V1 = 1
+_SCHEMA_V2 = 2
+_CAPACITY_MULTIPLIER = 7
+_CAPACITY_RESERVE_BYTES = 512 * 1024 * 1024
 
 
 class SetupUsageError(ValueError):
@@ -69,6 +78,7 @@ class SetupResult:
     database_reused: bool
     current_pointer: str | None
     inventory: JSONDict
+    storage: JSONDict
     clients: tuple[JSONDict, ...]
     cleaned_staging: tuple[str, ...]
     report_directory: str | None
@@ -92,6 +102,7 @@ class SetupResult:
             "database_reused": self.database_reused,
             "current_pointer": self.current_pointer,
             "inventory": self.inventory,
+            "storage": self.storage,
             "clients": [cast(JSONValue, item) for item in self.clients],
             "cleaned_staging": list(self.cleaned_staging),
             "report_directory": self.report_directory,
@@ -220,16 +231,10 @@ def _reject_managed_links(data_root: Path) -> None:
 
 
 def _reject_source_links(source: Path) -> None:
-    if _is_link_or_junction(source):
-        raise SetupUsageError("PMGS source directory must not be a symlink or junction")
-    for root, directories, files in os.walk(source, followlinks=False):
-        root_path = Path(root)
-        for name in [*directories, *files]:
-            candidate = root_path / name
-            if _is_link_or_junction(candidate):
-                raise SetupUsageError(
-                    f"PMGS source contains a symlink or junction: {candidate.relative_to(source)}"
-                )
+    try:
+        reject_source_links(source)
+    except ValueError as exc:
+        raise SetupUsageError(str(exc)) from exc
 
 
 def resolve_setup_source(
@@ -308,7 +313,54 @@ def _database_identity(path: Path) -> tuple[ValidationResult, str, str]:
     )
 
 
-def _verify_current_pointer(pointer: CurrentPointer) -> ValidationResult:
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest().upper()
+
+
+def _database_metadata(path: Path) -> tuple[int, int, str, str, str]:
+    connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    try:
+        application_id = int(connection.execute("PRAGMA application_id").fetchone()[0])
+        user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        row = connection.execute(
+            "SELECT schema_version, release_id, source_manifest_sha256 FROM release LIMIT 1"
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise SetupOperationError("database release metadata is missing")
+    return application_id, user_version, str(row[0]), str(row[1]), str(row[2])
+
+
+def _verify_v1_pointer(pointer: CurrentPointer) -> None:
+    application_id, user_version, schema_version, release_id, source_sha256 = _database_metadata(
+        pointer.database
+    )
+    actual_sha256 = _sha256_file(pointer.database)
+    if (
+        application_id != APPLICATION_ID
+        or user_version != _SCHEMA_V1
+        or schema_version != "1.0"
+        or pointer.database_schema_version != _SCHEMA_V1
+        or pointer.release_id != release_id
+        or pointer.source_manifest_sha256 != source_sha256
+        or pointer.database_sha256.upper() != actual_sha256
+    ):
+        raise CurrentPointerError("current.json metadata does not match its database")
+
+
+def _verify_current_pointer(
+    pointer: CurrentPointer, *, allow_v1_upgrade: bool = False
+) -> ValidationResult | None:
+    if pointer.database_schema_version == _SCHEMA_V1 and allow_v1_upgrade:
+        _verify_v1_pointer(pointer)
+        return None
+    if pointer.database_sha256.upper() != _sha256_file(pointer.database):
+        raise CurrentPointerError("current.json metadata does not match its database")
     validation, release_id, source_sha256 = _database_identity(pointer.database)
     if (
         pointer.release_id != release_id
@@ -318,6 +370,70 @@ def _verify_current_pointer(pointer: CurrentPointer) -> ValidationResult:
     ):
         raise CurrentPointerError("current.json metadata does not match its database")
     return validation
+
+
+def _nearest_existing_ancestor(path: Path) -> Path:
+    candidate = path.expanduser().absolute()
+    while not candidate.exists():
+        parent = candidate.parent
+        if parent == candidate:
+            raise SetupOperationError("unable to locate a filesystem for disk capacity")
+        candidate = parent
+    return candidate
+
+
+def _managed_database_storage(
+    data_root: Path, active_database: Path | None
+) -> tuple[int, int, int]:
+    active_bytes = 0
+    if active_database is not None and active_database.is_file():
+        active_bytes = active_database.stat().st_size
+    retained_count = 0
+    retained_bytes = 0
+    releases_root = data_root / "data" / "releases"
+    if releases_root.is_dir():
+        for candidate in releases_root.rglob("*.sqlite"):
+            resolved = candidate.resolve()
+            if active_database is not None and resolved == active_database.resolve():
+                continue
+            retained_count += 1
+            retained_bytes += candidate.stat().st_size
+    legacy = data_root / "data" / "current.sqlite"
+    if legacy.is_file() and (
+        active_database is None or legacy.resolve() != active_database.resolve()
+    ):
+        retained_count += 1
+        retained_bytes += legacy.stat().st_size
+    return active_bytes, retained_count, retained_bytes
+
+
+def _storage_snapshot(
+    data_root: Path,
+    source_total_bytes: int,
+    *,
+    planned_build: bool,
+    active_database: Path | None,
+) -> JSONDict:
+    required = (
+        source_total_bytes * _CAPACITY_MULTIPLIER + _CAPACITY_RESERVE_BYTES if planned_build else 0
+    )
+    active_bytes, retained_count, retained_bytes = _managed_database_storage(
+        data_root, active_database
+    )
+    try:
+        free = int(shutil.disk_usage(_nearest_existing_ancestor(data_root)).free)
+    except OSError:
+        free = None
+    sufficient = True if not planned_build else free is not None and free >= required
+    return {
+        "planned_build": planned_build,
+        "required_free_bytes": required,
+        "free_bytes": free,
+        "sufficient": sufficient,
+        "active_database_bytes": active_bytes,
+        "retained_database_count": retained_count,
+        "retained_database_bytes": retained_bytes,
+    }
 
 
 def _clean_stale_staging(
@@ -424,17 +540,8 @@ def _write_doctor_report(result: DoctorResult, path: Path) -> None:
 
 
 def _rename_database(source: Path, destination: Path) -> None:
-    """Wait briefly for Windows MCP process handles, then rename on the same filesystem."""
-    delay = 0.05
-    for attempt in range(20):
-        try:
-            source.rename(destination)
-            return
-        except PermissionError:
-            if attempt == 19:
-                raise
-            time.sleep(delay)
-            delay = min(delay * 1.5, 0.5)
+    """Promote without replacement, allowing Windows MCP handles time to close."""
+    promote_database_exclusive(source, destination, permission_attempts=20)
 
 
 def setup_reference(
@@ -461,18 +568,51 @@ def setup_reference(
     pointer_path = data_root / "state" / "current.json"
     current_pointer = read_current_pointer(data_root)
     if dry_run and current_pointer is not None:
-        _verify_current_pointer(current_pointer)
+        preview_current_validation = _verify_current_pointer(current_pointer, allow_v1_upgrade=True)
+    else:
+        preview_current_validation = None
 
     _emit(progress, "inventory")
     inventory = build_inventory(source_root)
     inventory_summary = cast(JSONDict, inventory.summary())
     inventory_failures = [entry for entry in inventory.entries if entry.status == "failed"]
     if dry_run:
-        dry_errors = (
-            (f"source inventory contains {len(inventory_failures)} failed file(s)",)
-            if inventory_failures
-            else ()
+        preview_warnings: list[str] = []
+        reusable = (
+            current_pointer is not None
+            and preview_current_validation is not None
+            and current_pointer.release_id == resolved_release
+            and current_pointer.source_manifest_sha256 == inventory.logical_sha256
         )
+        if not reusable and data_root.exists():
+            reusable_database, _ = _find_versioned_database(
+                data_root,
+                resolved_release,
+                inventory.logical_sha256,
+                preview_warnings,
+                known_database=(
+                    (current_pointer.database, preview_current_validation)
+                    if current_pointer is not None and preview_current_validation is not None
+                    else None
+                ),
+            )
+            reusable = reusable_database is not None
+        storage = _storage_snapshot(
+            data_root,
+            inventory.total_bytes,
+            planned_build=not reusable,
+            active_database=(current_pointer.database if current_pointer is not None else None),
+        )
+        dry_error_list: list[str] = []
+        if inventory_failures:
+            dry_error_list.append(
+                f"source inventory contains {len(inventory_failures)} failed file(s)"
+            )
+        if storage["planned_build"] is True and storage["free_bytes"] is None:
+            dry_error_list.append("available disk capacity could not be determined")
+        elif storage["sufficient"] is False:
+            dry_error_list.append("insufficient disk capacity for PMGS database build")
+        dry_errors = tuple(dry_error_list)
         return SetupResult(
             status="failed" if dry_errors else "dry_run",
             run_id=run_id,
@@ -487,12 +627,13 @@ def setup_reference(
             database_reused=False,
             current_pointer=str(pointer_path) if current_pointer is not None else None,
             inventory=inventory_summary,
+            storage=storage,
             clients=_client_preview(client_targets, approved_clients),
             cleaned_staging=(),
             report_directory=None,
             restart_required=False,
             errors=dry_errors,
-            warnings=(),
+            warnings=tuple(preview_warnings),
         )
     if inventory_failures:
         raise SetupOperationError(
@@ -517,7 +658,11 @@ def setup_reference(
             current_pointer = read_current_pointer(data_root)
             current_validation: ValidationResult | None = None
             if current_pointer is not None:
-                current_validation = _verify_current_pointer(current_pointer)
+                current_validation = _verify_current_pointer(current_pointer, allow_v1_upgrade=True)
+                if current_validation is None:
+                    warnings.append(
+                        "schema v1 current database was verified and retained for a v2 rebuild"
+                    )
             staging_root = data_root / "staging"
             active_database = current_pointer.database if current_pointer is not None else None
             cleaned, cleanup_warnings = _clean_stale_staging(staging_root, active_database)
@@ -544,10 +689,9 @@ def setup_reference(
                 ),
             )
             if current_pointer is not None:
-                assert current_validation is not None
                 current_release = current_pointer.release_id
                 current_source = current_pointer.source_manifest_sha256
-                if (
+                if current_validation is not None and (
                     current_release == resolved_release
                     and current_source == inventory.logical_sha256
                 ):
@@ -558,29 +702,51 @@ def setup_reference(
                 legacy = data_root / "data" / "current.sqlite"
                 if legacy.is_file():
                     try:
-                        legacy_validation, legacy_release, legacy_source = _database_identity(
-                            legacy
-                        )
+                        legacy_metadata = _database_metadata(legacy)
                     except (OSError, ValueError, SetupOperationError, sqlite3.Error):
                         warnings.append("legacy current.sqlite is invalid and was retained")
                     else:
-                        if (
-                            legacy_release == resolved_release
-                            and legacy_source == inventory.logical_sha256
-                        ):
-                            selected_database = legacy.resolve()
-                            selected_validation = legacy_validation
-                            database_reused = True
-                            legacy_database_reused = True
-                        else:
+                        _, legacy_user_version, _, legacy_release, legacy_source = legacy_metadata
+                        if legacy_user_version == _SCHEMA_V1:
                             warnings.append(
-                                "legacy current.sqlite belongs to a different source "
-                                "and was retained"
+                                "legacy schema v1 current.sqlite was retained for a v2 rebuild"
                             )
+                        else:
+                            try:
+                                legacy_validation, legacy_release, legacy_source = (
+                                    _database_identity(legacy)
+                                )
+                            except (OSError, ValueError, SetupOperationError, sqlite3.Error):
+                                warnings.append("legacy current.sqlite is invalid and was retained")
+                            else:
+                                if (
+                                    legacy_release == resolved_release
+                                    and legacy_source == inventory.logical_sha256
+                                ):
+                                    selected_database = legacy.resolve()
+                                    selected_validation = legacy_validation
+                                    database_reused = True
+                                    legacy_database_reused = True
+                                else:
+                                    warnings.append(
+                                        "legacy current.sqlite belongs to a different source "
+                                        "and was retained"
+                                    )
             if selected_database is None and versioned_database is not None:
                 selected_database = versioned_database
                 selected_validation = versioned_validation
                 database_reused = True
+
+            storage = _storage_snapshot(
+                data_root,
+                inventory.total_bytes,
+                planned_build=selected_database is None,
+                active_database=(current_pointer.database if current_pointer is not None else None),
+            )
+            if storage["planned_build"] is True and storage["free_bytes"] is None:
+                raise SetupOperationError("available disk capacity could not be determined")
+            if storage["sufficient"] is False:
+                raise SetupOperationError("insufficient disk capacity for PMGS database build")
 
             if selected_database is None:
                 _emit(progress, "build")
@@ -599,13 +765,6 @@ def setup_reference(
                     inventory=inventory,
                     progress=lambda stage: _emit(progress, f"build_{stage}"),
                 )
-                _emit(progress, "source_check")
-                after_inventory: SourceInventory = build_inventory(source_root)
-                write_json_atomic(
-                    report_dir / "inventory-after-summary.json", after_inventory.summary()
-                )
-                if after_inventory.logical_sha256 != inventory.logical_sha256:
-                    raise SetupOperationError("PMGS source changed during setup")
                 _emit(progress, "validate")
                 selected_validation = validate_database(candidate)
                 write_validation_report(selected_validation, report_dir / "validation-report.json")
@@ -730,6 +889,12 @@ def setup_reference(
                 database_reused=database_reused,
                 current_pointer=str(pointer_path),
                 inventory=inventory_summary,
+                storage=_storage_snapshot(
+                    data_root,
+                    inventory.total_bytes,
+                    planned_build=False,
+                    active_database=selected_database,
+                ),
                 clients=client_statuses,
                 cleaned_staging=tuple(cleaned_staging),
                 report_directory=str(report_dir),
@@ -776,6 +941,18 @@ def setup_reference(
             database_reused=database_reused,
             current_pointer=str(pointer_path) if activated else None,
             inventory=inventory_summary,
+            storage=(
+                storage
+                if "storage" in locals()
+                else _storage_snapshot(
+                    data_root,
+                    inventory.total_bytes,
+                    planned_build=True,
+                    active_database=(
+                        current_pointer.database if current_pointer is not None else None
+                    ),
+                )
+            ),
             clients=client_statuses,
             cleaned_staging=tuple(cleaned_staging),
             report_directory=str(report_dir) if report_dir is not None else None,

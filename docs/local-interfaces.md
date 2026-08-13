@@ -34,7 +34,9 @@ from pmgs_reference import PMGSStore
 store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048", language="ja")
-results = store.search("相互作用技術", schemes=["fi", "ipc"], limit=20)
+ipc_old = store.lookup("ipc", "G06F3/048", edition="8U", version="2006.01")
+classifications = store.search("相互作用技術", schemes=["fi", "ipc"], limit=20)
+combined = store.search_pmgs("相互作用技術", limit=20)
 parents = store.parents("fi", "G06F3/048")
 documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 release = store.release_info()
@@ -43,8 +45,9 @@ release = store.release_info()
 公開メソッドは次のとおりである。
 
 - `PMGSStore.open(path=None, *, data_dir=None)`
-- `lookup(scheme, code, release="current", edition=None, language="ja")`
+- `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
 - `search(query, schemes=None, release="current", language="ja", limit=20)`
+- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20)`
 - `parents(scheme, code, release="current", edition=None)`
 - `children(scheme, code, release="current", edition=None)`
 - `related_documents(scheme, code, release="current", edition=None)`
@@ -52,9 +55,13 @@ release = store.release_info()
 - `search_documents(query, release="current", language="ja", limit=20)`
 - `release_info(release="current")`
 
-IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`8B`、`7`、`7E`、`6`、`5`、`4`の優先順で選ぶ。FIとFタームへ`edition`を渡すと`INVALID_EDITION`になる。
+IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`8B`、`7`、`7E`、`6`、`5`、`4`の優先順で選ぶ。FIとFタームへ`edition`を渡すと`INVALID_EDITION`になる。`version`はIPCだけに指定でき、CLIでは`--ipc-version`を使う。
 
-分類照会は候補を推測しない。コードが存在しない場合は、空の共通レコードを`match_status: not_found`で返す。入力不正、release不明、IPC版不明、文書不明は、`PMGSQueryError`の安全な`code`と`message`で区別する。
+IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す。有効なrevisionがない場合は`not_valid_at_release`、指定したversionがない場合は`version_not_found`を、利用可能なversion一覧とともに正常な構造化応答として返す。旧revisionへ推測でfallbackしない。
+
+分類照会は候補を推測しない。コードが存在しない場合は、空の共通レコードを`match_status: not_found`で返す。入力不正、release不明、文書不明、DBエラーは`PMGSQueryError`の安全な`code`と`message`で区別する。
+
+関係は安定順でページングし、`relation_count`、`relations_truncated`、`next_relation_offset`を返す。`relation_limit`は最大200件である。分類・文書の構造化応答がUTF-8 JSONで4 MiBを超える場合は`RESPONSE_TOO_LARGE`でfail closedにする。
 
 ## 文字列検索
 
@@ -66,7 +73,7 @@ IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`
 - `sqlite_literal_substring_lexical`
 - MCPで分類と文書が異なる経路になった場合の`mixed_lexical`
 
-いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
+`search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
 
 ## 文書応答の上限
 
@@ -78,13 +85,14 @@ IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`
 
 ```powershell
 pmgs lookup fi "G06F3/048" --json
+pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --json
 pmgs document DOCUMENT_ID --page 1 --json
 pmgs doctor --json
 ```
 
-`lookup --json`は該当なしの共通レコードを出力して終了コード1を返す。正常照会は0を返す。
+`lookup --json`は`not_found`、`version_not_found`、`not_valid_at_release`のいずれも、説明可能な共通recordを出力して終了コード1を返す。該当recordを返した正常照会は0を返す。
 
 `lookup`と`search`の`--language`既定値は`ja`である。英語は`--language en`を指定する。
 

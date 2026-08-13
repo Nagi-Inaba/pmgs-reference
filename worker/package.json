@@ -9,7 +9,8 @@
   "packageManager": "npm@10.9.3",
   "scripts": {
     "build:webmcp": "esbuild webmcp/webmcp.ts --bundle --format=iife --platform=browser --target=es2024 --minify --outfile=public/assets/webmcp.js",
-    "build": "npm run build:webmcp && wrangler deploy --dry-run --outdir dist",
+    "build:worker": "wrangler deploy --dry-run --outdir dist",
+    "build": "npm run build:webmcp && npm run build:worker",
     "benchmark:chunks": "vitest run --config vitest.benchmark.config.ts --reporter verbose --disableConsoleIntercept",
     "lint": "oxlint --deny typescript/no-floating-promises src test webmcp",
     "pretest": "npm run build:webmcp",

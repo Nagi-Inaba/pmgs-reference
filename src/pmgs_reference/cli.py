@@ -121,6 +121,9 @@ def _build_parser() -> argparse.ArgumentParser:
     lookup.add_argument("code")
     _add_query_options(lookup)
     lookup.add_argument("--edition")
+    lookup.add_argument("--ipc-version", dest="version")
+    lookup.add_argument("--relation-limit", type=int, default=50)
+    lookup.add_argument("--relation-offset", type=int, default=0)
     lookup.add_argument("--json", action="store_true")
 
     search = subparsers.add_parser("search", help="PMGSを文字列検索する")
@@ -128,7 +131,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_query_options(search)
     search.add_argument("--scheme", action="append", choices=("fi", "fterm", "ipc"))
     search.add_argument(
-        "--content-type", choices=("classification", "document"), default="classification"
+        "--content-type",
+        action="append",
+        choices=("classification", "document"),
+        help="省略時は分類と文書をそれぞれ検索する",
     )
     search.add_argument("--limit", type=int, default=20)
     search.add_argument("--json", action="store_true")
@@ -206,7 +212,7 @@ def _run_inventory(args: argparse.Namespace) -> int:
     summary_path: Path = args.summary or manifest_path.with_name("inventory-summary.json")
     inventory = build_inventory(args.source_dir)
     write_inventory(inventory, manifest_path, summary_path)
-    print(json.dumps(inventory.summary(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(inventory.summary(), ensure_ascii=True, sort_keys=True))
     return 1 if any(entry.status == "failed" for entry in inventory.entries) else 0
 
 
@@ -217,7 +223,7 @@ def _run_build(args: argparse.Namespace) -> int:
         output_path=args.output,
         report_path=args.report,
     )
-    print(json.dumps(result.as_dict(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(result.as_dict(), ensure_ascii=True, sort_keys=True))
     return 0
 
 
@@ -262,11 +268,23 @@ def _prompt_registration(client: str, language: str) -> bool:
 
 
 def _setup_human_output(result: SetupResult, language: str) -> None:
+    planned_build = result.storage.get("planned_build") is True
+    required = result.storage.get("required_free_bytes")
+    free = result.storage.get("free_bytes")
+    retained_count = result.storage.get("retained_database_count")
+    retained_bytes = result.storage.get("retained_database_bytes")
     if language == "en":
         print(f"PMGS setup: {result.status}")
         print(f"Release: {result.release_id}")
         if result.database is not None:
             print(f"Database: {result.database}")
+        if planned_build:
+            print(f"Storage required/free: {required}/{free} bytes")
+        if isinstance(retained_count, int) and retained_count > 0:
+            print(
+                f"Warning: {retained_count} retained database(s) use {retained_bytes} bytes.",
+                file=sys.stderr,
+            )
         if result.restart_required:
             print("Restart or reconnect Codex/Claude Code before using the updated server.")
     else:
@@ -274,6 +292,14 @@ def _setup_human_output(result: SetupResult, language: str) -> None:
         print(f"リリース: {result.release_id}")
         if result.database is not None:
             print(f"データベース: {result.database}")
+        if planned_build:
+            print(f"必要/空き容量: {required}/{free} bytes")
+        if isinstance(retained_count, int) and retained_count > 0:
+            print(
+                f"警告: 保持中のデータベース{retained_count}件が"
+                f"{retained_bytes} bytesを使用しています。",
+                file=sys.stderr,
+            )
         if result.restart_required:
             print("更新した接続を使う前にCodexまたはClaude Codeを再起動してください。")
     for error in result.errors:
@@ -338,12 +364,12 @@ def _run_validate(args: argparse.Namespace) -> int:
     result = validate_database(args.database)
     if args.report is not None:
         write_validation_report(result, args.report)
-    print(json.dumps(result.as_dict(), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(result.as_dict(), ensure_ascii=True, sort_keys=True))
     return 0 if result.valid else 1
 
 
 def _json_output(payload: JSONDict) -> None:
-    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
 
 
 def _list_items(payload: JSONDict, key: str) -> list[JSONValue]:
@@ -353,7 +379,16 @@ def _list_items(payload: JSONDict, key: str) -> list[JSONValue]:
 
 def _run_lookup(args: argparse.Namespace) -> int:
     store = PMGSStore.open(args.db, data_dir=args.data_dir)
-    payload = store.lookup(args.scheme, args.code, args.release, args.edition, args.language)
+    payload = store.lookup(
+        args.scheme,
+        args.code,
+        args.release,
+        args.edition,
+        args.language,
+        version=args.version,
+        relation_limit=args.relation_limit,
+        relation_offset=args.relation_offset,
+    )
     if args.json:
         _json_output(payload)
     else:
@@ -361,22 +396,32 @@ def _run_lookup(args: argparse.Namespace) -> int:
         for item in [*_list_items(payload, "labels"), *_list_items(payload, "texts")]:
             if isinstance(item, dict):
                 print(item.get("text", ""))
-    return 1 if payload["match_status"] == "not_found" else 0
+    return 0 if payload["match_status"] in {"exact", "normalized_exact"} else 1
 
 
 def _run_search(args: argparse.Namespace) -> int:
     store = PMGSStore.open(args.db, data_dir=args.data_dir)
-    if args.content_type == "document":
-        payload = store.search_documents(args.query, args.release, args.language, args.limit)
-    else:
-        payload = store.search(args.query, args.scheme, args.release, args.language, args.limit)
+    payload = store.search_pmgs(
+        args.query,
+        args.scheme,
+        args.content_type,
+        args.release,
+        args.language,
+        args.limit,
+    )
     if args.json:
         _json_output(payload)
     else:
-        for item in _list_items(payload, "results"):
-            if isinstance(item, dict):
-                identifier = item.get("code") or item.get("document_id")
-                print(f"{identifier}\t{item.get('excerpt', '')}")
+        groups = payload.get("results_by_type")
+        if isinstance(groups, dict):
+            for content_type in ("classification", "document"):
+                group = groups.get(content_type)
+                if not isinstance(group, dict):
+                    continue
+                for item in _list_items(group, "results"):
+                    if isinstance(item, dict):
+                        identifier = item.get("code") or item.get("document_id")
+                        print(f"{identifier}\t{item.get('excerpt', '')}")
     return 0
 
 

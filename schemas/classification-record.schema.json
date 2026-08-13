@@ -1,75 +1,59 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pmgs-reference.example/schemas/classification-record.schema.json",
-  "title": "PMGS classification record",
+  "title": "PMGS classification record 2.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version",
-    "release_id",
-    "scheme",
-    "edition",
-    "code",
-    "normalized_code",
-    "match_status",
-    "labels",
-    "texts",
-    "properties",
-    "relations",
-    "documents",
-    "sources",
-    "canonical_url"
+    "schema_version", "release_id", "reference_date", "scheme", "edition", "code",
+    "normalized_code", "record_status", "match_status", "version", "valid_from",
+    "valid_to", "available_versions", "labels", "texts", "properties", "relation_count",
+    "relation_offset", "relation_limit", "relations_truncated", "next_relation_offset",
+    "relations", "documents", "sources", "canonical_url"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "2.0" },
     "release_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "reference_date": { "type": "string", "format": "date" },
     "scheme": { "enum": ["fi", "fterm", "ipc"] },
     "edition": { "type": ["string", "null"], "maxLength": 64 },
     "code": { "type": "string", "minLength": 1, "maxLength": 128 },
     "normalized_code": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "record_status": { "enum": ["canonical", "reference_only", null] },
     "match_status": {
-      "enum": ["exact", "normalized_exact", "invalid", "not_found"]
+      "enum": ["exact", "normalized_exact", "invalid", "not_found", "version_not_found", "not_valid_at_release"]
     },
-    "labels": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/textValue" }
+    "version": { "type": ["string", "null"], "maxLength": 32 },
+    "valid_from": { "type": ["string", "null"], "format": "date" },
+    "valid_to": { "type": ["string", "null"], "format": "date" },
+    "available_versions": {
+      "type": "array", "items": { "$ref": "#/$defs/availableVersion" }
     },
-    "texts": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/sourcedText" }
-    },
-    "properties": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/sourcedProperty" }
-    },
-    "relations": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/relation" }
-    },
-    "documents": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/documentLink" }
-    },
-    "sources": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/source" }
-    },
+    "labels": { "type": "array", "items": { "$ref": "#/$defs/sourcedText" } },
+    "texts": { "type": "array", "items": { "$ref": "#/$defs/sourcedText" } },
+    "properties": { "type": "array", "items": { "$ref": "#/$defs/sourcedProperty" } },
+    "relation_count": { "type": "integer", "minimum": 0 },
+    "relation_offset": { "type": "integer", "minimum": 0 },
+    "relation_limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+    "relations_truncated": { "type": "boolean" },
+    "next_relation_offset": { "type": ["integer", "null"], "minimum": 0 },
+    "relations": { "type": "array", "items": { "$ref": "#/$defs/relation" } },
+    "documents": { "type": "array", "items": { "$ref": "#/$defs/documentLink" } },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "canonical_url": { "type": ["string", "null"], "format": "uri" }
   },
   "$defs": {
-    "textValue": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["language", "text", "provenance"],
+    "availableVersion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "valid_from", "valid_to"],
       "properties": {
-        "language": { "enum": ["ja", "en"] },
-        "text": { "type": "string" },
-        "provenance": { "const": "official" }
+        "version": { "type": ["string", "null"] },
+        "valid_from": { "type": ["string", "null"], "format": "date" },
+        "valid_to": { "type": ["string", "null"], "format": "date" }
       }
     },
     "sourcedText": {
-      "type": "object",
-      "additionalProperties": false,
+      "type": "object", "additionalProperties": false,
       "required": ["kind", "language", "text", "provenance", "source_id", "locator"],
       "properties": {
         "kind": { "type": "string", "minLength": 1 },
@@ -80,20 +64,8 @@
         "locator": { "type": "string", "minLength": 1 }
       }
     },
-    "relation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "scheme", "code", "edition"],
-      "properties": {
-        "type": { "type": "string", "minLength": 1 },
-        "scheme": { "enum": ["fi", "fterm", "ipc"] },
-        "code": { "type": "string", "minLength": 1 },
-        "edition": { "type": ["string", "null"] }
-      }
-    },
     "sourcedProperty": {
-      "type": "object",
-      "additionalProperties": false,
+      "type": "object", "additionalProperties": false,
       "required": ["name", "value", "language", "provenance", "source_id", "locator"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
@@ -104,31 +76,36 @@
         "locator": { "type": "string", "minLength": 1 }
       }
     },
+    "relation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "scheme", "code", "edition", "version", "source_id", "locator"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "scheme": { "enum": ["fi", "fterm", "ipc"] },
+        "code": { "type": "string", "minLength": 1 },
+        "edition": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "source_id": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 }
+      }
+    },
     "documentLink": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["document_id", "kind", "language", "title", "page_count", "link_type"],
+      "type": "object", "additionalProperties": false,
+      "required": ["document_id", "kind", "language", "title", "page_count", "link_type", "source_id", "locator"],
       "properties": {
         "document_id": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
         "language": { "enum": ["ja", "en", "und"] },
         "title": { "type": "string", "minLength": 1 },
         "page_count": { "type": ["integer", "null"], "minimum": 0 },
-        "link_type": { "type": "string", "minLength": 1 }
+        "link_type": { "type": "string", "minLength": 1 },
+        "source_id": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 }
       }
     },
     "source": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "source_id",
-        "title",
-        "relative_id",
-        "owner",
-        "original_url",
-        "sha256",
-        "attribution"
-      ],
+      "type": "object", "additionalProperties": false,
+      "required": ["source_id", "title", "relative_id", "owner", "original_url", "sha256", "attribution"],
       "properties": {
         "source_id": { "type": "string", "minLength": 1 },
         "title": { "type": "string", "minLength": 1 },

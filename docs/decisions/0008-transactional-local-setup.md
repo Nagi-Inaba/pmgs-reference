@@ -18,8 +18,9 @@ Python CLIの`pmgs setup SOURCE`を、全OSと全インストール形態に共�
 1. sourceは`JPPM`と数字からなる版ディレクトリ、明示した`--release`、または親直下の一意な版ディレクトリから解決する。曖昧な版、版の不一致、symlinkまたはjunctionを含むsourceは拒否する。
 2. source inventoryを構築前後に生成し、論理SHA-256が一致しない候補を有効化しない。
 3. SQLiteは`data/releases/<release>/<source-sha256>/<database-sha256>.sqlite`へ内容アドレス付きで保存し、既存ファイルを上書きしない。
-   ハードリンクを利用できないファイルシステムでは出力先を排他的に予約する。
-   予約したファイルが置き換えられていないことを確認してから、完成済みの一時ファイルを原子的に配置する。
+   完成済み一時ファイルのhard linkを第一候補とする。hard linkが使えないWindowsのFAT/exFATでは、
+   既存destinationを置換しない同一volumeのrenameで原子的に配置する。POSIX renameは既存destinationを
+   置換し得るため、Windows以外でhard linkが使えない場合はfail closedにする。
 4. schema検証と実stdio MCP診断に合格したSQLiteだけを`state/current.json`から参照する。
 5. `current.json`は管理ディレクトリ内の相対パスとidentityを持ち、同一ディレクトリの一時ファイルから原子的に置き換える。
 6. setup lockは同じ管理ディレクトリへの同時実行を一つに制限する。所有を確認できるstagingだけを回収し、旧版SQLiteは自動削除しない。
@@ -43,7 +44,8 @@ OS既定の管理ディレクトリは、Windowsが`%LOCALAPPDATA%\pmgs-referenc
 
 内容アドレス付きDBと旧版保持によりディスク使用量は増える。削除は将来の明示的な管理コマンドまたは利用者の確認済み操作で扱い、自動cleanupは導入しない。
 
-ファイル置換の原子性は各OSの同一filesystem内のrename契約に依存する。電源断まで含む永続性は、通常の単体testだけでは完全には証明しない。
+ファイル配置の原子性はhard linkまたはWindowsの同一filesystem内におけるno-replace rename契約に依存する。
+電源断まで含む永続性は、通常の単体testだけでは完全には証明しない。
 
 ## 不採用案
 

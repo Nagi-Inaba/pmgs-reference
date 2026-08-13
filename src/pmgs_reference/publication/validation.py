@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 from lxml import html
@@ -25,6 +28,142 @@ _SECRET_ASSIGNMENT = re.compile(
 _FORBIDDEN_SUFFIXES = {".sqlite", ".sqlite3", ".db", ".csv", ".pdf", ".zip", ".xsl"}
 _VALIDATION_WORKERS = 32
 _VALIDATION_WINDOW = 128
+_CSS_URL = re.compile(r"(?i)url\(\s*(['\"]?)(.*?)\1\s*\)")
+_CSS_IMPORT = re.compile(r"(?i)@import\s+(['\"])(.*?)\1")
+_URL_ATTRIBUTES = frozenset(
+    {"src", "href", "data", "action", "formaction", "poster", "background", "manifest"}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _SafeFile:
+    path: Path
+    key: str
+    device: int
+    inode: int
+
+
+def _is_reparse_point(file_stat: os.stat_result) -> bool:
+    attributes = int(getattr(file_stat, "st_file_attributes", 0))
+    reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return bool(attributes & reparse_flag)
+
+
+def _ensure_plain_directory(path: Path, *, label: str) -> os.stat_result:
+    try:
+        file_stat = path.lstat()
+    except OSError as error:
+        raise ValueError(f"unsafe public export {label}: cannot inspect {path}: {error}") from error
+    if stat.S_ISLNK(file_stat.st_mode) or _is_reparse_point(file_stat):
+        raise ValueError(f"unsafe public export {label}: symbolic link or reparse point: {path}")
+    if not stat.S_ISDIR(file_stat.st_mode):
+        raise ValueError(f"unsafe public export {label}: not a directory: {path}")
+    return file_stat
+
+
+def _resolved_under_root(path: Path, root: Path, *, label: str) -> Path:
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"unsafe public export {label}: target escapes root: {path}") from error
+    return resolved
+
+
+def _safe_export_files(root: Path) -> tuple[Path, list[_SafeFile]]:
+    lexical_root = root.absolute()
+    ancestors = list(reversed((lexical_root, *lexical_root.parents)))
+    for ancestor in ancestors:
+        _ensure_plain_directory(ancestor, label="ancestor")
+    resolved_root = lexical_root.resolve(strict=True)
+
+    files: list[_SafeFile] = []
+    pending = [lexical_root]
+    while pending:
+        directory = pending.pop()
+        _ensure_plain_directory(directory, label="directory")
+        _resolved_under_root(directory, resolved_root, label="directory")
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: entry.name)
+        except OSError as error:
+            raise ValueError(
+                f"unsafe public export directory: cannot enumerate {directory}"
+            ) from error
+        for entry in entries:
+            path = Path(entry.path)
+            try:
+                file_stat = path.lstat()
+            except OSError as error:
+                raise ValueError(f"unsafe public export object: cannot inspect {path}") from error
+            if stat.S_ISLNK(file_stat.st_mode) or _is_reparse_point(file_stat):
+                raise ValueError(
+                    f"unsafe public export object: symbolic link or reparse point: {path}"
+                )
+            _resolved_under_root(path, resolved_root, label="object")
+            if stat.S_ISDIR(file_stat.st_mode):
+                pending.append(path)
+                continue
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise ValueError(f"unsafe public export object: not a regular file: {path}")
+            if file_stat.st_nlink != 1:
+                raise ValueError(f"unsafe public export object: hard-linked file: {path}")
+            files.append(
+                _SafeFile(
+                    path=path,
+                    key=path.relative_to(lexical_root).as_posix(),
+                    device=file_stat.st_dev,
+                    inode=file_stat.st_ino,
+                )
+            )
+    files.sort(key=lambda item: item.key)
+    return resolved_root, files
+
+
+def _read_safe_file(root: Path, safe_file: _SafeFile) -> bytes:
+    try:
+        before = safe_file.path.lstat()
+    except OSError as error:
+        raise ValueError(
+            f"unsafe public export object cannot be inspected before read: {safe_file.key}"
+        ) from error
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or _is_reparse_point(before)
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or (before.st_dev, before.st_ino) != (safe_file.device, safe_file.inode)
+    ):
+        raise ValueError(f"unsafe public export object changed before read: {safe_file.key}")
+    _resolved_under_root(safe_file.path, root, label="object")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(safe_file.path, flags)
+    except OSError as error:
+        raise ValueError(
+            f"unsafe public export object cannot be opened: {safe_file.key}"
+        ) from error
+    try:
+        opened = os.fstat(descriptor)
+        try:
+            current = safe_file.path.stat(follow_symlinks=False)
+        except OSError as error:
+            raise ValueError(
+                f"unsafe public export object changed during open: {safe_file.key}"
+            ) from error
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or (opened.st_dev, opened.st_ino) != (safe_file.device, safe_file.inode)
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise ValueError(f"unsafe public export object changed during open: {safe_file.key}")
+        _resolved_under_root(safe_file.path, root, label="object")
+        with os.fdopen(descriptor, "rb", closefd=True) as stream:
+            descriptor = -1
+            return stream.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,11 +253,14 @@ class _NoticeRequirements:
         return self.attribution, self.source_url, processing, non_affiliation
 
 
-def _manifest_path(root: Path) -> Path:
-    releases = root / "releases"
-    candidates = sorted(
-        path for path in releases.glob("*/manifest.json") if path.parent.parent == releases
-    )
+def _manifest_file(files: list[_SafeFile]) -> _SafeFile:
+    candidates = [
+        item
+        for item in files
+        if len(item.key.split("/")) == 3
+        and item.key.startswith("releases/")
+        and item.key.endswith("/manifest.json")
+    ]
     if len(candidates) != 1:
         raise ValueError(f"expected one release manifest, found {len(candidates)}")
     return candidates[0]
@@ -140,11 +282,12 @@ def _object_metadata(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _notice_requirements(
-    root: Path, release_id: str
+    root: Path, release_id: str, files_by_key: dict[str, _SafeFile]
 ) -> tuple[_NoticeRequirements | None, str | None]:
-    path = root / "releases" / release_id / "publication-policy.json"
+    key = f"releases/{release_id}/publication-policy.json"
     try:
-        payload = json.loads(path.read_bytes())
+        policy_file = files_by_key[key]
+        payload = json.loads(_read_safe_file(root, policy_file))
         if not isinstance(payload, dict):
             raise ValueError("root is not an object")
         sources = payload.get("sources")
@@ -166,8 +309,39 @@ def _notice_requirements(
         if not all(isinstance(value, str) and value.strip() for value in values):
             raise ValueError("notice fields must be non-empty strings")
         return _NoticeRequirements(*cast(tuple[str, str, str, str, str, str], values)), None
-    except (OSError, json.JSONDecodeError, ValueError) as error:
+    except (KeyError, OSError, json.JSONDecodeError, ValueError) as error:
         return None, f"publication policy notices are invalid: {error}"
+
+
+def _is_external_url(value: str) -> bool:
+    stripped = value.strip()
+    if any(ord(character) < 0x20 for character in stripped):
+        return True
+    normalized = stripped.replace("\\", "/")
+    if normalized.startswith("//"):
+        return True
+    parsed = urlsplit(normalized)
+    return bool(parsed.scheme or parsed.netloc)
+
+
+def _external_css_errors(key: str, css: str) -> list[str]:
+    errors: list[str] = []
+    if "\\" in css:
+        errors.append(f"{key}: CSS escapes are forbidden")
+    if re.search(r"(?i)@import\b", css):
+        errors.append(f"{key}: CSS import is forbidden")
+    urls = [match.group(2) for match in _CSS_URL.finditer(css)]
+    urls.extend(match.group(2) for match in _CSS_IMPORT.finditer(css))
+    errors.extend(
+        f"{key}: unexpected external CSS URL" for value in urls if _is_external_url(value)
+    )
+    if re.search(r"(?i)(?:https?:|data:|(?<!:)//)", css):
+        errors.append(f"{key}: external CSS resource syntax is forbidden")
+    return errors
+
+
+def _attribute_local_name(name: str) -> str:
+    return name.rsplit("}", maxsplit=1)[-1].rsplit(":", maxsplit=1)[-1].lower()
 
 
 def _validate_html(key: str, data: bytes) -> list[str]:
@@ -186,21 +360,57 @@ def _validate_html(key: str, data: bytes) -> list[str]:
         script_type = str(script.get("type") or "")
         source = str(script.get("src") or "")
         if script_type == "application/ld+json":
+            if source:
+                errors.append(f"{key}: JSON-LD script must be inline")
+            try:
+                json.loads(str(script.text or ""))
+            except json.JSONDecodeError:
+                errors.append(f"{key}: JSON-LD script is invalid")
             continue
         if source == "/assets/webmcp.js":
             continue
         errors.append(f"{key}: unexpected executable script")
     for element in document.iter():
-        if element.tag not in {"script", "img", "iframe", "link"}:
-            continue
-        attribute = "src" if element.get("src") is not None else "href"
-        value = str(element.get(attribute) or "")
-        relation = str(element.get("rel") or "")
-        if value.startswith(("http://", "https://")) and relation not in {
-            "alternate",
-            "canonical",
-        }:
-            errors.append(f"{key}: unexpected external resource URL")
+        tag = str(element.tag).lower() if isinstance(element.tag, str) else ""
+        if tag in {"base", "iframe", "object", "embed"}:
+            errors.append(f"{key}: forbidden embedded object")
+        if tag == "meta" and element.get("http-equiv") is not None:
+            errors.append(f"{key}: meta HTTP directives are forbidden")
+        relations = {part.lower() for part in str(element.get("rel") or "").split()}
+        for raw_name, raw_value in element.attrib.items():
+            attribute = _attribute_local_name(str(raw_name))
+            if attribute.startswith("on"):
+                errors.append(f"{key}: inline event handlers are forbidden")
+                continue
+            if attribute in {"ping", "srcset"}:
+                errors.append(f"{key}: {attribute} is forbidden")
+                continue
+            if attribute not in _URL_ATTRIBUTES:
+                continue
+            value = str(raw_value).strip()
+            if not _is_external_url(value):
+                continue
+            allowed_link_relation = relations == {"alternate"} or relations == {"canonical"}
+            allowed_link = (
+                tag == "link"
+                and attribute == "href"
+                and allowed_link_relation
+                and urlsplit(value).scheme.lower() == "https"
+                and not value.startswith("//")
+            )
+            allowed_anchor = (
+                tag == "a"
+                and attribute == "href"
+                and urlsplit(value).scheme.lower() == "https"
+                and not value.startswith("//")
+            )
+            if not (allowed_link or allowed_anchor):
+                errors.append(f"{key}: unexpected external URL in {attribute}")
+        css_values = [str(element.get("style") or "")]
+        if tag == "style":
+            css_values.append(str(element.text or ""))
+        for css in css_values:
+            errors.extend(_external_css_errors(key, css))
     return errors
 
 
@@ -241,8 +451,15 @@ def _check_file(
     metadata: dict[str, Any] | None,
     cached_data: bytes | None = None,
     required_notices: tuple[str, ...] = (),
+    safe_root: Path | None = None,
+    safe_file: _SafeFile | None = None,
 ) -> _FileCheck:
-    data = path.read_bytes() if cached_data is None else cached_data
+    if cached_data is not None:
+        data = cached_data
+    elif safe_root is not None and safe_file is not None:
+        data = _read_safe_file(safe_root, safe_file)
+    else:
+        data = path.read_bytes()
     size = len(data)
     sha256 = hashlib.sha256(data).hexdigest().upper()
     metadata_errors: list[str] = []
@@ -292,6 +509,8 @@ def _check_file(
             for required_notice in required_notices:
                 if required_notice not in text:
                     notice_errors.append(f"{key}: required public notice is missing")
+            if suffix == ".css":
+                html_errors.extend(_external_css_errors(key, text))
 
     return _FileCheck(
         key=key,
@@ -339,23 +558,20 @@ def _coverage_checks(
 
 def validate_public_export(root: Path) -> PublicValidationResult:
     """Validate a complete local public candidate without contacting external services."""
-    root = root.resolve()
-    manifest_path = _manifest_path(root)
-    manifest_data = manifest_path.read_bytes()
+    root, safe_files = _safe_export_files(root)
+    files_by_key = {item.key: item for item in safe_files}
+    manifest_file = _manifest_file(safe_files)
+    manifest_data = _read_safe_file(root, manifest_file)
     manifest_raw = json.loads(manifest_data)
     if not isinstance(manifest_raw, dict):
         raise ValueError("release manifest is not an object")
     manifest = cast(dict[str, Any], manifest_raw)
     release_id = str(manifest.get("release_id", ""))
-    notice_requirements, notice_policy_error = _notice_requirements(root, release_id)
+    notice_requirements, notice_policy_error = _notice_requirements(root, release_id, files_by_key)
     objects = _object_metadata(manifest)
-    manifest_key = manifest_path.relative_to(root).as_posix()
+    manifest_key = manifest_file.key
     expected = set(objects) | {manifest_key}
-    actual_paths = sorted(
-        (item for item in root.rglob("*") if item.is_file()),
-        key=lambda item: item.relative_to(root).as_posix(),
-    )
-    actual = {path.relative_to(root).as_posix() for path in actual_paths}
+    actual = set(files_by_key)
     missing = tuple(sorted(expected - actual))
     unexpected = tuple(sorted(actual - expected))
 
@@ -405,16 +621,19 @@ def validate_public_export(root: Path) -> PublicValidationResult:
 
     pending: deque[Future[_FileCheck]] = deque()
     with ThreadPoolExecutor(max_workers=_VALIDATION_WORKERS) as executor:
-        for path in actual_paths:
-            key = path.relative_to(root).as_posix()
+        for safe_file in safe_files:
+            path = safe_file.path
+            key = safe_file.key
             pending.append(
                 executor.submit(
                     _check_file,
                     path,
                     key,
                     objects.get(key),
-                    manifest_data if path == manifest_path else None,
+                    manifest_data if safe_file == manifest_file else None,
                     notice_requirements.for_key(key) if notice_requirements is not None else (),
+                    root,
+                    safe_file,
                 )
             )
             if len(pending) >= _VALIDATION_WINDOW:
@@ -449,7 +668,7 @@ def validate_public_export(root: Path) -> PublicValidationResult:
     return PublicValidationResult(
         valid=valid,
         release_id=str(manifest.get("release_id")) if manifest.get("release_id") else None,
-        object_count=len(actual_paths),
+        object_count=len(safe_files),
         total_bytes=total_bytes,
         missing_objects=missing,
         unexpected_objects=unexpected,

@@ -8,7 +8,7 @@ import sqlite3
 from collections import deque
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
@@ -54,9 +54,10 @@ from pmgs_reference.publication.render import (
 from pmgs_reference.schema import SCHEMA_VERSION
 from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 
-_MIN_CHUNK_BYTES = 4_096
+_MIN_CHUNK_BYTES = 256
 _MAX_CHUNK_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_JSON_CHUNK_BYTES = 256 * 1024
+MAX_CLASSIFICATION_BUNDLE_BYTES = 256 * 1024
 _GROUP_BATCH_CONCEPTS = 1_000
 _WRITE_WORKERS = 32
 _DOCUMENT_WRITE_WINDOW = 64
@@ -210,6 +211,13 @@ def _split_group_records(
     for record in records:
         chunk_id = f"{chunk_number:03d}"
         serialized = _assign_canonical_urls(record, spec, chunk_id, base_url)
+        if _header_size(header(chunk_id), [serialized], "records") > min(
+            max_bytes, MAX_CLASSIFICATION_BUNDLE_BYTES
+        ):
+            raise ValueError(
+                "classification revision bundle exceeds the 256 KiB safety limit: "
+                f"{record['scheme']} {record['normalized_code']}"
+            )
         candidate = [*current_bytes, serialized]
         if current_records and _header_size(header(chunk_id), candidate, "records") > max_bytes:
             flush()
@@ -220,11 +228,6 @@ def _split_group_records(
             serialized = _assign_canonical_urls(record, spec, chunk_id, base_url)
         current_records.append(record)
         current_bytes.append(serialized)
-        if (
-            len(current_records) == 1
-            and _header_size(header(chunk_id), current_bytes, "records") > max_bytes
-        ):
-            oversized += 1
     flush()
     return chunks, oversized
 
@@ -552,7 +555,7 @@ def _coverage(
     coverage: JSONDict = {}
     rows = connection.execute(
         "SELECT scheme, edition, COUNT(*) AS count FROM concept WHERE release_id = ? "
-        "AND concept_type NOT LIKE '%_reference' GROUP BY scheme, edition "
+        "AND record_status = 'canonical' GROUP BY scheme, edition "
         "ORDER BY scheme, edition",
         (release_id,),
     ).fetchall()
@@ -561,14 +564,14 @@ def _coverage(
         coverage[f"classification.{row['scheme']}.{edition}"] = int(row["count"])
     coverage["classification.reference_only_excluded"] = int(
         connection.execute(
-            "SELECT COUNT(*) FROM concept WHERE release_id = ? AND concept_type LIKE '%_reference'",
+            "SELECT COUNT(*) FROM concept WHERE release_id = ? "
+            "AND record_status = 'reference_only'",
             (release_id,),
         ).fetchone()[0]
     )
     coverage["classification.unique_public"] = int(
         connection.execute(
-            "SELECT COUNT(*) FROM concept WHERE release_id = ? "
-            "AND concept_type NOT LIKE '%_reference'",
+            "SELECT COUNT(*) FROM concept WHERE release_id = ? AND record_status = 'canonical'",
             (release_id,),
         ).fetchone()[0]
     )
@@ -615,6 +618,20 @@ def _validate_source_attribution(
     release_id: str,
     source: SourcePresentation,
 ) -> None:
+    release_source = connection.execute(
+        "SELECT owner, original_url, attribution FROM release_source WHERE release_id = ?",
+        (release_id,),
+    ).fetchone()
+    if release_source is None:
+        raise ValueError("database release_source is missing")
+    expected = (source.owner, source.source_url, source.attribution)
+    actual = (
+        str(release_source["owner"]),
+        str(release_source["original_url"]),
+        str(release_source["attribution"]),
+    )
+    if actual != expected:
+        raise ValueError("policy owner, source URL, or attribution does not match release_source")
     rows = connection.execute(
         "SELECT re.value FROM reference_entry re "
         "JOIN source_file sf ON sf.file_id = re.source_file_id "
@@ -626,6 +643,25 @@ def _validate_source_attribution(
         raise ValueError("database must contain exactly one non-empty COPYRGHT notice")
     if source.attribution != next(iter(notices)):
         raise ValueError("policy attribution does not match the database COPYRGHT notice")
+
+
+def _database_source_presentation(
+    connection: sqlite3.Connection,
+    release_id: str,
+    policy_source: SourcePresentation,
+) -> SourcePresentation:
+    row = connection.execute(
+        "SELECT owner, original_url, attribution FROM release_source WHERE release_id = ?",
+        (release_id,),
+    ).fetchone()
+    if row is None:  # pragma: no cover - checked before this projection
+        raise ValueError("database release_source is missing")
+    return replace(
+        policy_source,
+        owner=str(row["owner"]),
+        source_url=str(row["original_url"]),
+        attribution=str(row["attribution"]),
+    )
 
 
 def _write_report(path: Path, result: ExportResult) -> None:
@@ -662,6 +698,7 @@ def export_public(
         release = _release_row(connection, policy.release_id)
         release_id = str(release["release_id"])
         _validate_source_attribution(connection, release_id, policy.source)
+        source_presentation = _database_source_presentation(connection, release_id, policy.source)
         output_path.mkdir(parents=True)
         writer = OutputWriter(output_path)
         sitemap_urls = [f"{clean_base_url}/", f"{clean_base_url}/en/"]
@@ -676,7 +713,7 @@ def export_public(
 
         with ThreadPoolExecutor(max_workers=_WRITE_WORKERS) as executor:
             for specs, concept_ids in _group_batches(group_index, _GROUP_BATCH_CONCEPTS):
-                record_map = load_group_record_map(connection, concept_ids, policy.source)
+                record_map = load_group_record_map(connection, concept_ids, source_presentation)
                 group_futures: list[Future[_WriteResult]] = []
                 for spec in specs:
                     records = sorted(
@@ -695,7 +732,7 @@ def export_public(
                             spec=spec,
                             records=records,
                             base_url=clean_base_url,
-                            source=policy.source,
+                            source=source_presentation,
                             max_bytes=max_json_chunk_bytes,
                         )
                     )
@@ -709,7 +746,9 @@ def export_public(
 
             document_futures: deque[Future[_WriteResult]] = deque()
             for document_row in document_rows(connection, release_id):
-                manifest_base, segments = load_document(connection, document_row, policy.source)
+                manifest_base, segments = load_document(
+                    connection, document_row, source_presentation
+                )
                 document_futures.append(
                     executor.submit(
                         _write_document_isolated,
@@ -718,7 +757,7 @@ def export_public(
                         manifest_base=manifest_base,
                         segments=segments,
                         base_url=clean_base_url,
-                        source=policy.source,
+                        source=source_presentation,
                         max_bytes=max_json_chunk_bytes,
                     )
                 )
@@ -753,24 +792,24 @@ def export_public(
         )
         writer.write_text(
             "index.html",
-            home_html(clean_base_url, release_id, policy.source, "ja"),
+            home_html(clean_base_url, release_id, source_presentation, "ja"),
             HTML_CONTENT_TYPE,
         )
         writer.write_text(
             "index.en.html",
-            home_html(clean_base_url, release_id, policy.source, "en"),
+            home_html(clean_base_url, release_id, source_presentation, "en"),
             HTML_CONTENT_TYPE,
         )
         writer.write_text("assets/style.css", stylesheet(), CSS_CONTENT_TYPE)
         writer.write_json("openapi.json", openapi_document(clean_base_url, release_id))
         writer.write_text(
             "llms.txt",
-            llms_text(clean_base_url, release_id, policy.source, "ja"),
+            llms_text(clean_base_url, release_id, source_presentation, "ja"),
             TEXT_CONTENT_TYPE,
         )
         writer.write_text(
             "llms.en.txt",
-            llms_text(clean_base_url, release_id, policy.source, "en"),
+            llms_text(clean_base_url, release_id, source_presentation, "en"),
             TEXT_CONTENT_TYPE,
         )
         writer.write_text("robots.txt", robots_text(clean_base_url), TEXT_CONTENT_TYPE)
@@ -781,6 +820,7 @@ def export_public(
         manifest_payload: JSONDict = {
             "schema_version": SCHEMA_VERSION,
             "release_id": release_id,
+            "reference_date": str(release["reference_date"]),
             "source_manifest_sha256": str(release["source_manifest_sha256"]).upper(),
             "database_schema_version": database_schema_version,
             "generated_at": policy.generated_at,

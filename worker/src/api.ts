@@ -18,6 +18,7 @@ import {
   type ReleaseCatalogEntry,
   type Scheme,
   type StorageRecord,
+  type RevisionRecord,
   isClassificationChunk,
   isDocumentChunk,
   isDocumentManifest,
@@ -30,6 +31,9 @@ const ALLOWED_LOOKUP_PARAMETERS = new Set([
   "release",
   "edition",
   "language",
+  "version",
+  "relation_limit",
+  "relation_offset",
 ]);
 const ALLOWED_DOCUMENT_PARAMETERS = new Set(["release", "page", "section"]);
 const DOCUMENT_ID = /^doc-[a-f0-9]{24}$/u;
@@ -114,6 +118,38 @@ function integerParameter(value: string | null, name: string): number | null {
   return parsed;
 }
 
+function relationPageParameter(
+  value: string | null,
+  name: "relation_limit" | "relation_offset",
+  fallback: number,
+): number {
+  if (value === null) return fallback;
+  if (!/^[0-9]+$/u.test(value)) {
+    throw new PublicError(400, "INVALID_QUERY", `${name} must be a non-negative integer`);
+  }
+  const parsed = Number(value);
+  const valid = Number.isSafeInteger(parsed) && (name === "relation_offset" || parsed >= 1);
+  if (!valid || (name === "relation_limit" && parsed > 200)) {
+    throw new PublicError(400, "INVALID_QUERY", `${name} is outside the supported range`);
+  }
+  return parsed;
+}
+
+function versionParameter(value: string | null, scheme: Scheme): string | null {
+  if (value === null) return null;
+  if (scheme !== "ipc") {
+    throw new PublicError(400, "INVALID_VERSION", "version is supported only for IPC");
+  }
+  let normalized = value.trim();
+  if (normalized.startsWith("(") && normalized.endsWith(")")) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+  if (!/^[0-9]{4}\.[0-9]{2}$/u.test(normalized)) {
+    throw new PublicError(400, "INVALID_VERSION", "IPC version must use YYYY.MM");
+  }
+  return normalized;
+}
+
 function findGroupChunk(chunks: GroupChunkEntry[], target: string): GroupChunkEntry | null {
   let lower = 0;
   let upper = chunks.length - 1;
@@ -145,25 +181,55 @@ function projectRecord(
   record: StorageRecord,
   language: Language,
   matchStatus: "exact" | "normalized_exact",
+  version: string | null,
+  relationLimit: number,
+  relationOffset: number,
 ): JsonObject {
   const canonical = record.canonical_urls[language] ?? record.canonical_urls.ja;
   if (typeof canonical !== "string") {
     throw unavailable("classification record has no canonical URL");
   }
+  let selected: RevisionRecord | null = null;
+  let selectedStatus: string = record.match_status;
+  if (version !== null) {
+    selected = record.revision_records.find((candidate) => candidate.version === version) ?? null;
+    selectedStatus = selected === null ? "version_not_found" : matchStatus;
+  } else if (record.match_status === "exact") {
+    selected =
+      record.revision_records.find((candidate) => candidate.version === record.version) ?? null;
+    if (selected === null) {
+      throw unavailable("classification record is missing its selected revision");
+    }
+    selectedStatus = matchStatus;
+  }
+  const allRelations = selected?.relations ?? [];
+  const relations = allRelations.slice(relationOffset, relationOffset + relationLimit);
+  const nextOffset = relationOffset + relations.length;
   return {
     schema_version: record.schema_version,
     release_id: record.release_id,
+    reference_date: record.reference_date,
     scheme: record.scheme,
     edition: record.edition,
     code: record.code,
     normalized_code: record.normalized_code,
-    match_status: matchStatus,
-    labels: languageItems(record.labels, language),
-    texts: languageItems(record.texts, language),
-    properties: languageItems(record.properties, language, true),
-    relations: record.relations,
-    documents: record.documents,
-    sources: record.sources,
+    record_status: record.record_status,
+    match_status: selectedStatus,
+    version: selected?.version ?? null,
+    valid_from: selected?.valid_from ?? null,
+    valid_to: selected?.valid_to ?? null,
+    available_versions: record.available_versions,
+    labels: languageItems(selected?.labels ?? [], language),
+    texts: languageItems(selected?.texts ?? [], language),
+    properties: languageItems(selected?.properties ?? [], language, true),
+    relation_count: allRelations.length,
+    relation_offset: relationOffset,
+    relation_limit: relationLimit,
+    relations_truncated: allRelations.length > relations.length,
+    next_relation_offset: nextOffset < allRelations.length ? nextOffset : null,
+    relations,
+    documents: selected?.documents ?? [],
+    sources: selected?.sources ?? record.sources,
     canonical_url: canonical,
   };
 }
@@ -200,6 +266,17 @@ export async function lookupClassification(request: Request, env: Env): Promise<
   }
   const language = languageParameter(singleParameter(url.searchParams, "language"));
   const release = resolveRelease(singleParameter(url.searchParams, "release"), env);
+  const version = versionParameter(singleParameter(url.searchParams, "version"), scheme);
+  const relationLimit = relationPageParameter(
+    singleParameter(url.searchParams, "relation_limit"),
+    "relation_limit",
+    50,
+  );
+  const relationOffset = relationPageParameter(
+    singleParameter(url.searchParams, "relation_offset"),
+    "relation_offset",
+    0,
+  );
   const rawEdition = singleParameter(url.searchParams, "edition");
   if (scheme !== "ipc" && rawEdition !== null) {
     throw new PublicError(400, "INVALID_EDITION", "edition is supported only for IPC");
@@ -232,7 +309,7 @@ export async function lookupClassification(request: Request, env: Env): Promise<
     throw new PublicError(404, "CLASSIFICATION_NOT_FOUND", "classification not found");
   }
   if (!isGroupManifest(manifestPayload) || manifestPayload.release_id !== release.id) {
-    throw unavailable();
+    throw unavailable("group manifest is malformed");
   }
   const chunkEntry = findGroupChunk(manifestPayload.chunks, targetLookupKey);
   if (chunkEntry === null) {
@@ -247,7 +324,7 @@ export async function lookupClassification(request: Request, env: Env): Promise<
     chunkPayload.release_id !== release.id ||
     chunkPayload.chunk_id !== chunkEntry.chunk_id
   ) {
-    throw unavailable();
+    throw unavailable("classification chunk is malformed");
   }
   const record = chunkPayload.records.find(
     (candidate) =>
@@ -259,11 +336,15 @@ export async function lookupClassification(request: Request, env: Env): Promise<
     throw unavailable("classification range does not contain its indexed record");
   }
   const matchStatus = checkedCode.clean === normalizedCode ? "exact" : "normalized_exact";
-  return jsonResponse(projectRecord(record, language, matchStatus), 200, {
+  return jsonResponse(
+    projectRecord(record, language, matchStatus, version, relationLimit, relationOffset),
+    200,
+    {
     api: true,
     cache: release.currentAlias ? "current" : "immutable",
     r2Reads: reader.reads,
-  });
+    },
+  );
 }
 
 function findDocumentChunk(

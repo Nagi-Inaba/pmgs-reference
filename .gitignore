@@ -41,3 +41,5 @@ build/*
 *.pfx
 JPPM*/
 source-manifest*.jsonl
+determinism-*.json
+agent-evaluation*.json

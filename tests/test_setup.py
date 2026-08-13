@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import pmgs_reference.setup as local_setup_module
 from pmgs_reference.client_integration import ClientTarget
 from pmgs_reference.data_paths import write_json_atomic
-from pmgs_reference.ingest.build import build_database
+from pmgs_reference.ingest.build import BuildError, build_database
 from pmgs_reference.ingest.inventory import build_inventory
+from pmgs_reference.schema import APPLICATION_ID
 from pmgs_reference.setup import SetupLock, SetupUsageError, resolve_setup_source, setup_reference
 from pmgs_reference.store import PMGSStore
 from pmgs_reference.validation import validate_database
@@ -21,6 +24,36 @@ from pmgs_reference.validation import validate_database
 
 def _no_clients() -> tuple[ClientTarget, ...]:
     return ()
+
+
+def _create_v1_database(path: Path, release_id: str, source_sha256: str) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            f"""
+            PRAGMA application_id = {APPLICATION_ID};
+            PRAGMA user_version = 1;
+            CREATE TABLE release (
+                release_id TEXT PRIMARY KEY,
+                schema_version TEXT NOT NULL,
+                source_manifest_sha256 TEXT NOT NULL,
+                source_file_count INTEGER NOT NULL,
+                source_total_bytes INTEGER NOT NULL
+            ) STRICT;
+            """
+        )
+        connection.execute(
+            "INSERT INTO release VALUES (?, '1.0', ?, 1, 1)",
+            (release_id, source_sha256),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    digest = hashlib.sha256(path.read_bytes()).hexdigest().upper()
+    destination = path.with_name(f"{digest}.sqlite")
+    path.rename(destination)
+    return digest
 
 
 def test_resolve_setup_source_uses_the_package_name_or_one_direct_child(
@@ -86,6 +119,38 @@ def test_setup_builds_activates_and_reuses_an_immutable_database(
     assert second.status == "already_ready"
     assert second.database == first.database
     assert database.stat().st_mtime_ns == before_mtime
+
+
+def test_setup_promotion_does_not_overwrite_a_racing_destination(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    existing_bytes = b"concurrent writer"
+    real_promote = local_setup_module.promote_database_exclusive
+    race_injected = False
+
+    def racing_promote(source: Path, destination: Path, *, permission_attempts: int = 1) -> None:
+        nonlocal race_injected
+        race_injected = True
+        destination.write_bytes(existing_bytes)
+        real_promote(source, destination, permission_attempts=permission_attempts)
+
+    monkeypatch.setattr(local_setup_module, "promote_database_exclusive", racing_promote)
+    result = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+
+    assert race_injected is True
+    assert result.status == "failed"
+    assert any("database output already exists" in error for error in result.errors)
+    destinations = list((data_root / "data" / "releases").rglob("*.sqlite"))
+    assert len(destinations) == 1
+    assert destinations[0].read_bytes() == existing_bytes
+    assert not (data_root / "state" / "current.json").exists()
 
 
 def test_setup_reuses_the_locked_current_validation(
@@ -177,7 +242,85 @@ def test_setup_dry_run_performs_inventory_without_writing(
 
     assert result.status == "dry_run"
     assert result.inventory["file_count"] == 26
+    assert result.storage["planned_build"] is True
+    assert result.storage["required_free_bytes"] == (
+        int(result.inventory["total_bytes"]) * 7 + 512 * 1024 * 1024
+    )
     assert not data_root.exists()
+
+
+def test_setup_fails_before_build_when_disk_capacity_is_insufficient(
+    synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    build_called = False
+
+    def insufficient(_path: Path) -> object:
+        return SimpleNamespace(free=1)
+
+    def unexpected_build(*_args: object, **_kwargs: object) -> object:
+        nonlocal build_called
+        build_called = True
+        raise AssertionError("build must not start without sufficient capacity")
+
+    monkeypatch.setattr(local_setup_module.shutil, "disk_usage", insufficient)
+    monkeypatch.setattr(local_setup_module, "build_database", unexpected_build)
+
+    result = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+
+    assert result.status == "failed"
+    assert result.storage["planned_build"] is True
+    assert result.storage["sufficient"] is False
+    assert build_called is False
+    assert not list(data_root.rglob("candidate.sqlite"))
+
+
+def test_setup_rebuilds_v1_without_changing_it_until_v2_activation(
+    synthetic_pmgs: Path, tmp_path: Path
+) -> None:
+    data_root = tmp_path / "pmgs-reference"
+    inventory = build_inventory(synthetic_pmgs)
+    provisional = (
+        data_root / "data" / "releases" / "JPPM2099001" / inventory.logical_sha256 / "v1.sqlite"
+    )
+    v1_sha256 = _create_v1_database(provisional, "JPPM2099001", inventory.logical_sha256)
+    v1_database = provisional.with_name(f"{v1_sha256}.sqlite")
+    v1_bytes = v1_database.read_bytes()
+    pointer_path = data_root / "state" / "current.json"
+    write_json_atomic(
+        pointer_path,
+        {
+            "schema_version": "1.0",
+            "release_id": "JPPM2099001",
+            "source_manifest_sha256": inventory.logical_sha256,
+            "database_sha256": v1_sha256,
+            "database_schema_version": 1,
+            "database_relpath": v1_database.relative_to(data_root).as_posix(),
+            "activated_at": "2099-01-01T00:00:00Z",
+        },
+    )
+
+    result = setup_reference(
+        synthetic_pmgs,
+        release_id="JPPM2099001",
+        data_dir=data_root,
+        client_targets=_no_clients(),
+        approved_clients=(),
+    )
+
+    assert result.status == "ready"
+    assert result.database_schema_version == 2
+    assert result.database is not None and Path(result.database) != v1_database
+    assert v1_database.read_bytes() == v1_bytes
+    current = json.loads(pointer_path.read_text(encoding="utf-8"))
+    assert current["database_schema_version"] == 2
+    assert result.storage["retained_database_count"] >= 1  # type: ignore[operator]
 
 
 def test_setup_dry_run_reports_approved_clients_as_planned(
@@ -384,7 +527,7 @@ def test_setup_rejects_a_link_inside_the_managed_data_root(
     assert list(outside.iterdir()) == []
 
 
-def test_setup_does_not_activate_when_the_source_changes_during_build(
+def test_setup_does_not_activate_when_build_reports_source_changed(
     synthetic_pmgs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     data_root = tmp_path / "pmgs-reference"
@@ -405,15 +548,11 @@ def test_setup_does_not_activate_when_the_source_changes_during_build(
     copyright_file.write_text(
         copyright_file.read_text(encoding="utf-8") + "variant\n", encoding="utf-8"
     )
-    real_build = local_setup_module.build_database
 
-    def mutating_build(*args: object, **kwargs: object) -> object:
-        result = real_build(*args, **kwargs)
-        target = source / "COPYRGHT"
-        target.write_text(target.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
-        return result
+    def changed_source_build(*args: object, **kwargs: object) -> object:
+        raise BuildError("source changed while the database was being built")
 
-    monkeypatch.setattr(local_setup_module, "build_database", mutating_build)
+    monkeypatch.setattr(local_setup_module, "build_database", changed_source_build)
 
     result = setup_reference(
         source,
@@ -428,7 +567,7 @@ def test_setup_does_not_activate_when_the_source_changes_during_build(
     assert pointer_path.read_bytes() == pointer_before
     assert PMGSStore.open(data_dir=data_root).path == Path(current.database)
     assert list((data_root / "data" / "releases").rglob("*.sqlite")) == [Path(current.database)]
-    assert build_inventory(source).logical_sha256 != result.source_manifest_sha256
+    assert build_inventory(source).logical_sha256 == result.source_manifest_sha256
 
 
 def test_client_failure_returns_partial_failed_but_keeps_the_database_ready(

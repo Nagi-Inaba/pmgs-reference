@@ -42,7 +42,7 @@ def build_group_index(
     groups: dict[GroupSpec, list[int]] = defaultdict(list)
     rows = connection.execute(
         "SELECT concept_id, scheme, edition, normalized_code FROM concept "
-        "WHERE release_id = ? AND concept_type NOT LIKE '%_reference' "
+        "WHERE release_id = ? AND record_status = 'canonical' "
         "ORDER BY concept_id",
         (release_id,),
     )
@@ -81,16 +81,30 @@ def _fetch_for_ids(
     return rows
 
 
-def _source_payload(row: sqlite3.Row, source: SourcePresentation) -> JSONDict:
+def _source_payload(row: sqlite3.Row, source: SourcePresentation | None = None) -> JSONDict:
     relative_path = str(row["relative_path"]).replace("\\", "/")
+    columns = set(row.keys())
+    if not {"owner", "original_url", "attribution"}.issubset(columns) and source is None:
+        raise ValueError("source presentation metadata is missing")
+    owner = str(row["owner"]) if "owner" in columns else cast(SourcePresentation, source).owner
+    original_url = (
+        str(row["original_url"])
+        if "original_url" in columns
+        else cast(SourcePresentation, source).source_url
+    )
+    attribution = (
+        str(row["attribution"])
+        if "attribution" in columns
+        else cast(SourcePresentation, source).attribution
+    )
     return {
         "source_id": str(row["source_id"]),
         "title": PurePosixPath(relative_path).name,
         "relative_id": relative_path,
-        "owner": source.owner,
-        "original_url": source.source_url,
+        "owner": owner,
+        "original_url": original_url,
         "sha256": str(row["sha256"]).upper(),
-        "attribution": source.attribution,
+        "attribution": attribution,
     }
 
 
@@ -103,7 +117,7 @@ def load_group_record_map(
     concept_ids: Sequence[int],
     source: SourcePresentation,
 ) -> dict[int, JSONDict]:
-    """Load a concept set and all official, linked values in batched SQL."""
+    """Load stable concepts as revision-complete, single-chunk public bundles."""
     if not concept_ids:
         return {}
     concept_rows = _fetch_for_ids(
@@ -114,7 +128,20 @@ def load_group_record_map(
     concept_rows.sort(
         key=lambda row: (str(row["scheme"]), str(row["edition"]), str(row["normalized_code"]))
     )
+    release_ids = {str(row["release_id"]) for row in concept_rows}
+    if len(release_ids) != 1:
+        raise ValueError("classification batch must belong to one release")
+    release_id = next(iter(release_ids))
+    release_row = connection.execute(
+        "SELECT reference_date FROM release WHERE release_id = ?", (release_id,)
+    ).fetchone()
+    if release_row is None:
+        raise ValueError("classification release is missing")
+    reference_date = str(release_row["reference_date"])
+
     records: dict[int, dict[str, Any]] = {}
+    revision_records: dict[int, dict[str, Any]] = {}
+    revision_to_concept: dict[int, int] = {}
     source_ids: dict[int, set[int]] = {}
     for row in concept_rows:
         concept_id = int(row["concept_id"])
@@ -124,72 +151,118 @@ def load_group_record_map(
         records[concept_id] = {
             "schema_version": SCHEMA_VERSION,
             "release_id": str(row["release_id"]),
+            "reference_date": reference_date,
             "lookup_key": lookup_key(scheme, edition, code),
             "scheme": scheme,
             "edition": edition,
             "code": code,
             "normalized_code": code,
+            "record_status": str(row["record_status"]),
+            "match_status": "not_valid_at_release",
+            "version": None,
+            "valid_from": None,
+            "valid_to": None,
+            "available_versions": [],
             "labels": [],
             "texts": [],
             "properties": [],
             "relations": [],
             "documents": [],
             "sources": [],
+            "relation_count": 0,
+            "relation_offset": 0,
+            "relation_limit": 50,
+            "next_relation_offset": None,
+            "revision_records": [],
             "fragment": fragment_id(scheme, edition, code),
             "canonical_urls": {},
         }
         source_ids[concept_id] = {int(row["source_file_id"])}
 
+    revision_rows = _fetch_for_ids(
+        connection,
+        "SELECT * FROM concept_revision WHERE concept_id IN ({concept_ids}) "
+        "ORDER BY concept_id, version_indicator, valid_from, revision_id",
+        concept_ids,
+    )
+    revision_source_ids: dict[int, set[int]] = {}
+    for row in revision_rows:
+        revision_id = int(row["revision_id"])
+        concept_id = int(row["concept_id"])
+        revision_to_concept[revision_id] = concept_id
+        revision_source_ids[revision_id] = {int(row["source_file_id"])}
+        revision_records[revision_id] = {
+            "version": str(row["version_indicator"]) or None,
+            "valid_from": str(row["valid_from"]) if row["valid_from"] is not None else None,
+            "valid_to": str(row["valid_to"]) if row["valid_to"] is not None else None,
+            "labels": [],
+            "texts": [],
+            "properties": [],
+            "relations": [],
+            "documents": [],
+            "sources": [],
+        }
+        records[concept_id]["available_versions"].append(
+            {
+                "version": str(row["version_indicator"]) or None,
+                "valid_from": (str(row["valid_from"]) if row["valid_from"] is not None else None),
+                "valid_to": str(row["valid_to"]) if row["valid_to"] is not None else None,
+            }
+        )
+
+    revision_ids = sorted(revision_records)
+    if not revision_ids:
+        raise ValueError("publishable concept has no revision")
+
     text_rows = _fetch_for_ids(
         connection,
-        "SELECT concept_id, language, kind, sequence_number, text, source_file_id, "
-        "source_locator FROM concept_text WHERE concept_id IN ({concept_ids})",
-        concept_ids,
+        "SELECT revision_id, language, kind, sequence_number, text, source_file_id, "
+        "source_locator FROM concept_text WHERE revision_id IN ({concept_ids})",
+        revision_ids,
     )
     text_rows.sort(
         key=lambda row: (
-            int(row["concept_id"]),
+            int(row["revision_id"]),
             str(row["language"]),
             str(row["kind"]),
             int(row["sequence_number"]),
         )
     )
     for row in text_rows:
-        concept_id = int(row["concept_id"])
+        revision_id = int(row["revision_id"])
         payload = {
             "language": str(row["language"]),
             "text": str(row["text"]),
             "provenance": "official",
         }
-        if row["kind"] == "label":
-            records[concept_id]["labels"].append(payload)
-        else:
-            records[concept_id]["texts"].append(
-                {
-                    "kind": str(row["kind"]),
-                    **payload,
-                    "source_file_id": int(row["source_file_id"]),
-                    "locator": str(row["source_locator"]),
-                }
-            )
-        source_ids[concept_id].add(int(row["source_file_id"]))
+        target = "labels" if row["kind"] == "label" else "texts"
+        revision_records[revision_id][target].append(
+            {
+                "kind": str(row["kind"]),
+                **payload,
+                "source_file_id": int(row["source_file_id"]),
+                "locator": str(row["source_locator"]),
+                "_sequence_number": int(row["sequence_number"]),
+            }
+        )
+        revision_source_ids[revision_id].add(int(row["source_file_id"]))
 
     property_rows = _fetch_for_ids(
         connection,
-        "SELECT property_id, concept_id, name, value, language, source_file_id, source_locator "
-        "FROM concept_property WHERE concept_id IN ({concept_ids})",
-        concept_ids,
+        "SELECT property_id, revision_id, name, value, language, source_file_id, source_locator "
+        "FROM concept_property WHERE revision_id IN ({concept_ids})",
+        revision_ids,
     )
     property_rows.sort(
         key=lambda row: (
-            int(row["concept_id"]),
+            int(row["revision_id"]),
             str(row["name"]),
             int(row["property_id"]),
         )
     )
     for row in property_rows:
-        concept_id = int(row["concept_id"])
-        records[concept_id]["properties"].append(
+        revision_id = int(row["revision_id"])
+        revision_records[revision_id]["properties"].append(
             {
                 "name": str(row["name"]),
                 "value": str(row["value"]),
@@ -199,12 +272,13 @@ def load_group_record_map(
                 "locator": str(row["source_locator"]),
             }
         )
-        source_ids[concept_id].add(int(row["source_file_id"]))
+        revision_source_ids[revision_id].add(int(row["source_file_id"]))
 
     relation_rows = _fetch_for_ids(
         connection,
         "SELECT r.from_concept_id AS concept_id, r.kind AS relation_type, target.scheme, "
-        "target.edition, target.normalized_code, r.source_file_id FROM relation r "
+        "target.edition, target.normalized_code, NULL AS version_indicator, r.source_file_id, "
+        "r.source_locator FROM relation r "
         "JOIN concept target ON target.concept_id = r.to_concept_id "
         "WHERE r.from_concept_id IN ({concept_ids})",
         concept_ids,
@@ -212,15 +286,42 @@ def load_group_record_map(
     child_rows = _fetch_for_ids(
         connection,
         "SELECT r.to_concept_id AS concept_id, 'child' AS relation_type, child.scheme, "
-        "child.edition, child.normalized_code, r.source_file_id FROM relation r "
+        "child.edition, child.normalized_code, NULL AS version_indicator, r.source_file_id, "
+        "r.source_locator FROM relation r "
         "JOIN concept child ON child.concept_id = r.from_concept_id "
         "WHERE r.to_concept_id IN ({concept_ids}) AND r.kind = 'parent'",
         concept_ids,
     )
-    all_relations = relation_rows + child_rows
+    concept_relations = relation_rows + child_rows
+    relation_by_concept: dict[int, list[sqlite3.Row]] = defaultdict(list)
+    for row in concept_relations:
+        relation_by_concept[int(row["concept_id"])].append(row)
+    revision_relations = _fetch_for_ids(
+        connection,
+        "SELECT rr.from_revision_id AS revision_id, rr.kind AS relation_type, target.scheme, "
+        "target.edition, target.normalized_code, target_revision.version_indicator, "
+        "rr.source_file_id, rr.source_locator FROM revision_relation rr "
+        "JOIN concept_revision target_revision ON target_revision.revision_id = rr.to_revision_id "
+        "JOIN concept target ON target.concept_id = target_revision.concept_id "
+        "WHERE rr.from_revision_id IN ({concept_ids})",
+        revision_ids,
+    )
+    reverse_revision_relations = _fetch_for_ids(
+        connection,
+        "SELECT rr.to_revision_id AS revision_id, "
+        "CASE rr.kind WHEN 'amended_to' THEN 'amended_from' ELSE rr.kind END AS relation_type, "
+        "source.scheme, source.edition, source.normalized_code, source_revision.version_indicator, "
+        "rr.source_file_id, rr.source_locator FROM revision_relation rr "
+        "JOIN concept_revision source_revision "
+        "ON source_revision.revision_id = rr.from_revision_id "
+        "JOIN concept source ON source.concept_id = source_revision.concept_id "
+        "WHERE rr.to_revision_id IN ({concept_ids})",
+        revision_ids,
+    )
+    all_relations = revision_relations + reverse_revision_relations
     all_relations.sort(
         key=lambda row: (
-            int(row["concept_id"]),
+            int(row["revision_id"]),
             str(row["relation_type"]),
             str(row["scheme"]),
             str(row["edition"]),
@@ -228,36 +329,66 @@ def load_group_record_map(
         )
     )
     for row in all_relations:
-        concept_id = int(row["concept_id"])
-        records[concept_id]["relations"].append(
+        revision_id = int(row["revision_id"])
+        revision_records[revision_id]["relations"].append(
             {
                 "type": str(row["relation_type"]),
                 "scheme": str(row["scheme"]),
                 "code": str(row["normalized_code"]),
                 "edition": str(row["edition"]) or None,
+                "version": str(row["version_indicator"]) or None,
+                "source_file_id": int(row["source_file_id"]),
+                "locator": str(row["source_locator"]),
             }
         )
-        source_ids[concept_id].add(int(row["source_file_id"]))
 
-    document_rows = _fetch_for_ids(
+    for revision_id, concept_id in revision_to_concept.items():
+        for row in relation_by_concept.get(concept_id, []):
+            revision_records[revision_id]["relations"].append(
+                {
+                    "type": str(row["relation_type"]),
+                    "scheme": str(row["scheme"]),
+                    "code": str(row["normalized_code"]),
+                    "edition": str(row["edition"]) or None,
+                    "version": None,
+                    "source_file_id": int(row["source_file_id"]),
+                    "locator": str(row["source_locator"]),
+                }
+            )
+
+    concept_document_rows = _fetch_for_ids(
         connection,
         "SELECT dl.concept_id, d.document_id, d.kind, d.language, d.title, d.page_count, "
-        "dl.kind AS link_type, dl.source_file_id, d.source_file_id AS document_source_file_id "
+        "dl.kind AS link_type, dl.source_file_id, dl.source_locator, "
+        "d.source_file_id AS document_source_file_id "
         "FROM document_link dl JOIN document d ON d.document_id = dl.document_id "
         "WHERE dl.concept_id IN ({concept_ids})",
         concept_ids,
     )
+    revision_document_rows = _fetch_for_ids(
+        connection,
+        "SELECT drl.revision_id, d.document_id, d.kind, d.language, d.title, d.page_count, "
+        "drl.kind AS link_type, drl.source_file_id, drl.source_locator, "
+        "d.source_file_id AS document_source_file_id FROM document_revision_link drl "
+        "JOIN document d ON d.document_id = drl.document_id "
+        "WHERE drl.revision_id IN ({concept_ids})",
+        revision_ids,
+    )
+    concept_docs: dict[int, list[sqlite3.Row]] = defaultdict(list)
+    for row in concept_document_rows:
+        concept_docs[int(row["concept_id"])].append(row)
+    document_rows = revision_document_rows
     document_rows.sort(
         key=lambda row: (
-            int(row["concept_id"]),
+            int(row["revision_id"]),
             str(row["kind"]),
             str(row["document_id"]),
             str(row["link_type"]),
         )
     )
     for row in document_rows:
-        concept_id = int(row["concept_id"])
-        records[concept_id]["documents"].append(
+        revision_id = int(row["revision_id"])
+        revision_records[revision_id]["documents"].append(
             {
                 "document_id": str(row["document_id"]),
                 "kind": str(row["kind"]),
@@ -265,11 +396,33 @@ def load_group_record_map(
                 "title": str(row["title"]),
                 "page_count": int(row["page_count"]) if row["page_count"] is not None else None,
                 "link_type": str(row["link_type"]),
+                "source_file_id": int(row["source_file_id"]),
+                "locator": str(row["source_locator"]),
             }
         )
-        source_ids[concept_id].update(
+        revision_source_ids[revision_id].update(
             (int(row["source_file_id"]), int(row["document_source_file_id"]))
         )
+
+    for revision_id, concept_id in revision_to_concept.items():
+        for row in concept_docs.get(concept_id, []):
+            revision_records[revision_id]["documents"].append(
+                {
+                    "document_id": str(row["document_id"]),
+                    "kind": str(row["kind"]),
+                    "language": str(row["language"]),
+                    "title": str(row["title"]),
+                    "page_count": (
+                        int(row["page_count"]) if row["page_count"] is not None else None
+                    ),
+                    "link_type": str(row["link_type"]),
+                    "source_file_id": int(row["source_file_id"]),
+                    "locator": str(row["source_locator"]),
+                }
+            )
+            revision_source_ids[revision_id].update(
+                (int(row["source_file_id"]), int(row["document_source_file_id"]))
+            )
 
     linked_text_rows = _fetch_for_ids(
         connection,
@@ -289,19 +442,38 @@ def load_group_record_map(
             int(row["sequence_number"]),
         )
     )
+    revision_linked_text_rows = _fetch_for_ids(
+        connection,
+        "SELECT drl.revision_id, d.kind, d.language, dt.sequence_number, dt.text, "
+        "d.source_file_id, dt.source_locator FROM document_revision_link drl "
+        "JOIN document d ON d.document_id = drl.document_id "
+        "JOIN document_text dt ON dt.document_id = d.document_id "
+        "AND dt.source_locator = drl.source_locator "
+        "WHERE drl.revision_id IN ({concept_ids}) AND d.language IN ('ja', 'en')",
+        revision_ids,
+    )
     linked_seen: dict[int, set[tuple[str, str, str, str]]] = defaultdict(set)
+    concept_linked: dict[int, list[sqlite3.Row]] = defaultdict(list)
     for row in linked_text_rows:
-        concept_id = int(row["concept_id"])
+        concept_linked[int(row["concept_id"])].append(row)
+    expanded_linked_rows: list[tuple[int, sqlite3.Row]] = [
+        (int(row["revision_id"]), row) for row in revision_linked_text_rows
+    ]
+    for revision_id, concept_id in revision_to_concept.items():
+        expanded_linked_rows.extend(
+            (revision_id, row) for row in concept_linked.get(concept_id, [])
+        )
+    for revision_id, row in expanded_linked_rows:
         identity = (
             str(row["kind"]),
             str(row["language"]),
             str(row["text"]),
             str(row["source_locator"]),
         )
-        if identity in linked_seen[concept_id]:
+        if identity in linked_seen[revision_id]:
             continue
-        linked_seen[concept_id].add(identity)
-        records[concept_id]["texts"].append(
+        linked_seen[revision_id].add(identity)
+        revision_records[revision_id]["texts"].append(
             {
                 "kind": identity[0],
                 "language": identity[1],
@@ -309,48 +481,140 @@ def load_group_record_map(
                 "provenance": "official",
                 "source_file_id": int(row["source_file_id"]),
                 "locator": identity[3],
+                "_sequence_number": int(row["sequence_number"]),
             }
         )
-        source_ids[concept_id].add(int(row["source_file_id"]))
+        revision_source_ids[revision_id].add(int(row["source_file_id"]))
 
-    all_source_ids = sorted(set().union(*source_ids.values()))
+    for revision_id, revision_record in revision_records.items():
+        relations_by_semantic_key: dict[tuple[str, str, str, str, str], JSONDict] = {}
+        for relation in cast(list[JSONDict], revision_record["relations"]):
+            semantic_key = (
+                str(relation["type"]),
+                str(relation["scheme"]),
+                str(relation["edition"] or ""),
+                str(relation["code"]),
+                str(relation["version"] or ""),
+            )
+            current = relations_by_semantic_key.get(semantic_key)
+            lineage_key = (cast(int, relation["source_file_id"]), str(relation["locator"]))
+            if current is None or lineage_key < (
+                cast(int, current["source_file_id"]),
+                str(current["locator"]),
+            ):
+                relations_by_semantic_key[semantic_key] = relation
+        revision_record["relations"] = [
+            relations_by_semantic_key[key] for key in sorted(relations_by_semantic_key)
+        ]
+        revision_source_ids[revision_id].update(
+            cast(int, relation["source_file_id"])
+            for relation in cast(list[JSONDict], revision_record["relations"])
+        )
+
+    all_source_ids = sorted(set().union(*source_ids.values(), *revision_source_ids.values()))
     source_map: dict[int, JSONDict] = {}
     for batch in _batches(all_source_ids):
         placeholders = ",".join("?" for _ in batch)
         rows = connection.execute(
-            "SELECT file_id, source_id, relative_path, sha256 FROM source_file "
-            f"WHERE file_id IN ({placeholders})",
+            "SELECT sf.file_id, sf.source_id, sf.relative_path, sf.sha256, "
+            "rs.owner, rs.original_url, rs.attribution FROM source_file sf "
+            "JOIN release_source rs ON rs.release_id = sf.release_id "
+            f"WHERE sf.file_id IN ({placeholders})",
             batch,
         ).fetchall()
         for row in rows:
-            source_map[int(row["file_id"])] = _source_payload(row, source)
+            source_map[int(row["file_id"])] = _source_payload(row)
 
-    for concept_id, record in records.items():
-        for collection_name in ("texts", "properties"):
-            for item in record[collection_name]:
+    for revision_id, revision_record in revision_records.items():
+        for collection_name in ("labels", "texts", "properties", "relations", "documents"):
+            for item in revision_record[collection_name]:
                 file_id = int(item.pop("source_file_id"))
                 item["source_id"] = str(source_map[file_id]["source_id"])
-        record["texts"].sort(
+        revision_record["labels"].sort(
             key=lambda item: (
                 str(item["language"]),
-                str(item["kind"]),
+                int(item["_sequence_number"]),
                 str(item["locator"]),
                 str(item["text"]),
             )
         )
-        record["properties"].sort(
+        revision_record["texts"].sort(
+            key=lambda item: (
+                str(item["language"]),
+                str(item["kind"]),
+                int(item["_sequence_number"]),
+                str(item["locator"]),
+                str(item["text"]),
+            )
+        )
+        for item in (*revision_record["labels"], *revision_record["texts"]):
+            item.pop("_sequence_number")
+        revision_record["properties"].sort(
             key=lambda item: (
                 str(item["name"]),
                 str(item["language"] or ""),
                 str(item["locator"]),
             )
         )
+        revision_record["relations"].sort(
+            key=lambda item: (
+                str(item["type"]),
+                str(item["scheme"]),
+                str(item["edition"] or ""),
+                str(item["code"]),
+                str(item["version"] or ""),
+            )
+        )
+        revision_record["documents"].sort(
+            key=lambda item: (str(item["kind"]), str(item["document_id"]), str(item["link_type"]))
+        )
+        revision_record["sources"] = [
+            source_map[file_id]
+            for file_id in sorted(
+                revision_source_ids[revision_id],
+                key=lambda item: str(source_map[item]["relative_id"]),
+            )
+        ]
+
+    revisions_by_concept: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for revision_id, revision_record in revision_records.items():
+        revisions_by_concept[revision_to_concept[revision_id]].append(revision_record)
+    for concept_id, record in records.items():
+        revisions = revisions_by_concept[concept_id]
+        revisions.sort(key=lambda item: (str(item["version"] or ""), str(item["valid_from"] or "")))
+        record["revision_records"] = revisions
+        active = [
+            item
+            for item in revisions
+            if (item["valid_from"] is None or str(item["valid_from"]) <= reference_date)
+            and (item["valid_to"] is None or str(item["valid_to"]) >= reference_date)
+        ]
+        if len(active) > 1:
+            raise ValueError("multiple revisions are active at the release reference date")
         record["sources"] = [
             source_map[file_id]
             for file_id in sorted(
                 source_ids[concept_id], key=lambda item: str(source_map[item]["relative_id"])
             )
         ]
+        if active:
+            selected = active[0]
+            for key in (
+                "version",
+                "valid_from",
+                "valid_to",
+                "labels",
+                "texts",
+                "properties",
+                "relations",
+                "documents",
+                "sources",
+            ):
+                record[key] = selected[key]
+            record["match_status"] = "exact"
+            record["relation_count"] = len(selected["relations"])
+            record["relations"] = selected["relations"][:50]
+            record["next_relation_offset"] = 50 if len(selected["relations"]) > 50 else None
 
     return {
         int(row["concept_id"]): cast(JSONDict, records[int(row["concept_id"])])
@@ -413,14 +677,25 @@ def common_record(record: JSONDict, language: str) -> JSONDict:
     return {
         "schema_version": str(record["schema_version"]),
         "release_id": str(record["release_id"]),
+        "reference_date": str(record["reference_date"]),
         "scheme": str(record["scheme"]),
         "edition": record["edition"],
         "code": str(record["code"]),
         "normalized_code": str(record["normalized_code"]),
-        "match_status": "exact",
+        "record_status": record["record_status"],
+        "match_status": str(record["match_status"]),
+        "version": record["version"],
+        "valid_from": record["valid_from"],
+        "valid_to": record["valid_to"],
+        "available_versions": record["available_versions"],
         "labels": filtered("labels"),
         "texts": filtered("texts"),
         "properties": filtered("properties", include_neutral=True),
+        "relation_count": record["relation_count"],
+        "relation_offset": record["relation_offset"],
+        "relation_limit": record["relation_limit"],
+        "relations_truncated": bool(record["next_relation_offset"] is not None),
+        "next_relation_offset": record["next_relation_offset"],
         "relations": record["relations"],
         "documents": record["documents"],
         "sources": record["sources"],
@@ -430,6 +705,36 @@ def common_record(record: JSONDict, language: str) -> JSONDict:
 
 def render_record(record: JSONDict, language: str) -> dict[str, Any]:
     payload = cast(dict[str, Any], common_record(record, language))
+    histories: list[JSONValue] = []
+    revisions = record.get("revision_records")
+    if isinstance(revisions, list):
+        for item in revisions:
+            if not isinstance(item, dict) or item.get("version") == record.get("version"):
+                continue
+            revision_labels = item.get("labels")
+            revision_texts = item.get("texts")
+            histories.append(
+                {
+                    "version": item.get("version"),
+                    "valid_from": item.get("valid_from"),
+                    "valid_to": item.get("valid_to"),
+                    "labels": [
+                        value
+                        for value in revision_labels
+                        if isinstance(value, dict) and value.get("language") == language
+                    ]
+                    if isinstance(revision_labels, list)
+                    else [],
+                    "texts": [
+                        value
+                        for value in revision_texts
+                        if isinstance(value, dict) and value.get("language") == language
+                    ]
+                    if isinstance(revision_texts, list)
+                    else [],
+                }
+            )
+    payload["revision_records"] = histories
     payload["fragment"] = str(record["fragment"])
     payload["language"] = language
     return payload

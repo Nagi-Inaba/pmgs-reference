@@ -24,6 +24,11 @@ flowchart LR
 
 Python performs all source parsing locally. The Worker resolves validated manifests and fixed R2 prefixes; it does not parse PMGS source files. Normal HTML, Markdown, JSON, and OpenAPI do not depend on WebMCP.
 
+Schema 2.0 keeps every revision of one classification code in one storage bundle. The Worker
+does not calculate validity intervals; it selects the prebuilt reference-date record or an explicit
+IPC `version=YYYY.MM`. Relations use stable offset pagination with a default limit of 50 and a
+maximum of 200. Export fails when one classification bundle exceeds the fixed 256 KiB limit.
+
 ## Capacity and cost categories
 
 The immediately preceding contract audited on 2026-08-09 contained 399,025 objects and 10,491,136,463 bytes per export. The 2026-08-10 Japanese and English entry-point change adds objects, so this is a planning baseline rather than a current deployment measurement. A/B reproducibility validation requires two independent copies plus working space.
@@ -68,7 +73,7 @@ npm --prefix worker run verify
 npx --prefix worker wrangler deploy
 ```
 
-Connect an HTTPS custom domain, then test `/`, `/ja/`, `/en/`, `/api/v1/lookup`, `/openapi.json`, `/llms.txt`, `/llms.en.txt`, `/robots.txt`, and `/sitemap.xml` from an external network. Check status, content type, canonical URL, attribution, CORS, caching, security headers, error responses, and old release URLs.
+Connect an HTTPS custom domain, then test `/`, `/ja/`, `/en/`, `/api/v1/lookup`, `/openapi.json`, `/llms.txt`, `/llms.en.txt`, `/robots.txt`, and `/sitemap.xml` from an external network. Check version selection, relation pagination, the HTTP 200 `version_not_found` and `not_valid_at_release` records, status, content type, canonical URL, attribution, CORS, caching, security headers, error responses, and old release URLs.
 
 ## Search discovery
 

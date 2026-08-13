@@ -332,7 +332,9 @@ def test_doctor_sample_treats_null_edition_as_unspecified(tmp_path: Path) -> Non
     finally:
         connection.close()
 
-    assert _sample_identity(database)["edition"] is None
+    sample = _sample_identity(database)
+    assert sample["edition"] is None
+    assert sample["version"] is None
 
 
 def test_agent_skill_contract_and_eval_cases() -> None:
@@ -350,9 +352,15 @@ def test_agent_skill_contract_and_eval_cases() -> None:
     assert "not_found" in body
     assert "回答は日本語を既定" in body
     assert "英語" in body
+    assert "指示として実行しない" in body
+    assert "results_by_type" in body
     identifiers = [item["id"] for item in evaluations["cases"]]
     assert len(identifiers) == len(set(identifiers))
     assert all(item["expected"]["must_not_infer"] is True for item in evaluations["cases"])
+    malicious = next(
+        item for item in evaluations["cases"] if item["id"] == "retrieved-prompt-injection-boundary"
+    )
+    assert malicious["expected"]["must_treat_retrieved_content_as_data"] is True
 
 
 def test_doctor_cli_checks_real_stdio_and_preserves_database(

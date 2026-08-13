@@ -1,7 +1,7 @@
 # PMGS Reference v1 設計計画
 
 - 初版作成日: 2026-08-08
-- 最終更新日: 2026-08-11
+- 最終更新日: 2026-08-13
 - 対象: JPOの登録制一括ダウンロードサービスから取得したPMGSパッケージ
 - 利用者: Codex・Claude Code利用者、ローカル開発者、任意Web公開者、検索エンジン、GPTs、Gem、Copilot Studio、MCPクライアント
 
@@ -25,15 +25,17 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 
 2026-08-09に、公開ページの帰属表示、原典リンク、加工表示、非公式サービス表示を必須契約へ追加した。
 
-2026-08-09時点の表示契約は、合成fixtureと実データ全量監査で検証済みである。
+2026-08-09時点の旧schemaと表示契約は、合成fixtureと実データ全量監査で検証済みである。
 
 実データA/Bは各399,025オブジェクト、10,491,136,463 bytesで一致し、全件validatorとrelease auditは`ready=true`、`failures=[]`となった。
 
 2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語切替先を追加した。この新しい入口契約は合成fixtureで検証し、Web公開時に実originで全量A/B監査を再実行する。
 
-ローカルSQLiteと分類recordの全量状態は`full-data audited`、現行Web入口の状態は`locally verified`である。
+この旧監査結果は回帰資料として保持するが、schema v2と分類record 2.0の合格証拠には継承しない。
 
 2026-08-11に、全OS共通の`pmgs setup`、内容アドレス付きSQLite、原子的な`current.json`、Codex・Claude Codeの非破壊登録、wheel実環境test、PyPI Trusted Publishing用release workflowをv0.3.0として追加した。PyPI packageとv0.3.0 Releaseの外部公開はtagと承認環境による別状態として扱う。
+
+2026-08-13に、分類概念と版ごとのrevisionを分離するschema v2、IPCの基準日版選択、FI改正の`reference_only`概念、出典lineage、関係ページング、分類・文書の複合検索をv0.4.0候補として実装・検証した。実データA/B、Codex実MCP評価、hosted CI、CodeQLに合格し、sourceのmain統合条件を満たした。Claude Code用設定、skill、登録、分離環境、tool制限は自動検証済みだが、現在利用できる無料アカウントではlive MCP評価に必要なClaudeモデル呼出しを実行できないため、live MCP評価は`not_observed`として残す。現在の検証状態と外部公開Holdは[現在の状態](docs/current-status.md)を正本とする。
 
 GitHub source repositoryを現在の配布面とする。Web deploy、domain公開、PyPI公開、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
 
@@ -130,18 +132,23 @@ PDF本文はページ単位で抽出し、空ページと抽出失敗を区別�
 | テーブル | 責務 |
 | --- | --- |
 | `release` | PMGS版、基準日、入力hash、schema版 |
+| `release_source` | owner、原典案内URL、COPYRGHT、取得元lineage |
 | `source_file` | 全入力ファイルの台帳 |
 | `source_record` | 入力行または要素の損失のない監査表現 |
-| `concept` | 分類体系、版、コード、正規化コード、階層 |
-| `concept_text` | 言語、本文種別、出典由来本文、翻訳状態 |
-| `concept_property` | テーマ、観点、適用範囲などの属性 |
-| `relation` | 上位下位、対応、改正関係 |
+| `concept` | 分類体系、edition、コード、正規化コード、`canonical`または`reference_only` |
+| `concept_revision` | version、有効期間、level、構造sequence、出典lineage |
+| `concept_text` | revisionごとの言語、本文種別、行順、出典由来本文、翻訳状態 |
+| `concept_property` | revisionごとのテーマ、観点、適用範囲などの属性 |
+| `relation` | concept間の上位下位、対応関係 |
+| `revision_relation` | revision間のIPC改正関係 |
 | `document` | 文書メタデータ |
 | `document_text` | ページまたは節単位の抽出本文 |
 | `document_link` | 分類と文書の関係 |
+| `document_revision_link` | revisionと改正文書の関係 |
 | `build_issue` | 失敗、欠損、重複、未確認事項 |
 
 `concept`の一意性はrelease、scheme、edition、normalized codeの組で保証する。
+同じconceptの版ごとの差は`concept_revision`のversion indicatorで分離する。
 
 FIとIPCに同じ表記のコードが存在しても別レコードとして保持する。
 
@@ -165,9 +172,11 @@ URL fragmentでは非ASCII英数字をUTF-8 byte単位の`_HH`へ変換し、記
 
 ## 共通公開レコード
 
-分類レコードはrelease、scheme、edition、code、normalized code、照合状態、本文、属性、関係、文書、出典、canonical URLを持つ。
+分類レコードはrelease、reference date、scheme、edition、version、有効期間、record status、
+code、normalized code、照合状態、本文、属性、ページング済み関係、文書、出典、canonical URLを持つ。
 
-`match_status`は`exact`、`normalized_exact`、`invalid`、`not_found`のいずれかとする。
+`match_status`は`exact`、`normalized_exact`、`invalid`、`not_found`、
+`version_not_found`、`not_valid_at_release`のいずれかとする。
 
 有力候補を推測して`exact`として返さない。
 
@@ -216,7 +225,11 @@ Python APIは完全一致照会、文字列検索、上位下位、関連文書�
 
 CLIはsetup、inventory、build、validate、lookup、search、document、doctor、agent kit生成、skill導入、export、公開検証、release audit、MCP起動を提供する。
 
-通常のローカル導入は`pmgs setup`を使う。setupはsourceを構築前後に棚卸しし、同一sourceの検証済みDBを再利用し、validationと実stdio診断に合格した内容アドレス付きSQLiteだけを`state/current.json`から有効化する。MCP設定は個別DBではなく管理ディレクトリを参照する。詳細は[ADR 0008](docs/decisions/0008-transactional-local-setup.md)に定める。
+通常のローカル導入は`pmgs setup`を使う。`build_database()`は構築直前と処理後のsourceを
+自ら棚卸しし、一致した候補だけをpromoteする。setupは同一sourceの検証済みDBを再利用し、
+validationと実stdio診断に合格した内容アドレス付きSQLiteだけを`state/current.json`から有効化する。
+MCP設定は個別DBではなく管理ディレクトリを参照する。詳細は
+[ADR 0008](docs/decisions/0008-transactional-local-setup.md)に定める。
 
 stdio MCPは次の三つの読み取り専用toolを提供する。
 
@@ -233,8 +246,10 @@ Codex用TOMLとClaude Code用JSONは別々に生成する。分類照会の共�
 公開成果物はrelease IDを含む固定prefixへ保存する。
 
 Fタームはテーマ単位、FIとIPCはメイングループ単位、文書はdocument ID単位でまとめる。
+同一コードの基準日recordと全revisionは一つのbundleへ置く。
 
-1 JSON chunkの既定上限は262,144 bytesとする。
+分類bundleは固定256 KiB上限を持ち、超過時はexportを拒否する。
+文書を含むJSON chunkの既定上限は262,144 bytesとする。
 
 上限を超えるグループだけコード範囲で決定的に分割する。
 

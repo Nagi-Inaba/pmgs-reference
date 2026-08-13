@@ -18,7 +18,8 @@ def _copy_synthetic_pmgs(target: Path) -> Path:
     document = pymupdf.open()
     page = document.new_page()
     page.insert_text((72, 72), "Synthetic IPC definition G06F3/048")
-    document.save(pdf_path)
+    document.set_metadata({})
+    document.save(pdf_path, no_new_id=True, reproducible=True)
     document.close()
     return target
 

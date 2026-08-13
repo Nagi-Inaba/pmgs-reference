@@ -1,11 +1,30 @@
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
+from pmgs_reference import cli as cli_module
 from pmgs_reference.cli import main
+
+
+def test_json_output_round_trips_japanese_through_legacy_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    japanese = "\u65e5\u672c\u8a9e\u306e\u5206\u985e\u5b9a\u7fa9"
+    cli_module._json_output({"text": japanese})
+    stdout.flush()
+
+    encoded = raw.getvalue()
+    assert encoded.isascii()
+    assert json.loads(encoded.decode("ascii")) == {"text": japanese}
 
 
 def test_lookup_search_and_document_cli(
@@ -15,6 +34,24 @@ def test_lookup_search_and_document_cli(
     assert main(["lookup", "fi", "G06F3/048", "--db", database, "--json"]) == 0
     lookup = json.loads(capsys.readouterr().out)
     assert lookup["normalized_code"] == "G06F3/048"
+
+    assert (
+        main(
+            [
+                "lookup",
+                "ipc",
+                "G06F3/048",
+                "--ipc-version",
+                "2006.01",
+                "--db",
+                database,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    historical = json.loads(capsys.readouterr().out)
+    assert historical["version"] == "2006.01"
 
     assert (
         main(

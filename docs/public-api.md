@@ -1,5 +1,7 @@
 # 公開API契約
 
+[English](public-api.en.md)
+
 ## 分類照会
 
 ```http
@@ -11,6 +13,13 @@ GET /api/v1/lookup?scheme=fi&code=G06F3%2F048&release=current&language=ja
 `scheme`は`fi`、`fterm`、`ipc`のallowlistから選ぶ。
 
 `language`は`ja`または`en`とし、省略時は`ja`とする。
+
+`version`はIPCだけで指定でき、`YYYY.MM`形式とする。FIまたはFタームで指定した場合は
+`INVALID_VERSION`を返す。`relation_limit`は既定50、最大200、`relation_offset`は既定0である。
+
+同じcodeの全revisionは一つのstorage bundleに入り、Workerは有効期間を計算せず、事前生成済みの
+基準日recordまたは指定versionの`revision_records`を選ぶ。指定versionが存在しない場合と、基準日に
+有効なrevisionがない場合もHTTP 200で、それぞれ`version_not_found`、`not_valid_at_release`を返す。
 
 ## 文書照会
 
@@ -32,6 +41,9 @@ GET /api/v1/documents/{document_id}?release=current&page=1
 | scheme不正 | 400 | `INVALID_SCHEME` |
 | code不正 | 400 | `INVALID_CODE` |
 | language不正 | 400 | `INVALID_LANGUAGE` |
+| FI・Fタームのversion指定またはversion形式不正 | 400 | `INVALID_VERSION` |
+| 指定したIPC versionが存在しない | 200 | `match_status=version_not_found` |
+| 基準日の有効版なし | 200 | `match_status=not_valid_at_release` |
 | release不明 | 404 | `RELEASE_NOT_FOUND` |
 | 分類なし | 404 | `CLASSIFICATION_NOT_FOUND` |
 | 文書なし | 404 | `DOCUMENT_NOT_FOUND` |
@@ -65,6 +77,13 @@ Workerは検証済みmanifestと固定prefixからR2 keyを解決する。
 - `/releases/{release}/manifest.json`：全公開オブジェクトのbytes、SHA-256、content type
 
 保存レコードは日英を一緒に持つ。
+
+分類record 2.0は`reference_date`、`record_status`、選択された`version`と有効期間、
+`available_versions`を持つ。関係は`relation_count`、`relation_offset`、`relation_limit`、
+`relations_truncated`、`next_relation_offset`を伴う安定したpageとして返す。
+
+同一codeのbundleはJSON chunkをまたがない。単一bundleが固定上限256 KiBを超える場合、
+exportは成功扱いにせず拒否する。
 
 WorkerはAPI応答時に指定言語の出典由来値だけを`classification-record.schema.json`へ射影する。
 

@@ -8,7 +8,7 @@ PMGS Referenceは、取得済みのPMGSパッケージを検索用SQLiteへ変�
 
 ## 最短セットアップ
 
-PyPIでv0.3.0が公開された後は、次の2コマンドで導入できます。
+PyPIでv0.4.0が公開された後は、次の2コマンドで導入できます。
 
 ```powershell
 uv tool install pmgs-reference
@@ -87,7 +87,8 @@ from pmgs_reference import PMGSStore
 store = PMGSStore.open()
 
 record = store.lookup("fi", "G06F3/048")
-results = store.search("相互作用技術", schemes=["fi", "ipc"])
+classifications = store.search("相互作用技術", schemes=["fi", "ipc"])
+combined = store.search_pmgs("相互作用技術")
 parents = store.parents("fi", "G06F3/048")
 documents = store.related_documents("ipc", "G06F3/048", edition="8U")
 ```
@@ -113,6 +114,7 @@ PMGSデータ自体はリポジトリやPythonパッケージに含まれませ�
 
 - [CodexとClaude Codeへの導入](docs/local-agent-kit.md)
 - [Python、CLI、MCPの仕様](docs/local-interfaces.md)
+- [公開APIの仕様](docs/public-api.md)
 - [Webセルフホスト](docs/self-hosting.md)
 - [システム構成](docs/architecture.md)
 - [現在の実装状況](docs/current-status.md)

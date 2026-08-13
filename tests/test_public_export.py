@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
 import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -19,6 +21,7 @@ from pmgs_reference.publication.model import fragment_id
 from pmgs_reference.publication.policy import load_publication_policy
 from pmgs_reference.publication.records import common_record
 from pmgs_reference.publication.validation import _check_file, write_public_validation_report
+from pmgs_reference.store import PMGSStore
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "tests" / "fixtures" / "publication-policy.yaml"
@@ -43,6 +46,16 @@ def _tree(root: Path) -> dict[str, bytes]:
     }
 
 
+def _classification_storage_records(root: Path) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    group_root = root / "releases" / RELEASE / "groups" / "classification"
+    for path in group_root.rglob("[0-9][0-9][0-9].json"):
+        chunk_records = _json(path)["records"]
+        assert isinstance(chunk_records, list)
+        records.extend(record for record in chunk_records if isinstance(record, dict))
+    return records
+
+
 @pytest.fixture(scope="module")
 def public_pair(
     synthetic_database: Path, tmp_path_factory: pytest.TempPathFactory
@@ -55,14 +68,14 @@ def public_pair(
         POLICY,
         first,
         base_url=BASE_URL,
-        max_json_chunk_bytes=4096,
+        max_json_chunk_bytes=16384,
     )
     second_result = export_public(
         synthetic_database,
         POLICY,
         second,
         base_url=BASE_URL,
-        max_json_chunk_bytes=4096,
+        max_json_chunk_bytes=16384,
     )
     assert first_result.tree_sha256 == second_result.tree_sha256
     return first, second
@@ -102,6 +115,185 @@ def test_public_export_is_byte_reproducible_and_self_validating(
         assert _sha256(target) == metadata["sha256"]
 
 
+def test_public_validator_rejects_a_hard_link_before_reading(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    candidate = tmp_path / "hard-link-candidate"
+    shutil.copytree(source, candidate)
+    target = candidate / "api" / "v1" / "coverage.json"
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(target.read_bytes())
+    target.unlink()
+    os.link(outside, target)
+
+    with pytest.raises(ValueError, match="hard-linked file"):
+        validate_public_export(candidate)
+
+
+def test_public_validator_rejects_a_file_symlink_before_reading(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    candidate = tmp_path / "file-link-candidate"
+    shutil.copytree(source, candidate)
+    target = candidate / "api" / "v1" / "coverage.json"
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"outside":"must not be read"}', encoding="utf-8")
+    target.unlink()
+    try:
+        target.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"file symlink unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link or reparse point"):
+        validate_public_export(candidate)
+
+
+def test_public_validator_rejects_a_directory_symlink_or_reparse_point(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    candidate = tmp_path / "directory-link-candidate"
+    shutil.copytree(source, candidate)
+    target = candidate / "assets"
+    shutil.rmtree(target)
+    outside = tmp_path / "outside-assets"
+    outside.mkdir()
+    (outside / "webmcp.js").write_text("outside", encoding="utf-8")
+    try:
+        target.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link or reparse point"):
+        validate_public_export(candidate)
+
+
+def test_public_validator_rejects_a_symlink_root(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    linked_root = tmp_path / "linked-root"
+    try:
+        linked_root.symlink_to(source, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link or reparse point"):
+        validate_public_export(linked_root)
+
+
+def test_public_validator_rejects_a_symlink_ancestor(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    shutil.copytree(source, real_parent / "candidate")
+    linked_parent = tmp_path / "linked-parent"
+    try:
+        linked_parent.symlink_to(real_parent, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlink unavailable: {error}")
+
+    with pytest.raises(ValueError, match="symbolic link or reparse point"):
+        validate_public_export(linked_parent / "candidate")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction coverage")
+def test_public_validator_rejects_a_windows_junction(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    candidate = tmp_path / "junction-candidate"
+    shutil.copytree(source, candidate)
+    target = candidate / "assets"
+    shutil.rmtree(target)
+    outside = tmp_path / "outside-junction-assets"
+    outside.mkdir()
+    result = subprocess.run(
+        ["cmd.exe", "/d", "/c", "mklink", "/J", str(target), str(outside)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"junction unavailable: {result.stderr.strip()}")
+
+    with pytest.raises(ValueError, match="symbolic link or reparse point"):
+        validate_public_export(candidate)
+
+
+@pytest.mark.parametrize(
+    "malicious_markup",
+    [
+        '<img src="//attacker.example/pixel">',
+        '<iframe src="https://attacker.example/frame"></iframe>',
+        '<form action="//attacker.example/collect"></form>',
+        '<button formaction="https://attacker.example/collect">Send</button>',
+        '<object data="/local-object"></object>',
+        '<embed src="/local-plugin">',
+        '<meta http-equiv="refresh" content="0;url=//attacker.example/">',
+        '<div style="background:url(//attacker.example/pixel)">x</div>',
+        "<style>body{background:url(https://attacker.example/pixel)}</style>",
+        '<style>@import "https://attacker.example/style.css";</style>',
+        '<link rel="stylesheet" href="//attacker.example/style.css">',
+        '<link rel="canonical stylesheet" href="https://attacker.example/style.css">',
+        '<base href="https://attacker.example/">',
+        '<a href="//attacker.example/">Protocol-relative navigation</a>',
+        '<img src="/local.png" srcset="https://attacker.example/large.png 2x">',
+        '<iframe srcdoc="&lt;img src=//attacker.example/pixel&gt;"></iframe>',
+        "<svg onload=\"fetch('//attacker.example/pixel')\"></svg>",
+        '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><image '
+        'xlink:href="https://attacker.example/pixel"/></svg>',
+        '<a href="/local" ping="https://attacker.example/ping">Local</a>',
+        '<video poster="https://attacker.example/poster.png"></video>',
+        '<script type="application/ld+json" src="/assets/webmcp.js">{}</script>',
+        '<meta http-equiv="content-security-policy" content="default-src *">',
+    ],
+)
+def test_public_html_validation_rejects_active_external_vectors(
+    tmp_path: Path, malicious_markup: str
+) -> None:
+    page = tmp_path / "malicious.html"
+    page.write_text(
+        f"<!doctype html><html><body>Readable{malicious_markup}</body></html>",
+        encoding="utf-8",
+    )
+
+    assert _check_file(page, "malicious.html", None).html_errors
+
+
+def test_public_html_validation_preserves_expected_links_and_webmcp(tmp_path: Path) -> None:
+    page = tmp_path / "expected.html"
+    page.write_text(
+        """<!doctype html><html><head>
+<link rel="canonical" href="https://pmgs.example.test/ja/">
+<link rel="alternate" href="https://pmgs.example.test/en/">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="/assets/webmcp.js" defer></script></head>
+<body><a href="https://www.jpo.go.jp/source">JPO source</a></body></html>""",
+        encoding="utf-8",
+    )
+
+    assert _check_file(page, "expected.html", None).html_errors == ()
+
+
+def test_public_css_validation_rejects_external_resources(tmp_path: Path) -> None:
+    external = tmp_path / "external.css"
+    external.write_text(
+        '@import "https://attacker.example/base.css";\n'
+        "body{background:url(//attacker.example/pixel)}\n",
+        encoding="utf-8",
+    )
+    local = tmp_path / "local.css"
+    local.write_text("body{background:url(/assets/background.svg)}\n", encoding="utf-8")
+
+    assert _check_file(external, "external.css", None).html_errors
+    assert _check_file(local, "local.css", None).html_errors == ()
+
+
 def test_batched_group_loading_preserves_every_output_byte(
     synthetic_database: Path,
     tmp_path: Path,
@@ -118,7 +310,7 @@ def test_batched_group_loading_preserves_every_output_byte(
         POLICY,
         one_group_at_a_time,
         base_url=BASE_URL,
-        max_json_chunk_bytes=4096,
+        max_json_chunk_bytes=16384,
     )
     monkeypatch.setattr(export_module, "_GROUP_BATCH_CONCEPTS", 1_000)
     monkeypatch.setattr(export_module, "_WRITE_WORKERS", 4)
@@ -127,7 +319,7 @@ def test_batched_group_loading_preserves_every_output_byte(
         POLICY,
         batched,
         base_url=BASE_URL,
-        max_json_chunk_bytes=4096,
+        max_json_chunk_bytes=16384,
     )
 
     assert _tree(one_group_at_a_time) == _tree(batched)
@@ -216,18 +408,289 @@ def test_every_classification_has_a_readable_page_and_schema_valid_api_projectio
                 projected_sources = projected["sources"]
                 assert isinstance(projected_sources, list) and projected_sources
                 for source in projected_sources:
-                    assert source["owner"] == "Test Fixture"
-                    assert source["original_url"] == "https://example.test/synthetic-pmgs"
+                    assert source["owner"] == "JPO"
+                    assert source["original_url"] == (
+                        "https://www.jpo.go.jp/system/laws/sesaku/data/download.html"
+                    )
                     assert source["attribution"] == "Copyright (C) TEST 2026"
 
     fi_chunk = _json(
         root / "releases" / RELEASE / "groups" / "classification" / "G06F3" / "001.json"
     )
-    fi_record = fi_chunk["records"][0]  # type: ignore[index]
+    fi_record = next(
+        item
+        for item in fi_chunk["records"]  # type: ignore[index]
+        if item["scheme"] == "fi" and item["normalized_code"] == "G06F3/048"
+    )
     assert isinstance(fi_record, dict)
     assert any(item["kind"] == "fi_handbook" for item in fi_record["texts"])
     assert any(item["kind"] == "fi_amendment" for item in fi_record["texts"])
     assert any(item["kind"] == "fi_handbook" for item in fi_record["documents"])
+
+
+def test_ipc_storage_bundle_keeps_current_and_historical_revisions_together(
+    public_pair: tuple[Path, Path],
+) -> None:
+    root, _ = public_pair
+    storage_records = [
+        record
+        for path in (root / "releases" / RELEASE / "groups" / "classification").rglob(
+            "[0-9][0-9][0-9].json"
+        )
+        for record in _json(path)["records"]  # type: ignore[index]
+    ]
+    ipc = next(
+        record
+        for record in storage_records
+        if record["scheme"] == "ipc"
+        and record["edition"] == "8U"
+        and record["normalized_code"] == "G06F3/048"
+    )
+
+    assert ipc["schema_version"] == "2.0"
+    assert ipc["reference_date"] == "2026-01-01"
+    assert ipc["version"] == "2021.01"
+    assert ipc["match_status"] == "exact"
+    revisions = ipc["revision_records"]
+    assert {item["version"] for item in revisions} == {"2006.01", "2021.01"}
+    assert all(item["sources"] for item in revisions)
+    assert all(
+        label["source_id"] and label["locator"] for item in revisions for label in item["labels"]
+    )
+    expired = next(
+        record
+        for record in storage_records
+        if record["scheme"] == "ipc" and record["normalized_code"] == "G06F3/050"
+    )
+    assert expired["match_status"] == "not_valid_at_release"
+    assert expired["texts"] == []
+    assert expired["available_versions"]
+    assert expired["sources"]
+    assert not any(record["record_status"] == "reference_only" for record in storage_records)
+    coverage = _json(root / "api" / "v1" / "coverage.json")
+    assert coverage["classification.reference_only_excluded"] >= 1
+
+
+def test_public_export_rejects_a_revision_bundle_over_the_configured_limit(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="revision bundle exceeds the 256 KiB safety limit"):
+        export_public(
+            synthetic_database,
+            POLICY,
+            tmp_path / "too-small",
+            base_url=BASE_URL,
+            max_json_chunk_bytes=256,
+        )
+
+
+def test_public_export_keeps_active_revision_relations_for_worker_paging(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "relation-paging.sqlite"
+    shutil.copy2(synthetic_database, database)
+    with sqlite3.connect(database) as connection:
+        source_concept, source_file = connection.execute(
+            "SELECT concept_id, source_file_id FROM concept "
+            "WHERE scheme = 'fi' AND normalized_code = 'G06F3/048'"
+        ).fetchone()
+        for index in range(55):
+            target = connection.execute(
+                "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
+                "concept_type, record_status, source_file_id, source_locator) "
+                "VALUES ('JPPM2099001', 'fi', '', ?, ?, 'term', 'canonical', ?, 'test')",
+                (f"Z99Z{index:04d}/99", f"Z99Z{index:04d}/99", source_file),
+            ).lastrowid
+            connection.execute(
+                "INSERT INTO concept_revision(concept_id, version_indicator, source_file_id, "
+                "source_locator) VALUES (?, '', ?, 'test')",
+                (target, source_file),
+            )
+            connection.execute(
+                "INSERT INTO relation(from_concept_id, to_concept_id, kind, source_file_id, "
+                "source_locator) VALUES (?, ?, 'see_also', ?, ?)",
+                (source_concept, target, source_file, f"paging:{index}"),
+            )
+
+    root = tmp_path / "relation-paging"
+    export_public(
+        database,
+        POLICY,
+        root,
+        base_url=BASE_URL,
+        max_json_chunk_bytes=1_048_576,
+    )
+    records = _classification_storage_records(root)
+    record = next(
+        item
+        for item in records
+        if item["scheme"] == "fi" and item["normalized_code"] == "G06F3/048"
+    )
+
+    assert record["relation_count"] >= 55
+    assert len(record["relations"]) == 50
+    assert len(record["revision_records"][0]["relations"]) == record["relation_count"]
+
+
+def test_public_export_preserves_revision_text_sequence(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "text-sequence.sqlite"
+    shutil.copy2(synthetic_database, database)
+    with sqlite3.connect(database) as connection:
+        revision_id, source_file = connection.execute(
+            "SELECT cr.revision_id, cr.source_file_id FROM concept_revision cr "
+            "JOIN concept c USING(concept_id) WHERE c.scheme = 'fi' "
+            "AND c.normalized_code = 'G06F3/048'"
+        ).fetchone()
+        connection.execute(
+            "INSERT INTO concept_text(revision_id, language, kind, sequence_number, text, "
+            "translation_status, source_file_id, source_locator) "
+            "VALUES (?, 'ja', 'sequence_test', 2, 'Second', 'official', ?, 'a-locator')",
+            (revision_id, source_file),
+        )
+        connection.execute(
+            "INSERT INTO concept_text(revision_id, language, kind, sequence_number, text, "
+            "translation_status, source_file_id, source_locator) "
+            "VALUES (?, 'ja', 'sequence_test', 1, 'First', 'official', ?, 'z-locator')",
+            (revision_id, source_file),
+        )
+
+    root = tmp_path / "text-sequence"
+    export_public(database, POLICY, root, base_url=BASE_URL, max_json_chunk_bytes=16384)
+    record = next(
+        item
+        for item in _classification_storage_records(root)
+        if item["scheme"] == "fi" and item["normalized_code"] == "G06F3/048"
+    )
+    sequence_texts = [item["text"] for item in record["texts"] if item["kind"] == "sequence_test"]
+    assert sequence_texts == ["First", "Second"]
+
+
+def test_public_export_deduplicates_relations_like_local_lookup(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "duplicate-public-relations.sqlite"
+    shutil.copy2(synthetic_database, database)
+    with sqlite3.connect(database) as connection:
+        low_source_id = int(
+            connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
+        )
+        high_source_id = int(
+            connection.execute("SELECT MAX(file_id) FROM source_file").fetchone()[0]
+        )
+        origin_id = int(
+            connection.execute(
+                "SELECT concept_id FROM concept WHERE scheme = 'fi' "
+                "AND normalized_code = 'G06F3/048'"
+            ).fetchone()[0]
+        )
+        origin_revision_id = int(
+            connection.execute(
+                "SELECT revision_id FROM concept_revision WHERE concept_id = ?", (origin_id,)
+            ).fetchone()[0]
+        )
+        target_id = int(
+            connection.execute(
+                "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
+                "concept_type, record_status, source_file_id, source_locator) "
+                "VALUES ('JPPM2099001', 'fi', '', 'Z99Z9998/99', 'Z99Z9998/99', "
+                "'synthetic_reference', 'reference_only', ?, 'duplicate-public-target')",
+                (low_source_id,),
+            ).lastrowid
+        )
+        unversioned_target_revision = int(
+            connection.execute(
+                "INSERT INTO concept_revision(concept_id, version_indicator, valid_from, valid_to, "
+                "level, sequence_number, source_file_id, source_locator) "
+                "VALUES (?, '', NULL, NULL, NULL, 1, ?, 'duplicate-public-target')",
+                (target_id, low_source_id),
+            ).lastrowid
+        )
+        versioned_target_revision = int(
+            connection.execute(
+                "INSERT INTO concept_revision(concept_id, version_indicator, valid_from, valid_to, "
+                "level, sequence_number, source_file_id, source_locator) "
+                "VALUES (?, '2026.02', NULL, NULL, NULL, 2, ?, 'versioned-public-target')",
+                (target_id, high_source_id),
+            ).lastrowid
+        )
+        connection.execute(
+            "INSERT INTO relation(from_concept_id, to_concept_id, kind, source_file_id, "
+            "source_locator) VALUES (?, ?, 'duplicate_lineage', ?, 'z-concept')",
+            (origin_id, target_id, high_source_id),
+        )
+        connection.execute(
+            "INSERT INTO revision_relation(from_revision_id, to_revision_id, kind, "
+            "source_file_id, source_locator) VALUES (?, ?, 'duplicate_lineage', ?, 'a-revision')",
+            (origin_revision_id, unversioned_target_revision, low_source_id),
+        )
+        connection.execute(
+            "INSERT INTO revision_relation(from_revision_id, to_revision_id, kind, "
+            "source_file_id, source_locator) VALUES (?, ?, 'duplicate_lineage', ?, 'versioned')",
+            (origin_revision_id, versioned_target_revision, high_source_id),
+        )
+
+    local_record = PMGSStore.open(database).lookup("fi", "G06F3/048", relation_limit=200)
+    assert local_record is not None
+    root = tmp_path / "duplicate-public-relations"
+    export_public(
+        database,
+        POLICY,
+        root,
+        base_url=BASE_URL,
+        max_json_chunk_bytes=1_048_576,
+    )
+    public_record = next(
+        item
+        for item in _classification_storage_records(root)
+        if item["scheme"] == "fi" and item["normalized_code"] == "G06F3/048"
+    )
+
+    assert public_record["relation_count"] == local_record["relation_count"]
+    assert public_record["next_relation_offset"] == local_record["next_relation_offset"]
+    assert public_record["relations"] == local_record["relations"]
+    active_revision = next(
+        item
+        for item in public_record["revision_records"]
+        if item["version"] == public_record["version"]
+    )
+    assert active_revision["relations"] == local_record["relations"]
+    duplicates = [
+        item for item in public_record["relations"] if item["type"] == "duplicate_lineage"
+    ]
+    assert [(item["version"], item["locator"]) for item in duplicates] == [
+        (None, "a-revision"),
+        ("2026.02", "versioned"),
+    ]
+
+
+def test_public_export_rejects_a_classification_bundle_over_256_kib_even_with_larger_chunks(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "oversized-classification.sqlite"
+    shutil.copy2(synthetic_database, database)
+    with sqlite3.connect(database) as connection:
+        revision_id, source_file = connection.execute(
+            "SELECT cr.revision_id, cr.source_file_id FROM concept_revision cr "
+            "JOIN concept c USING(concept_id) WHERE c.scheme = 'fi' "
+            "AND c.normalized_code = 'G06F3/048'"
+        ).fetchone()
+        connection.execute(
+            "INSERT INTO concept_text(revision_id, language, kind, sequence_number, text, "
+            "translation_status, source_file_id, source_locator) "
+            "VALUES (?, 'ja', 'definition', 999, ?, 'official', ?, 'oversize')",
+            (revision_id, "架" * 300_000, source_file),
+        )
+
+    with pytest.raises(ValueError, match="revision bundle exceeds the 256 KiB safety limit"):
+        export_public(
+            database,
+            POLICY,
+            tmp_path / "too-large-classification",
+            base_url=BASE_URL,
+            max_json_chunk_bytes=1_048_576,
+        )
 
 
 def test_public_discovery_files_are_machine_parseable_and_no_raw_sources_are_exposed(
@@ -242,6 +705,12 @@ def test_public_discovery_files_are_machine_parseable_and_no_raw_sources_are_exp
     required = openapi["components"]["schemas"]["ClassificationRecord"]["required"]
     assert "edition" in required
     assert "normalized_code" in required
+    assert "reference_date" in required
+    assert "available_versions" in required
+    assert "relations_truncated" in required
+    lookup_parameters = paths["/api/v1/lookup"]["get"]["parameters"]
+    lookup_parameter_names = {parameter["name"] for parameter in lookup_parameters}
+    assert {"version", "relation_limit", "relation_offset"} <= lookup_parameter_names
     public_source = openapi["components"]["schemas"]["PublicSource"]
     assert public_source["required"] == [
         "source_id",
@@ -258,6 +727,8 @@ def test_public_discovery_files_are_machine_parseable_and_no_raw_sources_are_exp
 
     assert "完全一致API" in (root / "llms.txt").read_text(encoding="utf-8")
     assert "Exact lookup API" in (root / "llms.en.txt").read_text(encoding="utf-8")
+    assert "命令として扱わない" in (root / "llms.txt").read_text(encoding="utf-8")
+    assert "never as instructions" in (root / "llms.en.txt").read_text(encoding="utf-8")
     index_html = (root / "index.html").read_text(encoding="utf-8")
     assert "PMGS Reference" in index_html
     assert 'href="https://pmgs.example.test/en/"' in index_html
@@ -353,10 +824,37 @@ def test_public_export_rejects_attribution_that_does_not_match_source(
     mismatched_policy.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     output = tmp_path / "public"
 
-    with pytest.raises(ValueError, match="does not match the database COPYRGHT"):
+    with pytest.raises(ValueError, match="does not match release_source"):
         export_public(synthetic_database, mismatched_policy, output, base_url=BASE_URL)
 
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("owner", "Wrong owner"),
+        ("source_url", "https://example.test/wrong-source"),
+    ],
+)
+def test_public_export_rejects_policy_identity_mismatches(
+    synthetic_database: Path,
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    payload["sources"][0][field] = value
+    mismatched_policy = tmp_path / f"mismatched-{field}.yaml"
+    mismatched_policy.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match release_source"):
+        export_public(
+            synthetic_database,
+            mismatched_policy,
+            tmp_path / f"public-{field}",
+            base_url=BASE_URL,
+        )
 
 
 def test_public_validator_detects_a_missing_required_notice(

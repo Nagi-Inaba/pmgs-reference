@@ -4,7 +4,12 @@ import { beforeAll, describe, expect, it } from "vitest";
 import vectors from "../../schemas/normalization-vectors.json";
 import { groupKey, normalizeCode } from "../src/normalization";
 import type { Scheme } from "../src/types";
-import { seedFixture, seedLargeLookupFixture } from "./fixtures";
+import {
+  seedFixture,
+  seedLargeLookupFixture,
+  seedMalformedClassificationFixture,
+  seedPagedIpcFixture,
+} from "./fixtures";
 
 const ORIGIN = "https://pmgs.example.test";
 
@@ -74,11 +79,70 @@ describe("classification API", () => {
     expect(fterm.normalized_code).toBe("4C083AA01");
   });
 
+  it("selects IPC versions and returns stable relation pages within two reads", async () => {
+    const oldResponse = await request(
+      "/api/v1/lookup?scheme=ipc&code=G06F3%2F048&version=2006.01" +
+        "&relation_limit=1&relation_offset=1",
+    );
+    const old = await json(oldResponse);
+    const missingResponse = await request(
+      "/api/v1/lookup?scheme=ipc&code=G06F3%2F048&version=2099.01",
+    );
+    const missing = await json(missingResponse);
+
+    expect(oldResponse.status).toBe(200);
+    expect(oldResponse.headers.get("Server-Timing")).toBe('pmgs-r2;desc="2 reads"');
+    expect(old.version).toBe("2006.01");
+    expect(JSON.stringify(old)).toContain("legacy");
+    expect(old.relation_count).toBe(2);
+    expect(old.relation_offset).toBe(1);
+    expect(old.relation_limit).toBe(1);
+    expect(old.relations_truncated).toBe(true);
+    expect(missingResponse.status).toBe(200);
+    expect(missing.match_status).toBe("version_not_found");
+    expect(missing.available_versions).toHaveLength(2);
+  });
+
+  it("pages the preselected reference-date revision beyond the top-level preview", async () => {
+    try {
+      const relationCount = await seedPagedIpcFixture();
+
+      const response = await request(
+        "/api/v1/lookup?scheme=ipc&code=G06F3%2F048&relation_limit=10&relation_offset=50",
+      );
+      const payload = await json(response);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Server-Timing")).toBe('pmgs-r2;desc="2 reads"');
+      expect(payload.relation_count).toBe(relationCount);
+      expect(payload.relation_offset).toBe(50);
+      expect(payload.relations).toHaveLength(10);
+      expect(payload.relations_truncated).toBe(true);
+    } finally {
+      await seedFixture();
+    }
+  });
+
+  it("returns not_valid_at_release as a structured HTTP 200 response", async () => {
+    const response = await request("/api/v1/lookup?scheme=ipc&code=G06F3%2F050");
+    const payload = await json(response);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Server-Timing")).toBe('pmgs-r2;desc="2 reads"');
+    expect(payload.match_status).toBe("not_valid_at_release");
+    expect(payload.version).toBeNull();
+    expect(payload.texts).toEqual([]);
+    expect(payload.available_versions).toHaveLength(1);
+  });
+
   it.each([
     ["/api/v1/lookup?scheme=cpc&code=G06F3%2F048", 400, "INVALID_SCHEME"],
     ["/api/v1/lookup?scheme=fi&code=%20%20", 400, "INVALID_CODE"],
     ["/api/v1/lookup?scheme=fi&code=G06F3%2F048&language=fr", 400, "INVALID_LANGUAGE"],
     ["/api/v1/lookup?scheme=fi&code=G06F3%2F048&edition=8U", 400, "INVALID_EDITION"],
+    ["/api/v1/lookup?scheme=fi&code=G06F3%2F048&version=2021.01", 400, "INVALID_VERSION"],
+    ["/api/v1/lookup?scheme=ipc&code=G06F3%2F048&version=bad", 400, "INVALID_VERSION"],
+    ["/api/v1/lookup?scheme=ipc&code=G06F3%2F048&relation_limit=201", 400, "INVALID_QUERY"],
     ["/api/v1/lookup?scheme=fi&code=G06F3%2F048&extra=x", 400, "INVALID_QUERY"],
     [
       "/api/v1/lookup?scheme=fi&scheme=ipc&code=G06F3%2F048",
@@ -105,6 +169,22 @@ describe("classification API", () => {
     expect(response.status).toBe(503);
     expect(await json(response)).toMatchObject({ error: { code: "RELEASE_UNAVAILABLE" } });
   });
+
+  it.each(["revision_relation", "storage_schema"] as const)(
+    "returns 503 for a malformed classification %s",
+    async (defect) => {
+      try {
+        await seedMalformedClassificationFixture(defect);
+        const response = await request("/api/v1/lookup?scheme=ipc&code=G06F3%2F048");
+        expect(response.status).toBe(503);
+        expect(await json(response)).toMatchObject({
+          error: { code: "RELEASE_UNAVAILABLE" },
+        });
+      } finally {
+        await seedFixture();
+      }
+    },
+  );
 });
 
 describe("document API", () => {

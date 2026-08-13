@@ -32,19 +32,93 @@ export interface GroupManifest {
 export interface StorageRecord {
   schema_version: string;
   release_id: string;
+  reference_date: string;
   lookup_key: string;
   scheme: Scheme;
   edition: string | null;
   code: string;
   normalized_code: string;
-  labels: JsonObject[];
-  texts: JsonObject[];
-  properties: JsonObject[];
-  relations: JsonObject[];
-  documents: JsonObject[];
+  record_status: "canonical" | "reference_only";
+  match_status: "exact" | "not_valid_at_release";
+  version: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  available_versions: AvailableVersion[];
+  labels: SourcedText[];
+  texts: SourcedText[];
+  properties: SourcedProperty[];
+  relations: RelationRecord[];
+  documents: DocumentLink[];
   sources: PublicSource[];
+  relation_count: number;
+  relation_offset: number;
+  relation_limit: number;
+  next_relation_offset: number | null;
+  revision_records: RevisionRecord[];
   fragment: string;
-  canonical_urls: JsonObject;
+  canonical_urls: CanonicalUrls;
+}
+
+export interface RevisionRecord {
+  version: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  labels: SourcedText[];
+  texts: SourcedText[];
+  properties: SourcedProperty[];
+  relations: RelationRecord[];
+  documents: DocumentLink[];
+  sources: PublicSource[];
+}
+
+export interface AvailableVersion extends JsonObject {
+  version: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+}
+
+export interface SourcedText extends JsonObject {
+  kind: string;
+  language: Language;
+  text: string;
+  provenance: "official";
+  source_id: string;
+  locator: string;
+}
+
+export interface SourcedProperty extends JsonObject {
+  name: string;
+  value: string;
+  language: Language | null;
+  provenance: "official";
+  source_id: string;
+  locator: string;
+}
+
+export interface RelationRecord extends JsonObject {
+  type: string;
+  scheme: Scheme;
+  code: string;
+  edition: string | null;
+  version: string | null;
+  source_id: string;
+  locator: string;
+}
+
+export interface DocumentLink extends JsonObject {
+  document_id: string;
+  kind: string;
+  language: Language | "und";
+  title: string;
+  page_count: number | null;
+  link_type: string;
+  source_id: string;
+  locator: string;
+}
+
+export interface CanonicalUrls extends JsonObject {
+  ja: string;
+  en?: string;
 }
 
 export interface PublicSource extends JsonObject {
@@ -116,6 +190,10 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return isString(value) && value.length > 0;
+}
+
 function isNullableString(value: unknown): value is string | null {
   return value === null || isString(value);
 }
@@ -132,16 +210,110 @@ function isJsonObjectArray(value: unknown): value is JsonObject[] {
   return Array.isArray(value) && value.every(isJsonObject);
 }
 
+function isLanguage(value: unknown): value is Language {
+  return value === "ja" || value === "en";
+}
+
+function isAvailableVersion(value: unknown): value is AvailableVersion {
+  return (
+    isJsonObject(value) &&
+    isNullableString(value.version) &&
+    isNullableString(value.valid_from) &&
+    isNullableString(value.valid_to)
+  );
+}
+
+function isSourcedText(value: unknown): value is SourcedText {
+  return (
+    isJsonObject(value) &&
+    isNonEmptyString(value.kind) &&
+    isLanguage(value.language) &&
+    isString(value.text) &&
+    value.provenance === "official" &&
+    isNonEmptyString(value.source_id) &&
+    isNonEmptyString(value.locator)
+  );
+}
+
+function isSourcedProperty(value: unknown): value is SourcedProperty {
+  return (
+    isJsonObject(value) &&
+    isNonEmptyString(value.name) &&
+    isString(value.value) &&
+    (value.language === null || isLanguage(value.language)) &&
+    value.provenance === "official" &&
+    isNonEmptyString(value.source_id) &&
+    isNonEmptyString(value.locator)
+  );
+}
+
+function isRelationRecord(value: unknown): value is RelationRecord {
+  return (
+    isJsonObject(value) &&
+    isNonEmptyString(value.type) &&
+    isScheme(value.scheme) &&
+    isNonEmptyString(value.code) &&
+    isNullableString(value.edition) &&
+    isNullableString(value.version) &&
+    isNonEmptyString(value.source_id) &&
+    isNonEmptyString(value.locator)
+  );
+}
+
+function isDocumentLink(value: unknown): value is DocumentLink {
+  return (
+    isJsonObject(value) &&
+    isNonEmptyString(value.document_id) &&
+    isNonEmptyString(value.kind) &&
+    (isLanguage(value.language) || value.language === "und") &&
+    isNonEmptyString(value.title) &&
+    isNullableNonNegativeInteger(value.page_count) &&
+    isNonEmptyString(value.link_type) &&
+    isNonEmptyString(value.source_id) &&
+    isNonEmptyString(value.locator)
+  );
+}
+
+function isCanonicalUrls(value: unknown): value is CanonicalUrls {
+  return (
+    isJsonObject(value) &&
+    isNonEmptyString(value.ja) &&
+    (value.en === undefined || isNonEmptyString(value.en))
+  );
+}
+
+function isRevisionRecord(value: unknown): value is RevisionRecord {
+  return (
+    isJsonObject(value) &&
+    isNullableString(value.version) &&
+    isNullableString(value.valid_from) &&
+    isNullableString(value.valid_to) &&
+    Array.isArray(value.labels) &&
+    value.labels.every(isSourcedText) &&
+    Array.isArray(value.texts) &&
+    value.texts.every(isSourcedText) &&
+    Array.isArray(value.properties) &&
+    value.properties.every(isSourcedProperty) &&
+    Array.isArray(value.relations) &&
+    value.relations.every(isRelationRecord) &&
+    Array.isArray(value.documents) &&
+    value.documents.every(isDocumentLink) &&
+    Array.isArray(value.sources) &&
+    value.sources.every(isPublicSource)
+  );
+}
+
 function isPublicSource(value: unknown): value is PublicSource {
   return (
     isJsonObject(value) &&
-    isString(value.source_id) &&
-    isString(value.title) &&
-    isString(value.relative_id) &&
-    isString(value.owner) &&
-    isString(value.original_url) &&
+    isNonEmptyString(value.source_id) &&
+    isNonEmptyString(value.title) &&
+    isNonEmptyString(value.relative_id) &&
+    isNonEmptyString(value.owner) &&
+    isNonEmptyString(value.original_url) &&
     isString(value.sha256) &&
-    isString(value.attribution)
+    /^[A-F0-9]{64}$/.test(value.sha256) &&
+    isNonEmptyString(value.attribution)
   );
 }
 
@@ -154,7 +326,7 @@ export function isGroupManifest(value: unknown): value is GroupManifest {
     return false;
   }
   return (
-    isString(value.schema_version) &&
+    value.schema_version === "2.0" &&
     isString(value.release_id) &&
     isString(value.group_kind) &&
     isNullableString(value.edition) &&
@@ -178,29 +350,50 @@ export function isGroupManifest(value: unknown): value is GroupManifest {
 export function isStorageRecord(value: unknown): value is StorageRecord {
   return (
     isJsonObject(value) &&
-    isString(value.schema_version) &&
-    isString(value.release_id) &&
-    isString(value.lookup_key) &&
+    value.schema_version === "2.0" &&
+    isNonEmptyString(value.release_id) &&
+    isNonEmptyString(value.reference_date) &&
+    isNonEmptyString(value.lookup_key) &&
     isScheme(value.scheme) &&
     isNullableString(value.edition) &&
-    isString(value.code) &&
-    isString(value.normalized_code) &&
-    isJsonObjectArray(value.labels) &&
-    isJsonObjectArray(value.texts) &&
-    isJsonObjectArray(value.properties) &&
-    isJsonObjectArray(value.relations) &&
-    isJsonObjectArray(value.documents) &&
+    isNonEmptyString(value.code) &&
+    isNonEmptyString(value.normalized_code) &&
+    (value.record_status === "canonical" || value.record_status === "reference_only") &&
+    (value.match_status === "exact" || value.match_status === "not_valid_at_release") &&
+    isNullableString(value.version) &&
+    isNullableString(value.valid_from) &&
+    isNullableString(value.valid_to) &&
+    Array.isArray(value.available_versions) &&
+    value.available_versions.every(isAvailableVersion) &&
+    Array.isArray(value.labels) &&
+    value.labels.every(isSourcedText) &&
+    Array.isArray(value.texts) &&
+    value.texts.every(isSourcedText) &&
+    Array.isArray(value.properties) &&
+    value.properties.every(isSourcedProperty) &&
+    Array.isArray(value.relations) &&
+    value.relations.every(isRelationRecord) &&
+    Array.isArray(value.documents) &&
+    value.documents.every(isDocumentLink) &&
     Array.isArray(value.sources) &&
     value.sources.every(isPublicSource) &&
-    isString(value.fragment) &&
-    isJsonObject(value.canonical_urls)
+    isNonNegativeInteger(value.relation_count) &&
+    isNonNegativeInteger(value.relation_offset) &&
+    isNonNegativeInteger(value.relation_limit) &&
+    value.relation_limit >= 1 &&
+    value.relation_limit <= 200 &&
+    isNullableNonNegativeInteger(value.next_relation_offset) &&
+    Array.isArray(value.revision_records) &&
+    value.revision_records.every(isRevisionRecord) &&
+    isNonEmptyString(value.fragment) &&
+    isCanonicalUrls(value.canonical_urls)
   );
 }
 
 export function isClassificationChunk(value: unknown): value is ClassificationChunk {
   return (
     isJsonObject(value) &&
-    isString(value.schema_version) &&
+    value.schema_version === "2.0" &&
     isString(value.release_id) &&
     isString(value.chunk_id) &&
     Array.isArray(value.records) &&
