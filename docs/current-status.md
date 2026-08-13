@@ -1,13 +1,13 @@
 # 現在の状態
 
 - 更新日: 2026-08-13
-- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約をPull Request #6からmainへ統合済み
+- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約、PMGS保有者向け導線をPull Request #6と#8からmainへ統合済み
 - 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
-- 公開状態: GitHub source repositoryとv0.2.0 Releaseは公開済み。v0.4.0のtag、PyPI、GitHub Releaseはユーザー承認済みで公開作業中。R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 公開状態: GitHub source repository、[PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)は公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
 
-ユーザーは2026年8月13日にv0.4.0のPyPI公開、tag、GitHub Releaseを承認した。GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherも`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで登録済みである。tag、workflow、公開物の外部検証が完了するまでは、公開済みとは記録しない。
+ユーザーは2026年8月13日にv0.4.0のPyPI公開、tag、GitHub Releaseを承認した。[Release run 31677401736](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677401736)は、required reviewer付き`pypi`環境、`v*` tag制限、Trusted Publishing、digital attestationを通過し、同じwheelとsdistをPyPIとGitHub Releaseへ公開した。両配布面のSHA-256、PyPI provenance、空環境からの`uv tool install`、setup、doctor、lookup、MCP tool 3件を外部確認した。
 
 ## 結論
 
@@ -39,6 +39,11 @@ mainの実装commitは`19ab5e11c256c2fba6db4ffa1f1cfe3e5e79eeac`になった。
 14 jobすべてに成功し、[Main CodeQL run 31662197622](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31662197622)も
 Actions、Python、JavaScript/TypeScriptの3解析すべてに成功した。
 
+[Pull Request #8](https://github.com/Nagi-Inaba/pmgs-reference/pull/8)はPMGS保有者向け導線とAI向け説明をmain commit
+`5550ad6f93f85b818258f634bed89d1a407b35a5`へsquash mergeした。
+[Main CI run 31677175162](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677175162)の14 jobと
+[Main CodeQL run 31677174521](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677174521)の3解析はすべて成功した。
+
 測定値、未観測事項、外部公開Holdは
 [v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md)へ記録する。
 
@@ -50,12 +55,12 @@ SQLiteはrelease、source manifest SHA-256、database SHA-256を含む内容ア�
 
 CodexとClaude Codeを検出した場合は、MCP接続と共通skillを登録するか確認する。既に同じ設定があれば再利用し、内容の異なる同名設定やskillは上書きせず`conflict`として返す。Claude Codeの`CLAUDE_CONFIG_DIR`にも対応する。
 
-data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpackage versionを照合し、source、Worker、隔離wheelを再検証した後、承認付き`pypi` environmentとTrusted PublishingでPyPIへ公開し、同じ成果物からGitHub Releaseを作る。workflowは未実行であり、v0.3.0を公開済みとは扱わない。
+data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpackage versionを照合し、source、Worker、隔離wheelを再検証した後、承認付き`pypi` environmentとTrusted PublishingでPyPIへ公開し、同じ成果物からGitHub Releaseを作る。v0.3.0候補ではworkflowを実行せず、公開済みとは扱わなかった。
 
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
 [GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`をsourceの配布面とする。
-GitHub Releaseとして公開済みの最新版はv0.2.0であり、R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
+Python packageの最新版はPyPIとGitHub Releaseで公開したv0.4.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
 
 ## 現在の公開契約
 
@@ -197,7 +202,7 @@ Pull Requestと独立reviewを手動の統合ゲートとして扱う。
 
 GitHub asset digestはローカルSHA-256と一致した。wheelは32 file、sdistは33 fileで、共通skillを含み、PMGS実データ、SQLite、source manifest、全量export、禁止形式は0件だった。
 
-repository descriptionは日本語である。R2 upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
+v0.2.0公開時点のrepository descriptionは日本語であった。R2 upload、Worker deploy、PyPI公開、独自domain接続は行っていなかった。
 
 ## 2026-08-09の直前契約に対する全量監査
 
@@ -227,13 +232,12 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 公開表示とsource schemaが変更されたため、旧候補のobject hashとtree hashは現在契約のリリースhashではない。
 
-## 未完了の外部リリースゲート
+## 完了したPythonリリースと残るWebゲート
 
-1. GitHubの`pypi` environmentにはrequired reviewerと`v*` tag制限を設定済みである。PyPIの`pmgs-reference` project endpointは公開前確認で404を返したが、pending Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで登録済みである。
-   404だけで将来の名前取得を保証しない。
-2. ユーザーは2026年8月13日にtag、GitHub Release、PyPI公開を承認した。mainのhosted checkとPyPI publisher設定後にtagを作り、PyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
+1. GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を適用し、`v0.4.0`のdeploymentを承認した。PyPI Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで公開に成功した。
+2. PyPI project、両fileのprovenance、GitHub Release、asset hash、空環境からの導入を外部確認した。公開fileのhashと導入結果は[v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md#v040-pythonパッケージの外部公開)へ記録した。
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.2.0 Releaseは公開済みである。
-v0.3.0以降のRelease、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。
+GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.4.0 wheel・sdistは公開済みである。
+全量成果物、Web deploy、独自domain、index登録は完了扱いにしない。

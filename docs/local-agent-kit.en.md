@@ -2,7 +2,7 @@
 
 ## Start using PMGS Reference
 
-After v0.4.0 is published, the PyPI package is the primary installation route.
+For v0.4.0, the PyPI package is the primary installation route.
 A persistent `uv tool` environment avoids both a repository clone and the temporary `uvx` cache.
 
 ### Prerequisites
