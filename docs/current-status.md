@@ -1,14 +1,14 @@
 # 現在の状態
 
 - 更新日: 2026-08-13
-- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約を専用branchで改修中。`main`の公開ソースはv0.3.0、GitHub Releaseの最新版はv0.2.0
-- 検証状態: **Hold**。v0.3.0の検証記録は回帰資料として保持するが、schema v2と分類record 2.0の合格証拠には継承しない
-- 公開状態: v0.3.0のソースコードを含むGitHub repositoryとv0.2.0 Releaseは公開済み。v0.3.0 Release、PyPI、R2、Worker、独自domain、外部検索indexは未公開
+- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約を実装・検証し、Pull Request #6のmain統合を承認済み
+- 検証状態: **source統合可能**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
+- 公開状態: GitHub source repositoryとv0.2.0 Releaseは公開済み。v0.3.0以降のRelease、PyPI、R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 ## 結論
 
-v0.4.0候補は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証と実データA/B監査に合格した。
-Claude Codeの実参照再評価が完了するまで公開準備Holdを維持する。
+v0.4.0候補は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証、実データA/B監査、Codex実MCP評価、hosted CI、CodeQLに合格した。sourceはmainへ統合可能である。
+Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認した。PyPI、GitHub Release、Web公開のHoldは解除しない。
 
 2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
 NTFSとexFATの独立した空の出力先へそれぞれschema v2で再構築した。
@@ -21,13 +21,15 @@ Codexは隔離wheelを使った実MCP評価の全ケースに合格し、禁止t
 A/B各454,303 objectを再検証した。両方とも`valid=true`、全error群0で、tree SHA-256と
 validation report SHA-256が一致した。25条件のrelease auditも`ready=true`、failure 0で合格した。
 独立code reviewとsecurity reviewの未解決Critical、High、Mediumは0件である。
-commit `9dc0d03`は、GitHub ActionsのPython 6 job、3 OS wheel、3 OS合成決定性、
+commit `4ec6738`は、GitHub ActionsのPython 6 job、3 OS wheel、3 OS合成決定性、
 決定性比較、Workerからなる14 jobすべてに合格した。CodeQLもActions、Python、
 JavaScript/TypeScriptの3解析すべてに合格した。
-Claude Codeは`claude auth status`ではログイン済みと表示されるが、最終wheelによる実評価は
-`unauthenticated`となり、10ケースすべてでMCP toolを呼び出せなかった。再認証後の再評価が必要である。
+[Push CI run 31634401819](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634401819)、
+[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)、
+[CodeQL run 31634403653](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634403653)はすべて成功した。
+2026年8月12日のClaude Code評価は認証エラーで終了した。その後、custom設定rootを保持する修正と回帰testを追加したが、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できず、修正後のlive MCP互換性は`not_observed`である。
 
-測定値と残るゲートは
+測定値、未観測事項、外部公開Holdは
 [v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md)へ記録する。
 
 以下のv0.3.0記録は、旧契約の回帰基準と外部公開状態を示すものであり、v0.4.0の完成を意味しない。
@@ -42,7 +44,7 @@ data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpa
 
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
-[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`にはv0.3.0のソースコードが統合されている。
+[GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`をsourceの配布面とする。
 GitHub Releaseとして公開済みの最新版はv0.2.0であり、R2への全量成果物upload、Worker deploy、PyPI公開、独自domain接続は行っていない。
 
 ## 現在の公開契約
@@ -224,5 +226,5 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub repositoryの`main`にあるv0.3.0のソースコードと、data非同梱のv0.2.0 Releaseは公開済みである。
+GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.2.0 Releaseは公開済みである。
 v0.3.0以降のRelease、PyPI、全量成果物、Web deploy、index登録は完了扱いにしない。

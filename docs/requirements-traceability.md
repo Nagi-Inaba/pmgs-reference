@@ -10,6 +10,8 @@
 
 `hold`は、旧契約の証拠はあるが、現在開発中のschemaまたはinterface契約での再検証が必要な状態である。
 
+`not_observed`は、必要な外部アカウントまたは実環境を利用できずlive挙動を確認していない状態である。自動試験の成功をlive成功へ読み替えない。
+
 ## v1要件
 
 | ID | 要件 | 状態 | 証拠または残作業 |
@@ -33,6 +35,8 @@
 | AGENT-03 | 実stdio接続とSQLite不変性を診断する | verified | `pmgs doctor`の実client、tool契約、照会前後hash、managed pointer SHA不一致と診断中pointer切替の拒否test |
 | AGENT-04 | 日本語を既定にし、英語へ切り替えられる | verified | CLI、skill、日英README、Web top、`llms.txt`のtest |
 | AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
+| AGENT-06 | Codexが読み取り専用MCPを使い、取得本文を命令として実行しない | verified | 隔離wheelの全10ケースに合格し、禁止tool呼出し0件を機械判定 |
+| AGENT-07 | Claude Codeが読み取り専用MCPを使い、取得本文を命令として実行しない | not_observed | 設定、skill、分離環境、tool制限は自動検証済み。現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため、修正後のlive MCP評価は未観測。ユーザー承認によりsource統合の阻害条件から外し、Claude live互換性の成功は主張しない |
 | DOC-02 | 第三者向けWebセルフホストとGPTs、Gem、Copilot Studioの制約を公開する | verified | 日英ガイドと全Markdown相対link test |
 | PUB-01 | 公開分類をHTML、Markdown、JSONで生成する | verified | classification record 2.0とrevision bundleを実データA/B各454,303 objectで最終validatorにより全件再検証し、全error群0、tree SHA-256一致 |
 | PUB-02 | 公開文書をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証し、分類と文書を含む最終実データA/B公開treeを全件validation |
@@ -48,13 +52,13 @@
 | RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 219件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
-| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | [v0.4.0 PR CI run 31633062926](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633062926)でUbuntu、Windows、macOSのwheel E2Eと3 OS合成決定性比較を含む14 jobが成功 |
+| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | commit `4ec6738`の[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)でUbuntu、Windows、macOSのwheel E2Eと3 OS合成決定性比較を含む14 jobが成功 |
 | RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | implemented | SHA固定の`release.yml`。GitHub `pypi`環境、PyPI pending publisher、tag実行は外部設定待ち |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
-| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | [v0.4.0 PR CI run 31633062926](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633062926)で14 jobが成功。既存10 checkはbranch protectionで必須、追加の決定性4 jobもPR統合ゲートとして確認 |
+| GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | commit `4ec6738`の[Push CI run 31634401819](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634401819)と[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)で各14 jobが成功。既存10 checkはbranch protectionで必須、追加の決定性4 jobもPR統合ゲートとして確認 |
 | GH-03 | contribution、security、Issue、PRのdata-safeな受付境界を定義する | verified | `CONTRIBUTING.md`、`SECURITY.md`、Issue forms、PR template、CODEOWNERS |
 | GH-04 | 公開用Git履歴から旧版の公開対象外運用記録を除去する | verified | clean root commit `c3f836b`から公開履歴を開始し、旧履歴を外部backupへ分離 |
-| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | [v0.4.0 CodeQL run 31633058874](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31633058874)でActions、Python、JavaScript/TypeScriptが成功。ほかは[現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)を参照 |
+| GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | commit `4ec6738`の[CodeQL run 31634403653](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634403653)でActions、Python、JavaScript/TypeScriptが成功。ほかは[現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)を参照 |
 
 ## v1対象外
 

@@ -9,7 +9,7 @@
 [v0.4.0の正確性検証](v0.4-correctness-2026-08-12.md)は、schema v2の全量A/B再構築、
 公開export、AI client評価、release gateを一つの記録へまとめる。
 
-完了していないゲートは成功扱いにせず、現在のHold理由を同じ記録へ明示する。
+未観測のlive挙動は自動試験の成功で代替せず、`not_observed`の理由と、その状態を受容した所有者判断の適用範囲を同じ記録へ明示する。source統合の判断と、tag、package、Web deployなどの外部公開Holdを分けて記録する。
 
 2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語topと英語`llms.en.txt`を切替先として追加した。
 
