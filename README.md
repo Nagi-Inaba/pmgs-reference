@@ -6,6 +6,18 @@
 
 PMGS Referenceは、取得済みのPMGSパッケージを検索用SQLiteへ変換し、FI、Fターム、IPCの定義・階層・版・関連資料をAIから参照できるようにします。CodexとClaude Codeは読み取り専用MCPを通じて同じデータを検索するため、一般的なWeb検索やモデルの記憶だけに頼らず、PMGSの文言と出典を確認できます。
 
+## v0.4.0の公開状況
+
+- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)：`uv tool install pmgs-reference`で導入できます。
+- [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)：PyPIと同じworkflow artifactから作成したwheelとsdistを配布しています。
+- [ソースコード](https://github.com/Nagi-Inaba/pmgs-reference)：Apache License 2.0で公開しています。
+
+配布物に含まれるのは、SQLiteを構築・検索するPythonコード、CLI、読み取り専用MCP、AI向けスキルです。
+PMGS原本、生成したSQLite、全量export、認証情報は配布物に含めず、GitHubやPyPIにもアップロードしていません。
+v0.4.0は3 OSの隔離wheel試験、実PMGSのA/B構築、Codexの実MCP評価、Trusted Publishingのprovenanceを確認しています。
+Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。
+検証値と未観測項目は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)に記録しています。
+
 ## PMGSを持っている人が今すぐ使う
 
 v0.4.0の第一選択はPyPI版です。
@@ -195,6 +207,7 @@ pmgs doctor --json
 ## GPTsやGemから参照できるWebサイトを作る
 
 分類ごとの軽量なHTML、Markdown、JSONとOpenAPIを生成できます。Cloudflare WorkerとR2などへセルフホストすると、GPTsやGemはWeb検索や対応するAPI接続から分類定義を参照できます。構成、生成手順、運用費用の考え方は[Webセルフホストガイド](docs/self-hosting.md)に記載しています。
+R2、Worker、独自ドメインによる公開サービスは現在運用しておらず、公開照会URLはありません。
 
 ## PMGSデータ
 
@@ -208,6 +221,7 @@ PMGSデータ自体はリポジトリやPythonパッケージに含まれませ�
 - [Webセルフホスト](docs/self-hosting.md)
 - [システム構成](docs/architecture.md)
 - [現在の実装状況](docs/current-status.md)
+- [v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)
 - [開発への参加](CONTRIBUTING.md)
 
 ## ライセンス
