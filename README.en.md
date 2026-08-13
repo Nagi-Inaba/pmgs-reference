@@ -54,6 +54,13 @@ pmgs setup C:\path\to\JPPM2026002 `
   --json
 ```
 
+If you specify `--data-dir`, pass the same destination to the real build and doctor.
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
+pmgs doctor --data-dir .\pmgs-data --json
+```
+
 After the preflight passes, choose the setup that matches your use case:
 
 ```powershell

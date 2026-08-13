@@ -73,6 +73,13 @@ pmgs setup C:\path\to\JPPM2026002 `
   --json
 ```
 
+`--data-dir`を指定した場合は、実際の構築と診断にも同じ保存先を指定します。
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
+pmgs doctor --data-dir .\pmgs-data --json
+```
+
 ### 実際に構築する
 
 事前確認が成功したら、Codexへ登録するか、ローカルSQLiteだけを構築します。

@@ -73,6 +73,13 @@ pmgs setup C:\path\to\JPPM2026002 `
   --json
 ```
 
+If you specify `--data-dir`, pass the same destination to the real build and doctor.
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
+pmgs doctor --data-dir .\pmgs-data --json
+```
+
 ### Build the database
 
 After the preflight passes, register Codex or build only the local SQLite database:

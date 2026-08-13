@@ -142,6 +142,11 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
                 "pmgs doctor --json",
             )
         )
+        assert (
+            r"pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data "
+            r"--client codex --register"
+        ) in text
+        assert r"pmgs doctor --data-dir .\pmgs-data --json" in text
 
         match = re.search(r"```yaml\r?\n(pmgs_reference_ai_contract:.*?\r?\n)```", text, re.DOTALL)
         assert match is not None
