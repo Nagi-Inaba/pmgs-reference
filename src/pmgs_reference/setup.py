@@ -245,6 +245,11 @@ def resolve_setup_source(
     if requested is not None and not _SETUP_RELEASE_ID.fullmatch(requested):
         raise SetupUsageError("release must match JPPM followed by digits")
     supplied = Path(source).expanduser().absolute()
+    if supplied.is_file():
+        raise SetupUsageError(
+            "setup requires an extracted PMGS directory; archive files and other files "
+            f"cannot be used directly: {supplied}"
+        )
     if not supplied.is_dir():
         raise SetupUsageError(f"PMGS source directory not found: {supplied}")
     named_release = supplied.name if _SETUP_RELEASE_ID.fullmatch(supplied.name) else None

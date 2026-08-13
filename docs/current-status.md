@@ -3,12 +3,16 @@
 - 更新日: 2026-08-13
 - 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約をPull Request #6からmainへ統合済み
 - 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
-- 公開状態: GitHub source repositoryとv0.2.0 Releaseは公開済み。v0.3.0以降のRelease、PyPI、R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 公開状態: GitHub source repositoryとv0.2.0 Releaseは公開済み。v0.4.0のtag、PyPI、GitHub Releaseはユーザー承認済みで公開作業中。R2、Worker、独自domain、外部検索indexは未公開のままHold
+
+PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
+
+ユーザーは2026年8月13日にv0.4.0のPyPI公開、tag、GitHub Releaseを承認した。GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherも`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで登録済みである。tag、workflow、公開物の外部検証が完了するまでは、公開済みとは記録しない。
 
 ## 結論
 
 v0.4.0は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証、実データA/B監査、Codex実MCP評価、hosted CI、CodeQLに合格した。sourceはmainへ統合済みである。
-Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認した。PyPI、GitHub Release、Web公開のHoldは解除しない。
+Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認し、同日にv0.4.0のtag、PyPI、GitHub ReleaseのHoldも解除した。R2、Worker、独自domain、外部検索indexのHoldは維持する。
 
 2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
 NTFSとexFATの独立した空の出力先へそれぞれschema v2で再構築した。
@@ -225,10 +229,9 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 未完了の外部リリースゲート
 
-1. GitHubには2026-08-12時点でenvironmentが0件であり、PyPIの`pmgs-reference` project endpointも404を返す。
-   `pypi` environmentへrequired reviewerと`v*` tag制限を設定し、PyPI pending Trusted Publisherを登録する。
+1. GitHubの`pypi` environmentにはrequired reviewerと`v*` tag制限を設定済みである。PyPIの`pmgs-reference` project endpointは公開前確認で404を返したが、pending Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで登録済みである。
    404だけで将来の名前取得を保証しない。
-2. tag、GitHub Release、PyPI公開はv0.4.0のmain統合には含めない。将来、別途公開を承認した場合だけ、承認後のPyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
+2. ユーザーは2026年8月13日にtag、GitHub Release、PyPI公開を承認した。mainのhosted checkとPyPI publisher設定後にtagを作り、PyPI project、attestation、GitHub Release、asset hash、空環境からの導入を外部確認する。
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 

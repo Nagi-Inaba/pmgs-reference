@@ -37,6 +37,7 @@
 | AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
 | AGENT-06 | Codexが読み取り専用MCPを使い、取得本文を命令として実行しない | verified | 隔離wheelの全10ケースに合格し、禁止tool呼出し0件を機械判定 |
 | AGENT-07 | Claude Codeが読み取り専用MCPを使い、取得本文を命令として実行しない | not_observed | 設定、skill、分離環境、tool制限は自動検証済み。現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため、修正後のlive MCP評価は未観測。ユーザー承認によりsource統合の阻害条件から外し、Claude live互換性の成功は主張しない |
+| AGENT-08 | PMGS保有者とAIがinstall、dry-run、setup、doctor、lookupを安全に開始できる | verified | 日英READMEと導入ガイドの機械可読契約、展開済みdirectory・容量・client分岐、archive拒否、MCP tool descriptionと配布skillの非アップロード・取得本文境界を回帰testで検証 |
 | DOC-02 | 第三者向けWebセルフホストとGPTs、Gem、Copilot Studioの制約を公開する | verified | 日英ガイドと全Markdown相対link test |
 | PUB-01 | 公開分類をHTML、Markdown、JSONで生成する | verified | classification record 2.0とrevision bundleを実データA/B各454,303 objectで最終validatorにより全件再検証し、全error群0、tree SHA-256一致 |
 | PUB-02 | 公開文書をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証し、分類と文書を含む最終実データA/B公開treeを全件validation |
@@ -49,11 +50,11 @@
 | WORKER-01 | Workerが版付きR2成果物を2 read以内で返す | verified | [Worker検証](verification/worker-2026-08-08.md)とworkerd test |
 | WORKER-02 | APIが入力、CORS、404、503、security header契約を満たす | verified | workerd route test |
 | WEBMCP-01 | 対応時だけlookup toolを一つ登録する | verified | TypeScript test、実対応browser smokeは任意外部確認 |
-| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 219件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
+| RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 221件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
 | RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | commit `4ec6738`の[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)でUbuntu、Windows、macOSのwheel E2Eと3 OS合成決定性比較を含む14 jobが成功 |
-| RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | implemented | SHA固定の`release.yml`。GitHub `pypi`環境、PyPI pending publisher、tag実行は外部設定待ち |
+| RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | implemented | SHA固定の`release.yml`。GitHub `pypi`環境はrequired reviewerと`v*` tag制限を設定し、PyPI pending publisherも同じowner、repository、workflow、environmentで登録済み。tag実行と公開後の外部検証が残る |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
 | GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | commit `4ec6738`の[Push CI run 31634401819](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634401819)と[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)で各14 jobが成功。既存10 checkはbranch protectionで必須、追加の決定性4 jobもPR統合ゲートとして確認 |
 | GH-03 | contribution、security、Issue、PRのdata-safeな受付境界を定義する | verified | `CONTRIBUTING.md`、`SECURITY.md`、Issue forms、PR template、CODEOWNERS |
