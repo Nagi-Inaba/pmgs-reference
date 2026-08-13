@@ -59,6 +59,7 @@
 | GH-03 | contribution、security、Issue、PRのdata-safeな受付境界を定義する | verified | `CONTRIBUTING.md`、`SECURITY.md`、Issue forms、PR template、CODEOWNERS |
 | GH-04 | 公開用Git履歴から旧版の公開対象外運用記録を除去する | verified | clean root commit `c3f836b`から公開履歴を開始し、旧履歴を外部backupへ分離 |
 | GH-05 | hosted check、Security設定、ruleset、public visibilityを確認する | verified | commit `4ec6738`の[CodeQL run 31634403653](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634403653)でActions、Python、JavaScript/TypeScriptが成功。ほかは[現在のGitHub公開検証](current-status.md#github-source-repositoryの公開検証)を参照 |
+| GH-06 | review済みsourceをmainへ統合し、mainのhosted checksを確認する | verified | [Pull Request #6](https://github.com/Nagi-Inaba/pmgs-reference/pull/6)をcommit `19ab5e1`へsquash merge。[Main CI run 31662197654](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31662197654)の14 jobと[Main CodeQL run 31662197622](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31662197622)の3解析が成功 |
 
 ## v1対象外
 

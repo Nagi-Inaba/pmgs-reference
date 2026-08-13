@@ -35,7 +35,7 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 
 2026-08-11に、全OS共通の`pmgs setup`、内容アドレス付きSQLite、原子的な`current.json`、Codex・Claude Codeの非破壊登録、wheel実環境test、PyPI Trusted Publishing用release workflowをv0.3.0として追加した。PyPI packageとv0.3.0 Releaseの外部公開はtagと承認環境による別状態として扱う。
 
-2026-08-13に、分類概念と版ごとのrevisionを分離するschema v2、IPCの基準日版選択、FI改正の`reference_only`概念、出典lineage、関係ページング、分類・文書の複合検索をv0.4.0候補として実装・検証した。実データA/B、Codex実MCP評価、hosted CI、CodeQLに合格し、sourceのmain統合条件を満たした。Claude Code用設定、skill、登録、分離環境、tool制限は自動検証済みだが、現在利用できる無料アカウントではlive MCP評価に必要なClaudeモデル呼出しを実行できないため、live MCP評価は`not_observed`として残す。現在の検証状態と外部公開Holdは[現在の状態](docs/current-status.md)を正本とする。
+2026-08-13に、分類概念と版ごとのrevisionを分離するschema v2、IPCの基準日版選択、FI改正の`reference_only`概念、出典lineage、関係ページング、分類・文書の複合検索をv0.4.0として実装・検証し、Pull Request #6からmainへ統合した。実データA/B、Codex実MCP評価、hosted CI、CodeQLに合格している。Claude Code用設定、skill、登録、分離環境、tool制限は自動検証済みだが、現在利用できる無料アカウントではlive MCP評価に必要なClaudeモデル呼出しを実行できないため、live MCP評価は`not_observed`として残す。現在の検証状態と外部公開Holdは[現在の状態](docs/current-status.md)を正本とする。
 
 GitHub source repositoryを現在の配布面とする。Web deploy、domain公開、PyPI公開、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
 
