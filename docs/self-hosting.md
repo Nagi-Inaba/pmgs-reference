@@ -46,7 +46,7 @@ PMGS原資料、SQLite、登録情報、認証情報をGit、R2の公開prefix�
 
 ## 現在の全量規模と費用項目
 
-2026-08-09に監査した直前契約の全量候補は、1回のexportにつき399,025 object、10,491,136,463 bytesだった。2026-08-10の日英入口追加により現行契約のobjectは増えるため、この数値は容量見積りの基準であり、公開前の実測値ではない。A/B再現検査には、同規模の空き容量が2系統分と作業領域として必要になる。
+v0.4.0の現行契約で2026-08-13に再検証した全量候補は、1回のexportにつき454,303 object、14,406,835,616 bytesだった。これは公開前の実測値であり、実originや将来のPMGS releaseでは変わり得る。A/B再現検査には、同規模の空き容量が2系統分と作業領域として必要になる。
 
 2026-08-10確認時点のCloudflare料金表では、R2 Standardに月10 GB-month、Class A 100万回、Class B 1,000万回の無料枠があり、Workers Paidはアカウントあたり月額5 USDからである。料金と無料枠は変更されるため、公開判断時に[R2料金](https://developers.cloudflare.com/r2/pricing/)と[Workers料金](https://developers.cloudflare.com/workers/platform/pricing/)を再確認する。
 
@@ -54,8 +54,8 @@ PMGS原資料、SQLite、登録情報、認証情報をGit、R2の公開prefix�
 
 | 項目 | この構成での発生要因 |
 | --- | --- |
-| R2 storage | 現行候補は約10.49 GB。版を追加して旧版を保持すると累積する |
-| Class A | 初回upload、版追加、metadata操作。現行候補は約39.9万object |
+| R2 storage | 現行候補は約14.41 GB。版を追加して旧版を保持すると累積する |
+| Class A | 初回upload、版追加、metadata操作。現行候補は約45.4万object |
 | Class B | HTML・Markdownの配信、APIのmanifestとchunk read |
 | Worker | request数、CPU時間、選択したplan |
 | ドメイン | registrar、DNS、更新費用 |
@@ -97,7 +97,7 @@ npx wrangler login
 npx wrangler r2 bucket create pmgs-reference-public
 ```
 
-約39.9万objectを`wrangler r2 object put`の単純loopで送るのは遅い。Cloudflareの[S3互換API](https://developers.cloudflare.com/r2/api/s3/)または[rclone手順](https://developers.cloudflare.com/r2/examples/rclone/)を使い、`build/public-a/`の相対pathを保持して版付き成果物をuploadする。
+約45.4万objectを`wrangler r2 object put`の単純loopで送るのは遅い。Cloudflareの[S3互換API](https://developers.cloudflare.com/r2/api/s3/)または[rclone手順](https://developers.cloudflare.com/r2/examples/rclone/)を使い、`build/public-a/`の相対pathを保持して版付き成果物をuploadする。
 
 upload処理には次の要件を持たせる。
 
@@ -151,7 +151,7 @@ API response schema、旧版URLである。外部からの実測前に「公開�
 
 サイト内link、`robots.txt`、sitemap index、個別sitemap、canonical URL、`llms.txt`を本番originで検査する。Google Search Consoleなど、運用者が利用する検索管理画面へsitemapを送信する。
 
-[Google Search Central](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview)が説明するとおり、sitemapはURLの発見を助けるが、全ページのcrawlやindexを保証しない。399,025 objectを持つ大規模サイトでは、重要な入口と内部linkを整え、index coverageを継続観測する。
+[Google Search Central](https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview)が説明するとおり、sitemapはURLの発見を助けるが、全ページのcrawlやindexを保証しない。454,303 objectを持つ大規模サイトでは、重要な入口と内部linkを整え、index coverageを継続観測する。
 
 ## 6. GPTsから参照する
 

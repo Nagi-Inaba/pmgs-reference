@@ -31,7 +31,7 @@ maximum of 200. Export fails when one classification bundle exceeds the fixed 25
 
 ## Capacity and cost categories
 
-The immediately preceding contract audited on 2026-08-09 contained 399,025 objects and 10,491,136,463 bytes per export. The 2026-08-10 Japanese and English entry-point change adds objects, so this is a planning baseline rather than a current deployment measurement. A/B reproducibility validation requires two independent copies plus working space.
+The current v0.4.0 contract was revalidated on 2026-08-13 at 454,303 objects and 14,406,835,616 bytes per export. This is a measured pre-deployment result; the final origin and future PMGS releases can change it. A/B reproducibility validation requires two independent copies plus working space.
 
 As checked on 2026-08-10, Cloudflare publishes an R2 free allocation of 10 GB-month, one million Class A operations, and ten million Class B operations per month. Workers Paid starts at USD 5 per account per month. Recheck the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) and [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) before deployment.
 
@@ -61,7 +61,7 @@ npx wrangler login
 npx wrangler r2 bucket create pmgs-reference-public
 ```
 
-For roughly 399,000 objects, use Cloudflare's [S3-compatible API](https://developers.cloudflare.com/r2/api/s3/) or its [rclone procedure](https://developers.cloudflare.com/r2/examples/rclone/) instead of a serial `wrangler r2 object put` loop.
+For roughly 454,000 objects, use Cloudflare's [S3-compatible API](https://developers.cloudflare.com/r2/api/s3/) or its [rclone procedure](https://developers.cloudflare.com/r2/examples/rclone/) instead of a serial `wrangler r2 object put` loop.
 
 The upload process must preserve relative keys, avoid overwriting published releases, keep credentials out of commands and logs, record remote counts and bytes, and compare the complete remote inventory with local manifests. Sampling is not a full verification. This repository does not ship a bulk uploader, so the operator must audit the chosen transfer tool and implement the full post-upload comparison.
 
