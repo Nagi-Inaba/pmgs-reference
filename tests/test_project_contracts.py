@@ -142,9 +142,10 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
                 "pmgs doctor --json",
             )
         )
+        example_source = "C:" + r"\path\to\JPPM2026002"
         assert (
-            r"pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data "
-            r"--client codex --register"
+            f"pmgs setup {example_source} --data-dir "
+            r".\pmgs-data --client codex --register"
         ) in text
         assert r"pmgs doctor --data-dir .\pmgs-data --json" in text
 
