@@ -86,6 +86,14 @@ def test_resolve_setup_source_rejects_ambiguous_and_mismatched_releases(
         resolve_setup_source(parent / "JPPM2099001", "JPPM2099002")
 
 
+def test_resolve_setup_source_rejects_an_unextracted_archive(tmp_path: Path) -> None:
+    archive = tmp_path / "JPPM2099001.zip"
+    archive.write_bytes(b"synthetic archive placeholder")
+
+    with pytest.raises(SetupUsageError, match=r"extract.*archive"):
+        resolve_setup_source(archive, None)
+
+
 def test_setup_builds_activates_and_reuses_an_immutable_database(
     synthetic_pmgs: Path, tmp_path: Path
 ) -> None:

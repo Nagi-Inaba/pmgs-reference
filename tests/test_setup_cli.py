@@ -21,6 +21,7 @@ def test_setup_help_and_package_version_are_public(capsys: pytest.CaptureFixture
     assert "位置引数:" in help_text
     assert "オプション:" in help_text
     assert "このヘルプを表示して終了" in help_text
+    assert "展開済みPMGSディレクトリ" in help_text
     for option in [
         "source",
         "--release",

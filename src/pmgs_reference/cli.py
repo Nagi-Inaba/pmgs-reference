@@ -81,7 +81,11 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--report", type=Path)
 
     setup = subparsers.add_parser("setup", help="PMGSを安全に構築しCodexやClaude Codeへ接続する")
-    setup.add_argument("source", type=Path, help="取得済みPMGSパッケージまたはその親ディレクトリ")
+    setup.add_argument(
+        "source",
+        type=Path,
+        help="展開済みPMGSディレクトリまたはその親ディレクトリ",
+    )
     setup.add_argument("--release", help="PMGSの版。省略時はJPPMディレクトリ名から判定")
     setup.add_argument(
         "--data-dir",

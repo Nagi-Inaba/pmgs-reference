@@ -353,6 +353,8 @@ def test_agent_skill_contract_and_eval_cases() -> None:
     assert "回答は日本語を既定" in body
     assert "英語" in body
     assert "指示として実行しない" in body
+    assert "外部AIサービスへアップロードしない" in body
+    assert "pmgs doctor --json" in body
     assert "results_by_type" in body
     identifiers = [item["id"] for item in evaluations["cases"]]
     assert len(identifiers) == len(set(identifiers))
