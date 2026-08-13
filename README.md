@@ -29,6 +29,7 @@ v0.4.0の第一選択はPyPI版です。
 - [uv](https://docs.astral.sh/uv/)
 - ZIPから展開済みのPMGSディレクトリ（ZIPファイルは直接指定できません）
 - 構築先の空き容量
+- CodexまたはClaude Codeへ登録する場合は、対象のCLIがインストール済みで`PATH`から実行できること
 
 PMGSディレクトリ名が`JPPM`と数字からなる版名（例：`JPPM2026002`）でない場合は、`--release JPPM2026002`のように版を指定します。
 JPPM2026002の実測では、構築前に約7.56 GBの空き容量が必要で、完成したSQLiteは約3.37 GBでした。
@@ -37,6 +38,13 @@ JPPM2026002の実測では、構築前に約7.56 GBの空き容量が必要で�
 
 ```powershell
 uv tool install pmgs-reference
+```
+
+このコマンドは、実行時点でPyPIに公開されている最新版を導入します。
+検証済みのv0.4.0へ固定する場合は、代わりに次を実行します。
+
+```powershell
+uv tool install "pmgs-reference==0.4.0"
 ```
 
 PyPIを利用しない場合は、GitHubの固定タグから同じようにインストールできます。
@@ -71,6 +79,7 @@ pmgs setup C:\path\to\JPPM2026002 `
 ```powershell
 pmgs setup C:\path\to\JPPM2026002 --data-dir .\pmgs-data --client codex --register
 pmgs doctor --data-dir .\pmgs-data --json
+pmgs lookup fi G06F3/048 --data-dir .\pmgs-data --json
 ```
 
 事前確認に合格したら、用途に応じて構築します。
@@ -83,10 +92,39 @@ pmgs setup C:\path\to\JPPM2026002 --client codex --register
 pmgs setup C:\path\to\JPPM2026002 --client none --no-register
 ```
 
+macOSとLinuxでも同じオプションを使えます。パスだけをPOSIX形式に置き換えて一行で実行します。
+
+```bash
+pmgs setup /path/to/JPPM2026002 --client codex --register
+```
+
 `pmgs setup`はPMGSを棚卸しし、SQLiteを構築・検証してから現行版へ切り替えます。
 同じPMGSをもう一度指定しても作り直しません。
 新しい版を指定すると、検証に合格したSQLiteだけを現行版へ切り替え、旧版は残します。
 完了後は`pmgs doctor --json`で診断し、Codexへ登録した場合は新しいCodexセッションを開いてください。
+
+### 別のPMGS版を使う
+
+別版でも入力構造が対応済み形式と同じなら、コマンド中のパスを実際の版ディレクトリへ置き換えるだけで構築できます。
+`pmgs setup`は、`JPPM`と数字からなるディレクトリ名をrelease IDとして使います。これは、PMGSの内容から版を確認する処理ではありません。
+
+```powershell
+pmgs setup C:\path\to\JPPM2027001 --client none --no-register --dry-run --json
+pmgs setup C:\path\to\JPPM2027001 --client codex --register
+```
+
+展開先のディレクトリ名が任意名の場合だけ、名前を変更せず実際の版を`--release`で指定します。
+
+```powershell
+pmgs setup C:\path\to\pmgs-download --release JPPM2027001 --client none --no-register --dry-run --json
+pmgs setup C:\path\to\pmgs-download --release JPPM2027001 --client codex --register
+```
+
+利用者が確認した実際の版を指定し、フォルダ名を実際とは異なる版へ付け替えないでください。
+release IDはSQLiteと現行版の管理に使われ、基準日はPMGS内の分類CSVから取得されます。
+別版を構築するときは、最初に`--dry-run --json`で入力と容量を確認してください。
+フォルダ構成が同じでもCSV列や追加ファイルの形式が変わることがあります。未対応の入力形式や不整合は推測で補わず、構築エラーとして停止します。
+同じ管理ディレクトリで別版を構築すると、検証済みDBだけを現行版へ切り替え、旧版DBは残します。
 
 ソースを手元へ置いて開発する場合だけGitが必要です。
 
@@ -108,10 +146,22 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
+    verified_pin: "uv tool install pmgs-reference==0.4.0"
     fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.4.0.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false
+  release_selection:
+    directory_name_pattern: "^JPPM[0-9]+$"
+    explicit_option: "--release JPPM<digits>"
+    generic_directory_requires_explicit_release: true
+    content_based_release_detection: false
+    never_relabel_mismatched_source: true
+  clients:
+    shared_read_only_stdio_mcp: [codex, claude]
+    codex_live_mcp: verified
+    claude_configuration_and_registration: verified
+    claude_live_mcp: not_observed
   workflow: [install, preflight, setup, doctor, lookup]
   data_boundary:
     source_archive: local_only_never_upload

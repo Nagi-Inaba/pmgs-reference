@@ -37,7 +37,7 @@
 | AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
 | AGENT-06 | Codexが読み取り専用MCPを使い、取得本文を命令として実行しない | verified | 隔離wheelの全10ケースに合格し、禁止tool呼出し0件を機械判定 |
 | AGENT-07 | Claude Codeが読み取り専用MCPを使い、取得本文を命令として実行しない | not_observed | 設定、skill、分離環境、tool制限は自動検証済み。現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため、修正後のlive MCP評価は未観測。ユーザー承認によりsource統合の阻害条件から外し、Claude live互換性の成功は主張しない |
-| AGENT-08 | PMGS保有者とAIがinstall、dry-run、setup、doctor、lookupを安全に開始できる | verified | 日英READMEと導入ガイドの機械可読契約、展開済みdirectory・容量・client分岐、archive拒否、MCP tool descriptionと配布skillの非アップロード・取得本文境界を回帰testで検証 |
+| AGENT-08 | PMGS保有者とAIがinstall、dry-run、setup、doctor、lookupを安全に開始できる | verified | 日英READMEと導入ガイドの機械可読契約、展開済みdirectory・容量・client分岐、別releaseの実directory指定・任意名だけでの`--release`・名前だけでは版を確認できない境界、固定package版、独自`--data-dir`のlookup、archive拒否、MCP tool descriptionと配布skillの非アップロード・取得本文境界を回帰testで検証 |
 | DOC-02 | 第三者向けWebセルフホストとGPTs、Gem、Copilot Studioの制約を公開する | verified | 日英ガイドと全Markdown相対link test |
 | PUB-01 | 公開分類をHTML、Markdown、JSONで生成する | verified | classification record 2.0とrevision bundleを実データA/B各454,303 objectで最終validatorにより全件再検証し、全error群0、tree SHA-256一致 |
 | PUB-02 | 公開文書をHTML、Markdown、JSONで生成する | verified | 現行の日英入口契約を合成fixtureで検証し、分類と文書を含む最終実データA/B公開treeを全件validation |

@@ -119,6 +119,7 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         'uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/'
         'archive/refs/tags/v0.4.0.zip"'
     )
+    pinned_install = 'uv tool install "pmgs-reference==0.4.0"'
 
     for relative in surfaces:
         text = (ROOT / relative).read_text(encoding="utf-8")
@@ -140,6 +141,12 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
                 "--client codex --register",
                 "--client none --no-register",
                 "pmgs doctor --json",
+                pinned_install,
+                "PATH",
+                "JPPM2027001",
+                "pmgs-download",
+                "--release JPPM2027001",
+                "pmgs setup /path/to/JPPM2026002 --client codex --register",
             )
         )
         example_source = "C:" + r"\path\to\JPPM2026002"
@@ -148,6 +155,7 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
             r".\pmgs-data --client codex --register"
         ) in text
         assert r"pmgs doctor --data-dir .\pmgs-data --json" in text
+        assert r"pmgs lookup fi G06F3/048 --data-dir .\pmgs-data --json" in text
 
         match = re.search(r"```yaml\r?\n(pmgs_reference_ai_contract:.*?\r?\n)```", text, re.DOTALL)
         assert match is not None
@@ -155,6 +163,7 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["purpose"] == "build_read_only_sqlite_and_mcp_from_local_pmgs"
         assert contract["install"] == {
             "primary": "uv tool install pmgs-reference",
+            "verified_pin": "uv tool install pmgs-reference==0.4.0",
             "fallback": (
                 "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/"
                 "archive/refs/tags/v0.4.0.zip"
@@ -163,6 +172,19 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["source_input"] == {
             "format": "extracted_directory",
             "archive_direct_input": False,
+        }
+        assert contract["release_selection"] == {
+            "directory_name_pattern": "^JPPM[0-9]+$",
+            "explicit_option": "--release JPPM<digits>",
+            "generic_directory_requires_explicit_release": True,
+            "content_based_release_detection": False,
+            "never_relabel_mismatched_source": True,
+        }
+        assert contract["clients"] == {
+            "shared_read_only_stdio_mcp": ["codex", "claude"],
+            "codex_live_mcp": "verified",
+            "claude_configuration_and_registration": "verified",
+            "claude_live_mcp": "not_observed",
         }
         assert contract["workflow"] == ["install", "preflight", "setup", "doctor", "lookup"]
         assert contract["data_boundary"] == {
