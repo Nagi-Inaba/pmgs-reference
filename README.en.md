@@ -8,7 +8,7 @@ PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex a
 
 ## Start now with a local PMGS package
 
-After v0.4.0 is published, the PyPI package is the primary installation route.
+For v0.4.0, the PyPI package is the primary installation route.
 It installs a persistent `uv tool` environment instead of using the temporary `uvx` cache.
 
 You need:
