@@ -1,13 +1,13 @@
 # 現在の状態
 
 - 更新日: 2026-08-13
-- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約を実装・検証し、Pull Request #6のmain統合を承認済み
-- 検証状態: **source統合可能**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
+- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約をPull Request #6からmainへ統合済み
+- 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
 - 公開状態: GitHub source repositoryとv0.2.0 Releaseは公開済み。v0.3.0以降のRelease、PyPI、R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 ## 結論
 
-v0.4.0候補は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証、実データA/B監査、Codex実MCP評価、hosted CI、CodeQLに合格した。sourceはmainへ統合可能である。
+v0.4.0は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証、実データA/B監査、Codex実MCP評価、hosted CI、CodeQLに合格した。sourceはmainへ統合済みである。
 Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認した。PyPI、GitHub Release、Web公開のHoldは解除しない。
 
 2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
@@ -28,6 +28,12 @@ JavaScript/TypeScriptの3解析すべてに合格した。
 [Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)、
 [CodeQL run 31634403653](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634403653)はすべて成功した。
 2026年8月12日のClaude Code評価は認証エラーで終了した。その後、custom設定rootを保持する修正と回帰testを追加したが、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できず、修正後のlive MCP互換性は`not_observed`である。
+
+[Pull Request #6](https://github.com/Nagi-Inaba/pmgs-reference/pull/6)は2026年8月13日にsquash mergeされ、
+mainの実装commitは`19ab5e11c256c2fba6db4ffa1f1cfe3e5e79eeac`になった。
+[Main CI run 31662197654](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31662197654)は
+14 jobすべてに成功し、[Main CodeQL run 31662197622](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31662197622)も
+Actions、Python、JavaScript/TypeScriptの3解析すべてに成功した。
 
 測定値、未観測事項、外部公開Holdは
 [v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md)へ記録する。
