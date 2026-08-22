@@ -23,8 +23,7 @@ def test_python_313_is_covered_by_source_and_installed_wheel_ci() -> None:
     )
     assert setup_step["with"]["python-version"] == "3.13"
     assert any(
-        "scripts/verify_wheel_install.py" in str(step.get("run", ""))
-        for step in wheel_job["steps"]
+        "scripts/verify_wheel_install.py" in str(step.get("run", "")) for step in wheel_job["steps"]
     )
 
 
