@@ -92,6 +92,32 @@ def test_lookup_search_and_document_cli(
     assert document["document_id"] == document_id
 
 
+
+def test_search_cli_accepts_independent_offsets(
+    synthetic_database: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = main(
+        [
+            "search",
+            "Synthetic",
+            "--db",
+            str(synthetic_database),
+            "--limit",
+            "1",
+            "--classification-offset",
+            "1",
+            "--document-offset",
+            "0",
+            "--json",
+        ]
+    )
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results_by_type"]["classification"]["offset"] == 1
+    assert payload["results_by_type"]["document"]["offset"] == 0
+
+
 def test_lookup_cli_returns_structured_not_found(
     synthetic_database: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

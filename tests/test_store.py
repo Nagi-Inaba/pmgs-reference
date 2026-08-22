@@ -549,6 +549,212 @@ def test_lexical_search_hierarchy_and_documents(synthetic_database: Path) -> Non
     assert document["source"]["relative_id"]  # type: ignore[index]
 
 
+def _seed_many_search_matches(database: Path) -> None:
+    connection = sqlite3.connect(database)
+    try:
+        source_file_id = int(
+            connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
+        )
+        release_id = str(
+            connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0]
+        )
+
+        dominant_concept = connection.execute(
+            "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
+            "concept_type, record_status, source_file_id, source_locator) "
+            "VALUES (?, 'fi', '', 'A00A0/000', 'A00A0/000', 'search_fixture', "
+            "'canonical', ?, 'search-dominant')",
+            (release_id, source_file_id),
+        ).lastrowid
+        dominant_revision = connection.execute(
+            "INSERT INTO concept_revision(concept_id, version_indicator, valid_from, valid_to, "
+            "level, sequence_number, source_file_id, source_locator) "
+            "VALUES (?, '', NULL, NULL, NULL, 1, ?, 'search-dominant')",
+            (dominant_concept, source_file_id),
+        ).lastrowid
+        for index in range(120):
+            cursor = connection.execute(
+                "INSERT INTO concept_text(revision_id, language, kind, sequence_number, text, "
+                "translation_status, source_file_id, source_locator) "
+                "VALUES (?, 'ja', ?, ?, 'Needle 短語 dominant', 'official', ?, ?)",
+                (
+                    dominant_revision,
+                    f"definition-{index:03d}",
+                    index + 1,
+                    source_file_id,
+                    f"search-dominant:{index}",
+                ),
+            )
+            connection.execute(
+                "INSERT INTO concept_text_fts(rowid, text, revision_id, language, kind) "
+                "VALUES (?, 'Needle 短語 dominant', ?, 'ja', ?)",
+                (cursor.lastrowid, dominant_revision, f"definition-{index:03d}"),
+            )
+
+        for index in range(25):
+            code = f"B00B0/{index:03d}"
+            concept = connection.execute(
+                "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
+                "concept_type, record_status, source_file_id, source_locator) "
+                "VALUES (?, 'fi', '', ?, ?, 'search_fixture', 'canonical', ?, ?)",
+                (release_id, code, code, source_file_id, f"search-concept:{index}"),
+            ).lastrowid
+            revision = connection.execute(
+                "INSERT INTO concept_revision(concept_id, version_indicator, valid_from, valid_to, "
+                "level, sequence_number, source_file_id, source_locator) "
+                "VALUES (?, '', NULL, NULL, NULL, 1, ?, ?)",
+                (concept, source_file_id, f"search-concept:{index}"),
+            ).lastrowid
+            cursor = connection.execute(
+                "INSERT INTO concept_text(revision_id, language, kind, sequence_number, text, "
+                "translation_status, source_file_id, source_locator) "
+                "VALUES (?, 'ja', 'definition', 1, ?, 'official', ?, ?)",
+                (
+                    revision,
+                    f"Needle 短語 distinct {index}",
+                    source_file_id,
+                    f"search-concept:{index}",
+                ),
+            )
+            connection.execute(
+                "INSERT INTO concept_text_fts(rowid, text, revision_id, language, kind) "
+                "VALUES (?, ?, ?, 'ja', 'definition')",
+                (cursor.lastrowid, f"Needle 短語 distinct {index}", revision),
+            )
+
+        for index in range(26):
+            file_id = int(
+                connection.execute(
+                    "INSERT INTO source_file(release_id, source_id, relative_path, size_bytes, "
+                    "sha256, file_type, encoding, data_group, parser, status, error, record_count) "
+                    "VALUES (?, ?, ?, 1, ?, 'text', 'utf-8', 'SEARCH', 'fixture', "
+                    "'parsed', NULL, 0)",
+                    (
+                        release_id,
+                        f"src-search-{index:03d}",
+                        f"SEARCH/document-{index:03d}.txt",
+                        f"{index:064X}",
+                    ),
+                ).lastrowid
+            )
+            document_id = f"doc-search-{index:03d}"
+            connection.execute(
+                "INSERT INTO document(document_id, release_id, kind, language, title, page_count, "
+                "source_file_id, metadata_json) "
+                "VALUES (?, ?, 'search_fixture', 'ja', ?, NULL, ?, '{}')",
+                (document_id, release_id, f"Search document {index}", file_id),
+            )
+            segment_count = 120 if index == 0 else 1
+            for sequence in range(1, segment_count + 1):
+                body = f"Needle 短語 document {index} segment {sequence}"
+                cursor = connection.execute(
+                    "INSERT INTO document_text(document_id, sequence_number, locator, heading, "
+                    "text, source_locator) VALUES (?, ?, ?, NULL, ?, ?)",
+                    (
+                        document_id,
+                        sequence,
+                        f"section:{sequence}",
+                        body,
+                        f"section:{sequence}",
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO document_text_fts(rowid, text, document_id, sequence_number) "
+                    "VALUES (?, ?, ?, ?)",
+                    (cursor.lastrowid, body, document_id, sequence),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize(
+    ("query", "mode"),
+    [
+        ("Needle", "sqlite_fts5_trigram_lexical"),
+        ("短語", "sqlite_literal_substring_lexical"),
+    ],
+)
+def test_search_returns_distinct_paginated_classifications_before_applying_limit(
+    synthetic_database: Path, tmp_path: Path, query: str, mode: str
+) -> None:
+    database = tmp_path / f"classification-search-{mode}.sqlite"
+    shutil.copy2(synthetic_database, database)
+    _seed_many_search_matches(database)
+    store = PMGSStore.open(database)
+
+    first = store.search(query, schemes=["fi"], limit=20)
+    second = store.search(query, schemes=["fi"], limit=20, offset=20)
+
+    assert first["search_mode"] == mode
+    assert first["count"] == 20
+    assert first["offset"] == 0
+    assert first["limit"] == 20
+    assert first["has_more"] is True
+    assert first["next_offset"] == 20
+    assert len({item["code"] for item in first["results"]}) == 20  # type: ignore[index]
+    assert second["count"] == 6
+    assert second["offset"] == 20
+    assert second["has_more"] is False
+    assert second["next_offset"] is None
+    assert {
+        item["code"] for item in first["results"]  # type: ignore[index]
+    }.isdisjoint({item["code"] for item in second["results"]})  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("query", "mode"),
+    [
+        ("Needle", "sqlite_fts5_trigram_lexical"),
+        ("短語", "sqlite_literal_substring_lexical"),
+    ],
+)
+def test_search_documents_returns_distinct_pages_before_applying_limit(
+    synthetic_database: Path, tmp_path: Path, query: str, mode: str
+) -> None:
+    database = tmp_path / f"document-search-{mode}.sqlite"
+    shutil.copy2(synthetic_database, database)
+    _seed_many_search_matches(database)
+    store = PMGSStore.open(database)
+
+    first = store.search_documents(query, limit=20)
+    second = store.search_documents(query, limit=20, offset=20)
+
+    assert first["search_mode"] == mode
+    assert first["count"] == 20
+    assert first["has_more"] is True
+    assert first["next_offset"] == 20
+    assert len({item["document_id"] for item in first["results"]}) == 20  # type: ignore[index]
+    assert second["count"] == 6
+    assert second["offset"] == 20
+    assert second["has_more"] is False
+    assert second["next_offset"] is None
+
+
+def test_composite_search_tracks_classification_and_document_offsets_independently(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "composite-search.sqlite"
+    shutil.copy2(synthetic_database, database)
+    _seed_many_search_matches(database)
+    store = PMGSStore.open(database)
+
+    result = store.search_pmgs(
+        "Needle",
+        limit=5,
+        classification_offset=5,
+        document_offset=10,
+    )
+
+    classification = result["results_by_type"]["classification"]  # type: ignore[index]
+    document = result["results_by_type"]["document"]  # type: ignore[index]
+    assert classification["offset"] == 5
+    assert classification["next_offset"] == 10
+    assert document["offset"] == 10
+    assert document["next_offset"] == 15
+    assert result["has_more"] is True
+
+
 def test_pdf_page_release_info_and_safe_errors(synthetic_database: Path) -> None:
     store = PMGSStore.open(synthetic_database)
     related = store.related_documents("ipc", "G06F3/048", edition="8U")

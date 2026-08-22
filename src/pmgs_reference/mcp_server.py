@@ -146,9 +146,20 @@ def create_server(
         release: Release = "current",
         language: Language = "ja",
         limit: Limit = 20,
+        classification_offset: Offset = 0,
+        document_offset: Offset = 0,
     ) -> dict[str, JSONValue]:
         try:
-            return store.search_pmgs(query, schemes, content_types, release, language, limit)
+            return store.search_pmgs(
+                query,
+                schemes,
+                content_types,
+                release,
+                language,
+                limit,
+                classification_offset=classification_offset,
+                document_offset=document_offset,
+            )
         except PMGSQueryError as error:
             raise _tool_error(error) from error
         except (OSError, sqlite3.Error, ValueError) as error:
