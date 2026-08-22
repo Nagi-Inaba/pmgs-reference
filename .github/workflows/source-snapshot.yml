@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - chore/export-source-artifact
+  pull_request:
 
 permissions:
   contents: read
