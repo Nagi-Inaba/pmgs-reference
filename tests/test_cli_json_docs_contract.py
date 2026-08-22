@@ -48,3 +48,11 @@ def test_cli_json_error_contract_is_documented_in_japanese_and_english() -> None
     assert "exactly one JSON object" in english
     assert "Standard error is empty" in english
     assert "local absolute paths" in english
+
+
+def test_docs_index_exposes_both_cli_json_contracts() -> None:
+    index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+
+    assert "[CLI JSONエラー契約](cli-json-errors.md)" in index
+    assert "[English](cli-json-errors.en.md)" in index
+    assert "[Python・CLI・stdio MCPの参照契約](local-interfaces.md)" in index
