@@ -18,6 +18,20 @@ The v0.4.0 release has passed isolated wheel tests on three operating systems, A
 Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`.
 See the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md) for measured evidence and unobserved items.
 
+## If you do not have a PMGS package yet
+
+PMGS data is acquired from the JPO [bulk download service](https://www.jpo.go.jp/system/laws/sesaku/data/download.html). Review the registration conditions and the [terms of use](https://www.jpo.go.jp/system/laws/sesaku/data/document/download/terms_of_use_bulk_data_download_service.pdf), then register and download the package through the official service yourself.
+
+This repository does not perform JPO registration, authentication, or automatic PMGS downloads. Do not send registration IDs, passwords, application forms, the source ZIP, extracted source data, or generated SQLite databases to GitHub, Issues, or external AI services.
+
+After downloading, extract the ZIP locally, identify the release directory whose name consists of `JPPM` followed by digits, and begin with a write-free preflight:
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register --dry-run --json
+```
+
+See [Registration conditions and publication forms](docs/registered-use-terms.md) for the detailed acquisition and publication boundary.
+
 ## Start now with a local PMGS package
 
 For v0.4.0, the PyPI package is the primary installation route.
