@@ -10,7 +10,7 @@
 
 The canonical database is never opened for writing. The existing structural and semantic validator remains content-identical in `validation_core.py`; the public `validation.py` facade adds two dedicated FTS5 checks while preserving `ValidationResult`, `logical_digest`, `validate_database`, and `write_validation_report`.
 
-Before either validation path is trusted, `sqlite_schema.sql` must identify both expected objects as `CREATE VIRTUAL TABLE ... USING fts5(...)`. A missing object or an ordinary table using the expected name fails closed before a native result or temporary copy can be treated as valid.
+Before either validation path is trusted, `sqlite_schema.sql` must identify both expected objects as `CREATE VIRTUAL TABLE ... USING fts5(...)`. The validator tokenizes the DDL, ignores comments and quoted identifiers, and reads the actual module token after `USING`; a comment containing fake `USING fts5(...)` text cannot make an FTS4 or other module pass. A missing object, ordinary table, or non-FTS5 virtual table using the expected name fails closed before a native result or temporary copy can be treated as valid.
 
 SQLite 3.44.0 added virtual-table `xIntegrity` coverage to `PRAGMA integrity_check`. SQLite 3.45.1 fixed read-only databases containing FTS3 and FTS5 tables. PMGS Reference therefore relies on native `PRAGMA integrity_check` coverage only on SQLite 3.45.1 or newer and only when the core integrity result is `ok`.
 
@@ -33,7 +33,8 @@ This keeps validation reports and synthetic determinism identical across support
 ## Failure boundary
 
 - Missing FTS5 tables fail closed.
-- A non-FTS object using an expected FTS5 name fails with `actual=not_fts5`.
+- An ordinary or non-FTS5 virtual object using an expected FTS5 name fails with `actual=not_fts5`.
+- DDL comments, string literals, or quoted identifiers cannot spoof the parsed module.
 - Content-versus-index mismatch returns `match=false`.
 - FTS5 failures are reduced to `database_error:<ExceptionType>`.
 - Backup and temporary-storage failures are reduced to `copy_error:<ExceptionType>`.
@@ -51,9 +52,10 @@ This keeps validation reports and synthetic determinism identical across support
 5. the fallback checks one disposable copy and preserves the source;
 6. a content shadow row can remain visible while its postings are absent, the existing visible-row parity still succeeds, and the exact copy check rejects the database;
 7. an ordinary table with the expected FTS5 name can satisfy the legacy row parity but is rejected before native trust;
-8. backup failure is sanitized and fails both indexes;
-9. arbitrary table names are rejected before SQL interpolation;
-10. successful check payloads remain identical across supported platforms.
+8. an FTS4 object whose schema comment contains fake `USING fts5(...)` text is parsed as FTS4 and rejected;
+9. backup failure is sanitized and fails both indexes;
+10. arbitrary table names are rejected before SQL interpolation;
+11. successful check payloads remain identical across supported platforms.
 
 ## Cost and unobserved evidence
 
