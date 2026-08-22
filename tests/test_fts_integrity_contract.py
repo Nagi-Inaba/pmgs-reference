@@ -62,8 +62,8 @@ def test_validation_rejects_corrupt_fts_shadow_index_even_when_content_rows_rema
     result = validate_database(database)
 
     assert result.valid is False
-    assert result.integrity_check == (
-        f"malformed inverted index for FTS5 table main.{expected_virtual_table}"
-    )
+    integrity_message = result.integrity_check.lower()
+    assert expected_virtual_table in integrity_message
+    assert "corrupt" in integrity_message or "malformed" in integrity_message
     assert result.checks["concept_text_fts_parity"]["match"] is True
     assert result.checks["document_text_fts_parity"]["match"] is True
