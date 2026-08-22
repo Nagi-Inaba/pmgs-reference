@@ -13,6 +13,7 @@
 - `direction`は`parents`または`children`だけを許可する。
 - 応答は`count`、`limit`、`offset`、`truncated`、`next_offset`を持つ。
 - 各結果は`scheme`、`edition`、`code`、`version`、`label`、`record_status`だけを返す。
+- `canonical`と`reference_only`の双方を、保存されたrelationどおりに返す。
 - 並び順を固定し、ページ間の重複・欠落を防ぐ。
 - `parents()`と`children()`は、明示的な`limit`がある場合はページ応答を返し、省略時は互換性のため全ページを平坦化する。
 - release基準日に複数revisionが同時にactiveな場合、先頭を推測で選ばず`MULTIPLE_ACTIVE_REVISIONS`でfail closedにする。
@@ -25,6 +26,7 @@
 - 一件ごとの`lookup()`を呼ばないこと。
 - 1ページ目と2ページ目が重複しないこと。
 - bounded summary以外のフィールドを返さないこと。
+- `reference_only`のrelationが脱落しないこと。
 - 複数active revisionを安全に拒否すること。
 - 既存の`parents()`と`children()`が互換結果を返すこと。
 
@@ -34,9 +36,11 @@
 
 回帰テストでは、複数active revisionが存在する場合に階層一覧が先頭revisionを暗黙選択する欠陥もREDとして確認した。対象conceptを集約し、active revisionが2件以上なら`MULTIPLE_ACTIVE_REVISIONS`を返すよう修正した。
 
+全CI成功後のコード差分レビューでは、階層SQLが`record_status = 'canonical'`で絞っており、旧APIが返していた`reference_only`の親子relationを落とすことを検出した。専用fixtureでREDを固定し、count・ambiguity check・page queryの対象を保存された全relationへ戻した。
+
 ## focused verification
 
-一時的なbranch内検証workflowで、実装適用後に次を実行し、成功した場合だけ実装commitを作成した。
+一時的なbranch内検証workflowで、実装適用後および`reference_only`修正後に次を実行し、成功した場合だけ実装commitを作成した。
 
 - `ruff format`
 - `ruff check`
@@ -69,9 +73,9 @@ skip 5件はWindows固有の既存契約であり、本変更固有のfailureま
 - Cloudflare Worker on Node 22
 - synthetic determinism on Ubuntu、Windows、macOSとcross-OS compare
 
-## 差分レビュー
+## 文書差分レビュー
 
-全CI成功後の差分レビューで、旧PR由来の日英文書が次の既存契約を巻き戻していることを検出した。
+全CI成功後の日英文書レビューで、旧PR由来の文書が次の既存契約を巻き戻していることを検出した。
 
 - 検索結果の`classification_offset` / `document_offset`
 - `pmgs doctor --timeout-seconds`
@@ -81,4 +85,4 @@ skip 5件はWindows固有の既存契約であり、本変更固有のfailureま
 
 ## 最終ゲート
 
-文書修正と本検証記録を含む最新ユーザーcommitに対する通常CI matrixの全成功、未解決review threadがないこと、および最終差分レビューをマージ条件とする。
+`reference_only`修正、文書修正、本検証記録を含む最新ユーザーcommitに対する通常CI matrixの全成功、未解決review threadがないこと、および最終差分レビューをマージ条件とする。
