@@ -91,14 +91,16 @@ pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --document-offset 20 --json
 pmgs document DOCUMENT_ID --page 1 --json
-pmgs doctor --json
+pmgs doctor --timeout-seconds 30 --json
 ```
 
 For `not_found`, `version_not_found`, and `not_valid_at_release`, `lookup --json` outputs an explainable common record and exits with status 1. A successful query that returns a matching record exits with status 0.
 
 The default `--language` for `lookup` and `search` is `ja`. Specify `--language en` for English.
 
-`doctor` checks the SQLite schema, release, a real stdio connection, the three tools, read-only annotations, a sample query, and hashes before and after the query. When a managed directory is specified, it also compares the actual file hash with `database_sha256` in `current.json` and confirms that the current pointer does not change during diagnostics.
+`doctor` checks the SQLite schema, release metadata, a real stdio connection, read-only annotations, actual calls to `lookup_classification`, `search_pmgs`, and `get_pmgs_document`, and the database hash before and after the calls. When a managed directory is specified, it also compares the actual file hash with `database_sha256` in `current.json` and confirms that the current pointer does not change during diagnostics.
+
+The entire stdio diagnostic is bounded to 30 seconds by default, and `--timeout-seconds` accepts only a finite positive number. If startup, initialization, tool listing, any tool call, or shutdown exceeds the deadline, the task is cancelled, the stdio child process is terminated and reaped, and the result reports `failure.code: MCP_TIMEOUT` with the active `failure.stage`. Failure to select deterministic samples from the database reports `SAMPLE_SELECTION_FAILED`; a structurally invalid tool response reports `MCP_CONTRACT_FAILED`. Raw exception messages and full retrieved text are not copied into the failure payload.
 
 ## stdio MCP
 
@@ -155,6 +157,6 @@ See the [local AI agent setup guide](local-agent-kit.en.md) for bulk installatio
 
 ## Verification
 
-With the synthetic fixture, pytest checks the Python API, JSON Schema, CLI exit statuses, MCP tool listing, structured responses, input errors, a real stdio client connection, the agent kit, and skill installation.
+With the synthetic fixture, pytest checks the Python API, JSON Schema, CLI exit statuses, MCP tool listing, structured responses, input errors, a real stdio client connection, child-process termination on timeout, setup-lock release, the agent kit, and skill installation.
 
 With real data, verification covers FI, F-term, IPC 8U, an older IPC edition, a related PDF page, Japanese substring search, and the authoritative source file hash before and after queries.
