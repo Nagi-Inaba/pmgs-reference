@@ -64,6 +64,42 @@ def test_always_json_command_argument_error_uses_the_same_envelope(
     _failure_payload(capsys, command="build", code="ARGUMENT_ERROR")
 
 
+def test_end_of_options_marker_keeps_literal_json_query_in_human_mode(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_data = tmp_path / "missing-data"
+
+    with pytest.raises(SystemExit) as error:
+        main(["search", "--data-dir", str(missing_data), "--", "--json"])
+
+    assert error.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error:")
+    assert not captured.err.lstrip().startswith("{")
+
+
+def test_doctor_invalid_timeout_is_an_argument_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "doctor",
+                "--db",
+                str(tmp_path / "unused.sqlite"),
+                "--timeout-seconds",
+                "0",
+                "--json",
+            ]
+        )
+
+    assert error.value.code == 2
+    _failure_payload(capsys, command="doctor", code="ARGUMENT_ERROR")
+
+
 def test_json_file_not_found_is_returned_without_the_local_path(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -128,6 +164,35 @@ def test_unsupported_database_is_structured(
     assert result == 1
     payload = _failure_payload(capsys, command="lookup", code="UNSUPPORTED_DATABASE")
     assert str(database) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_corrupt_sqlite_is_mapped_for_query_and_validation_commands(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database = tmp_path / "private" / "corrupt.sqlite"
+    database.parent.mkdir()
+    database.write_bytes(b"not a sqlite database")
+
+    query_result = main(["lookup", "fi", "G06F", "--db", str(database), "--json"])
+
+    assert query_result == 1
+    query_payload = _failure_payload(
+        capsys,
+        command="lookup",
+        code="UNSUPPORTED_DATABASE",
+    )
+    assert str(database) not in json.dumps(query_payload, ensure_ascii=False)
+
+    validation_result = main(["validate", str(database)])
+
+    assert validation_result == 1
+    validation_payload = _failure_payload(
+        capsys,
+        command="validate",
+        code="VALIDATION_FAILED",
+    )
+    assert str(database) not in json.dumps(validation_payload, ensure_ascii=False)
 
 
 def test_query_errors_use_the_common_failure_envelope(
