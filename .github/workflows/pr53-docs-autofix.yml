@@ -1,0 +1,93 @@
+name: pr53-docs-autofix
+
+on:
+  push:
+    branches:
+      - perf/paginated-hierarchy-clean
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: perf/paginated-hierarchy-clean
+          fetch-depth: 0
+
+      - name: Add hierarchy contract without regressing current docs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("docs/local-interfaces.en.md"): (
+                  '''- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
+          - `parents(scheme, code, release="current", edition=None)`
+          - `children(scheme, code, release="current", edition=None)`
+          ''',
+                  '''- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
+          - `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
+          - `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+          - `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+          ''',
+                  '''Relations are paginated in stable order and return `relation_count`, `relations_truncated`, and `next_relation_offset`. `relation_limit` has a maximum of 200. If a structured classification or document response exceeds 4 MiB as UTF-8 JSON, the interface fails closed with `RESPONSE_TOO_LARGE`.
+          ''',
+                  '''Relations are paginated in stable order and return `relation_count`, `relations_truncated`, and `next_relation_offset`. `relation_limit` has a maximum of 200. If a structured classification or document response exceeds 4 MiB as UTF-8 JSON, the interface fails closed with `RESPONSE_TOO_LARGE`.
+
+          `hierarchy()` is the canonical hierarchy-list interface. It returns parents or children as bounded summaries with `count`, `limit`, `offset`, `truncated`, and `next_offset`. Each summary contains only the scheme, edition, code, version, label, and record status, without running a full `lookup()` for every item. When `limit` is passed, `parents()` and `children()` return the same paged response; when it is omitted, they preserve compatibility by returning the flattened summary list from all pages. If multiple revisions are active at the release reference date, hierarchy retrieval fails closed with `MULTIPLE_ACTIVE_REVISIONS` instead of selecting one by order.
+          ''',
+              ),
+              Path("docs/local-interfaces.md"): (
+                  '''- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
+          - `parents(scheme, code, release="current", edition=None)`
+          - `children(scheme, code, release="current", edition=None)`
+          ''',
+                  '''- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
+          - `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
+          - `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+          - `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+          ''',
+                  '''関係は安定順でページングし、`relation_count`、`relations_truncated`、`next_relation_offset`を返す。`relation_limit`は最大200件である。分類・文書の構造化応答がUTF-8 JSONで4 MiBを超える場合は`RESPONSE_TOO_LARGE`でfail closedにする。
+          ''',
+                  '''関係は安定順でページングし、`relation_count`、`relations_truncated`、`next_relation_offset`を返す。`relation_limit`は最大200件である。分類・文書の構造化応答がUTF-8 JSONで4 MiBを超える場合は`RESPONSE_TOO_LARGE`でfail closedにする。
+
+          階層一覧は`hierarchy()`を正本とし、親または子を`count`、`limit`、`offset`、`truncated`、`next_offset`付きのbounded summaryとして返す。各summaryはscheme、edition、code、version、label、record statusだけを持ち、一件ごとの完全な`lookup()`を行わない。`parents()`と`children()`は、`limit`を指定した場合は同じページ応答を返し、省略時は互換性のため全ページのsummary listを返す。release基準日に複数revisionが同時にactiveな場合は、並び順で一つを選ばず`MULTIPLE_ACTIVE_REVISIONS`でfail closedにする。
+          ''',
+              ),
+          }
+
+          for path, (method_old, method_new, paragraph_old, paragraph_new) in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              if text.count(method_old) != 1:
+                  raise SystemExit(f"method anchor mismatch: {path}")
+              if text.count(paragraph_old) != 1:
+                  raise SystemExit(f"paragraph anchor mismatch: {path}")
+              text = text.replace(method_old, method_new, 1)
+              text = text.replace(paragraph_old, paragraph_new, 1)
+              for retained in (
+                  "classification_offset",
+                  "document_offset",
+                  "--timeout-seconds",
+                  "MCP_TIMEOUT",
+              ):
+                  if retained not in text:
+                      raise SystemExit(f"regressed retained contract {retained}: {path}")
+              path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit documentation fix and remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pr53-docs-autofix.yml
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add docs/local-interfaces.en.md docs/local-interfaces.md
+          git commit -m "docs: add hierarchy contract without regressions"
+          git push origin HEAD:perf/paginated-hierarchy-clean
