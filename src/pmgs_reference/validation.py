@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 import tempfile
 from contextlib import suppress
@@ -24,10 +23,6 @@ __all__ = [
 ]
 
 _FTS_TABLES = ("concept_text_fts", "document_text_fts")
-_FTS5_SCHEMA_PATTERN = re.compile(
-    r"^\s*CREATE\s+VIRTUAL\s+TABLE\b.+?\bUSING\s+fts5\s*\(",
-    re.IGNORECASE | re.DOTALL,
-)
 _SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 1)
 
 
@@ -44,6 +39,111 @@ def _sqlite_integrity_covers_fts5() -> bool:
     return sqlite3.sqlite_version_info >= _SQLITE_READ_ONLY_XINTEGRITY_VERSION
 
 
+def _sql_tokens(sql: str) -> list[tuple[str, str]]:
+    """Tokenize enough SQLite DDL to identify a virtual-table module safely."""
+    tokens: list[tuple[str, str]] = []
+    index = 0
+    length = len(sql)
+    while index < length:
+        character = sql[index]
+        if character.isspace():
+            index += 1
+            continue
+        if sql.startswith("--", index):
+            newline = sql.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+        if sql.startswith("/*", index):
+            end = sql.find("*/", index + 2)
+            if end < 0:
+                return []
+            index = end + 2
+            continue
+        if character == "'":
+            index += 1
+            while index < length:
+                if sql[index] == "'":
+                    if index + 1 < length and sql[index + 1] == "'":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            tokens.append(("string", ""))
+            continue
+        if character in {'"', "`", "["}:
+            closing = "]" if character == "[" else character
+            index += 1
+            value: list[str] = []
+            while index < length:
+                if sql[index] == closing:
+                    if index + 1 < length and sql[index + 1] == closing:
+                        value.append(closing)
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                value.append(sql[index])
+                index += 1
+            tokens.append(("identifier", "".join(value).casefold()))
+            continue
+        if character.isalpha() or character == "_":
+            end = index + 1
+            while end < length and (sql[end].isalnum() or sql[end] in {"_", "$"}):
+                end += 1
+            tokens.append(("word", sql[index:end].casefold()))
+            index = end
+            continue
+        tokens.append(("symbol", character))
+        index += 1
+    return tokens
+
+
+def _virtual_table_module(sql: str) -> str | None:
+    """Return the actual module token from CREATE VIRTUAL TABLE DDL."""
+    tokens = _sql_tokens(sql)
+    position = 0
+
+    def take_word(value: str) -> bool:
+        nonlocal position
+        if position >= len(tokens) or tokens[position] != ("word", value):
+            return False
+        position += 1
+        return True
+
+    if not take_word("create"):
+        return None
+    if position < len(tokens) and tokens[position] in {
+        ("word", "temp"),
+        ("word", "temporary"),
+    }:
+        position += 1
+    if not take_word("virtual") or not take_word("table"):
+        return None
+    if position + 2 < len(tokens) and tokens[position : position + 3] == [
+        ("word", "if"),
+        ("word", "not"),
+        ("word", "exists"),
+    ]:
+        position += 3
+    if position >= len(tokens) or tokens[position][0] not in {"word", "identifier"}:
+        return None
+    position += 1
+    if position + 1 < len(tokens) and tokens[position] == ("symbol", "."):
+        if tokens[position + 1][0] not in {"word", "identifier"}:
+            return None
+        position += 2
+    if not take_word("using"):
+        return None
+    if position >= len(tokens) or tokens[position][0] not in {"word", "identifier"}:
+        return None
+    module = tokens[position][1]
+    position += 1
+    if position >= len(tokens) or tokens[position] != ("symbol", "("):
+        return None
+    return module
+
+
 def _fts5_table_statuses(connection: sqlite3.Connection) -> dict[str, str]:
     rows = {
         str(row[0]): str(row[1]) if row[1] is not None else ""
@@ -56,7 +156,7 @@ def _fts5_table_statuses(connection: sqlite3.Connection) -> dict[str, str]:
     for table in _FTS_TABLES:
         if table not in rows:
             statuses[table] = "missing"
-        elif _FTS5_SCHEMA_PATTERN.search(rows[table]) is None:
+        elif _virtual_table_module(rows[table]) != "fts5":
             statuses[table] = "not_fts5"
         else:
             statuses[table] = "fts5"
