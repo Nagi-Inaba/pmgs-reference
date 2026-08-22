@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import pmgs_reference.data_paths as data_paths_module
-import pmgs_reference.setup as setup_module
+import pmgs_reference.setup as setup_impl
 from pmgs_reference.data_paths import write_json_atomic
 from pmgs_reference.setup import SetupResult, setup_reference
 
@@ -48,7 +48,7 @@ def test_post_activation_client_exception_is_reported_as_partial_success(
     def crash_after_activation(*args: object, **kwargs: object) -> object:
         raise RuntimeError("simulated client phase failure")
 
-    monkeypatch.setattr(setup_module, "integrate_clients", crash_after_activation)
+    monkeypatch.setattr(setup_impl, "integrate_clients", crash_after_activation)
     data_root = tmp_path / "pmgs-reference"
 
     result = setup_reference(
