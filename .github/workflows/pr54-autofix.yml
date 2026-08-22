@@ -29,8 +29,7 @@ jobs:
           path = Path("src/pmgs_reference/validation.py")
           text = path.read_text(encoding="utf-8")
 
-          helper_anchor = '''def _valid_reference_date(value: str) -> bool:
-          '''
+          helper_anchor = "def _valid_reference_date(value: str) -> bool:\n"
           helper = '''def _fts5_index_integrity(
               connection: sqlite3.Connection, table: str
           ) -> dict[str, object]:
@@ -42,12 +41,12 @@ jobs:
               try:
                   connection.execute(drop_sql)
                   connection.execute(
-                      f'''CREATE VIRTUAL TABLE temp."{vocabulary}" \
-          USING fts5vocab(main, '{table}', 'row')'''
+                      f'CREATE VIRTUAL TABLE temp."{vocabulary}" '
+                      f"USING fts5vocab(main, '{table}', 'row')"
                   )
                   row = connection.execute(
-                      f'''SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) \
-          FROM temp."{vocabulary}"'''
+                      f'SELECT COUNT(*), COALESCE(SUM(doc), 0), '
+                      f'COALESCE(SUM(cnt), 0) FROM temp."{vocabulary}"'
                   ).fetchone()
                   if row is None:
                       return _check("readable", "missing_result", False)
