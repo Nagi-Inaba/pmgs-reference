@@ -10,11 +10,13 @@
 
 The canonical database is never opened for writing. The existing structural and semantic validator remains content-identical in `validation_core.py`; the public `validation.py` facade adds two dedicated FTS5 checks while preserving `ValidationResult`, `logical_digest`, `validate_database`, and `write_validation_report`.
 
+Before either validation path is trusted, `sqlite_schema.sql` must identify both expected objects as `CREATE VIRTUAL TABLE ... USING fts5(...)`. A missing object or an ordinary table using the expected name fails closed before a native result or temporary copy can be treated as valid.
+
 SQLite 3.44.0 added virtual-table `xIntegrity` coverage to `PRAGMA integrity_check`. SQLite 3.45.1 fixed read-only databases containing FTS3 and FTS5 tables. PMGS Reference therefore relies on native `PRAGMA integrity_check` coverage only on SQLite 3.45.1 or newer and only when the core integrity result is `ok`.
 
-For earlier SQLite runtimes, or when the core integrity result is already abnormal, validation creates a disposable full database copy using SQLite's backup API. The source connection uses `mode=ro` and `query_only`. The copy is opened for writing and each FTS5 table receives the official `integrity-check` special command. This checks both the internal index structures and, for these non-external-content tables, consistency between the stored content and the inverted index.
+For earlier SQLite runtimes, or when the core integrity result is already abnormal, validation creates a disposable full database copy using SQLite's backup API. The source connection uses `mode=ro` and `query_only`. The copy is opened for writing, its FTS5 object identity is checked again, and each FTS5 table receives the official `integrity-check` special command. This checks both the internal index structures and, for these non-external-content tables, consistency between the stored content and the inverted index.
 
-The disposable copy is closed and removed before validation returns. A copy, cleanup, or SQLite failure fails closed. The source database SHA-256 is verified unchanged by regression tests.
+The disposable copy is closed and removed before validation returns. A copy, cleanup, schema, or SQLite failure fails closed. The source database SHA-256 is verified unchanged by regression tests.
 
 ## Stable result contract
 
@@ -31,6 +33,7 @@ This keeps validation reports and synthetic determinism identical across support
 ## Failure boundary
 
 - Missing FTS5 tables fail closed.
+- A non-FTS object using an expected FTS5 name fails with `actual=not_fts5`.
 - Content-versus-index mismatch returns `match=false`.
 - FTS5 failures are reduced to `database_error:<ExceptionType>`.
 - Backup and temporary-storage failures are reduced to `copy_error:<ExceptionType>`.
@@ -47,9 +50,10 @@ This keeps validation reports and synthetic determinism identical across support
 4. the native path does not create a redundant database copy;
 5. the fallback checks one disposable copy and preserves the source;
 6. a content shadow row can remain visible while its postings are absent, the existing visible-row parity still succeeds, and the exact copy check rejects the database;
-7. backup failure is sanitized and fails both indexes;
-8. arbitrary table names are rejected before SQL interpolation;
-9. successful check payloads remain identical across supported platforms.
+7. an ordinary table with the expected FTS5 name can satisfy the legacy row parity but is rejected before native trust;
+8. backup failure is sanitized and fails both indexes;
+9. arbitrary table names are rejected before SQL interpolation;
+10. successful check payloads remain identical across supported platforms.
 
 ## Cost and unobserved evidence
 
