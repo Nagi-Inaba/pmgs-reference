@@ -10,7 +10,6 @@ import pytest
 import pmgs_reference.validation as validation_module
 from pmgs_reference.validation import validate_database
 
-
 _FTS_CHECK_NAMES = ("concept_text_fts_integrity", "document_text_fts_integrity")
 _STABLE_CHECK_KEYS = {"expected", "actual", "match"}
 
