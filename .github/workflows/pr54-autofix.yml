@@ -12,7 +12,7 @@ jobs:
   patch:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out feature branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,23 +20,39 @@ jobs:
           ref: fix/fts5-index-integrity-v2
           fetch-depth: 0
 
-      - name: Add read-only FTS5 inverted-index scans
+      - name: Implement version-aware read-only FTS5 validation
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("src/pmgs_reference/validation.py")
-          text = path.read_text(encoding="utf-8")
+          validation_path = Path("src/pmgs_reference/validation.py")
+          text = validation_path.read_text(encoding="utf-8")
 
           helper_anchor = "def _valid_reference_date(value: str) -> bool:\n"
-          helper = '''def _fts5_index_integrity(
-              connection: sqlite3.Connection, table: str
+          helper = '''def _sqlite_integrity_covers_fts5() -> bool:
+              """Return whether PRAGMA integrity_check invokes FTS5 xIntegrity."""
+              return sqlite3.sqlite_version_info >= (3, 44, 0)
+
+
+          def _fts5_index_integrity(
+              connection: sqlite3.Connection,
+              table: str,
+              core_integrity: str,
           ) -> dict[str, object]:
-              """Force a full read-only walk of one FTS5 inverted index."""
+              """Validate one FTS5 index without writing to the source database."""
               if table not in _FTS_TABLES:
                   raise ValueError("unsupported FTS5 table")
-              vocabulary = f"__{table}_integrity_vocab"
+              if core_integrity == "ok" and _sqlite_integrity_covers_fts5():
+                  return {
+                      "expected": "readable",
+                      "actual": "covered_by_pragma_integrity_check",
+                      "match": True,
+                      "method": "pragma_xintegrity",
+                      "sqlite_version": sqlite3.sqlite_version,
+                  }
+
+              vocabulary = f"__pmgs_{table}_integrity_vocab"
               drop_sql = f'DROP TABLE IF EXISTS temp."{vocabulary}"'
               try:
                   connection.execute(drop_sql)
@@ -54,12 +70,20 @@ jobs:
                       "expected": "readable",
                       "actual": "readable",
                       "match": True,
+                      "method": "fts5vocab",
+                      "sqlite_version": sqlite3.sqlite_version,
                       "term_count": int(row[0]),
-                      "document_occurrences": int(row[1]),
+                      "term_document_pairs": int(row[1]),
                       "token_occurrences": int(row[2]),
                   }
               except sqlite3.DatabaseError as exc:
-                  return _check("readable", f"database_error:{type(exc).__name__}", False)
+                  return {
+                      "expected": "readable",
+                      "actual": f"database_error:{type(exc).__name__}",
+                      "match": False,
+                      "method": "fts5vocab",
+                      "sqlite_version": sqlite3.sqlite_version,
+                  }
               finally:
                   try:
                       connection.execute(drop_sql)
@@ -69,9 +93,10 @@ jobs:
 
           def _valid_reference_date(value: str) -> bool:
           '''
-          if text.count(helper_anchor) != 1:
-              raise SystemExit("validation helper anchor mismatch")
-          text = text.replace(helper_anchor, helper, 1)
+          if "def _fts5_index_integrity(" not in text:
+              if text.count(helper_anchor) != 1:
+                  raise SystemExit("validation helper anchor mismatch")
+              text = text.replace(helper_anchor, helper, 1)
 
           pragma_old = '''    try:
                   integrity_row = connection.execute("PRAGMA integrity_check").fetchone()
@@ -87,9 +112,10 @@ jobs:
                       integrity = str(integrity_row[0]) if integrity_row else "missing"
                   foreign_key_error_count = sum(1 for _ in connection.execute("PRAGMA foreign_key_check"))
           '''
-          if text.count(pragma_old) != 1:
-              raise SystemExit("integrity pragma anchor mismatch")
-          text = text.replace(pragma_old, pragma_new, 1)
+          if "except sqlite3.DatabaseError as exc:\n            integrity = f\"database_error:" not in text:
+              if text.count(pragma_old) != 1:
+                  raise SystemExit("integrity pragma anchor mismatch")
+              text = text.replace(pragma_old, pragma_new, 1)
 
           check_anchor = '''        checks["required_indexes"] = _check(
                       sorted(_INDEXES), sorted(set(_INDEXES) & indexes), set(_INDEXES) <= indexes
@@ -102,15 +128,151 @@ jobs:
                   for fts_table in _FTS_TABLES:
                       check_name = f"{fts_table}_integrity"
                       checks[check_name] = (
-                          _fts5_index_integrity(connection, fts_table)
+                          _fts5_index_integrity(connection, fts_table, integrity)
                           if fts_table in tables
                           else _check("readable", "missing", False)
                       )
                   for table in _TABLES:
           '''
-          if text.count(check_anchor) != 1:
-              raise SystemExit("FTS check insertion anchor mismatch")
-          path.write_text(text.replace(check_anchor, check_block, 1), encoding="utf-8")
+          if 'check_name = f"{fts_table}_integrity"' not in text:
+              if text.count(check_anchor) != 1:
+                  raise SystemExit("FTS check insertion anchor mismatch")
+              text = text.replace(check_anchor, check_block, 1)
+
+          validation_path.write_text(text, encoding="utf-8")
+
+          tests_path = Path("tests/test_fts_integrity_contract.py")
+          tests_path.write_text(
+              '''from __future__ import annotations
+
+import hashlib
+import shutil
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+import pmgs_reference.validation as validation_module
+from pmgs_reference.validation import validate_database
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest().upper()
+
+
+def test_validation_uses_a_read_only_fts5_integrity_gate_without_mutation(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "fts.sqlite"
+    shutil.copy2(synthetic_database, database)
+    before = _sha256(database)
+
+    result = validate_database(database)
+
+    assert result.valid is True
+    for name in ("concept_text_fts_integrity", "document_text_fts_integrity"):
+        check = result.checks[name]
+        assert check["match"] is True
+        assert check["method"] in {"pragma_xintegrity", "fts5vocab"}
+    assert result.checks["concept_text_fts_parity"]["match"] is True
+    assert result.checks["document_text_fts_parity"]["match"] is True
+    assert _sha256(database) == before
+
+
+def test_validation_exercises_the_pre_344_read_only_fallback(
+    synthetic_database: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "fts-fallback.sqlite"
+    shutil.copy2(synthetic_database, database)
+    before = _sha256(database)
+    monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: False)
+
+    result = validate_database(database)
+
+    assert result.valid is True
+    for name in ("concept_text_fts_integrity", "document_text_fts_integrity"):
+        check = result.checks[name]
+        assert check["match"] is True
+        assert check["method"] == "fts5vocab"
+        assert check["actual"] == "readable"
+    assert _sha256(database) == before
+
+
+@pytest.mark.parametrize(
+    ("shadow_table", "integrity_check", "parity_check"),
+    [
+        (
+            "concept_text_fts_data",
+            "concept_text_fts_integrity",
+            "concept_text_fts_parity",
+        ),
+        (
+            "document_text_fts_data",
+            "document_text_fts_integrity",
+            "document_text_fts_parity",
+        ),
+    ],
+)
+def test_validation_rejects_corrupt_fts_shadow_index_on_supported_sqlite_versions(
+    synthetic_database: Path,
+    tmp_path: Path,
+    shadow_table: str,
+    integrity_check: str,
+    parity_check: str,
+) -> None:
+    database = tmp_path / f"corrupt-{shadow_table}.sqlite"
+    shutil.copy2(synthetic_database, database)
+    connection = sqlite3.connect(database)
+    try:
+        deleted = connection.execute(
+            f'DELETE FROM "{shadow_table}" WHERE id = (SELECT MAX(id) FROM "{shadow_table}")'
+        ).rowcount
+        connection.commit()
+    finally:
+        connection.close()
+    assert deleted == 1
+    before_validation = _sha256(database)
+
+    result = validate_database(database)
+
+    assert result.valid is False
+    check = result.checks[integrity_check]
+    assert check["match"] is False
+    assert check["method"] == "fts5vocab"
+    assert str(check["actual"]).startswith("database_error:")
+    assert result.checks[parity_check]["match"] is True
+    assert _sha256(database) == before_validation
+''',
+              encoding="utf-8",
+          )
+
+          verification_path = Path("docs/verification/fts-integrity-2026-08-22.md")
+          verification_path.write_text(
+              '''# FTS5 inverted-index validation
+
+- Checked: 2026-08-22
+- Scope: `concept_text_fts` and `document_text_fts`
+- Requirement: reject unreadable FTS5 indexes without modifying the canonical database
+
+SQLite 3.44.0 added virtual-table `xIntegrity` checks to `PRAGMA integrity_check`, including FTS5. PMGS Reference uses that native check when the runtime SQLite is new enough and the core integrity result is `ok`.
+
+For older SQLite runtimes, and whenever the core integrity result is already abnormal, validation creates an `fts5vocab` table only in the temporary schema and fully aggregates its `row` view. This forces a read of the associated inverted index while the canonical database remains opened with `mode=ro`. Any SQLite database error is reduced to a stable exception-type result; database paths, raw pages, and query text are not exposed.
+
+Regression coverage verifies:
+
+1. both healthy indexes pass and the database SHA-256 is unchanged;
+2. the pre-3.44 fallback path is exercised explicitly;
+3. deleting a shadow-index page makes the dedicated check fail even when visible-row parity still passes;
+4. the same contract runs across the supported Python and operating-system CI matrix.
+''',
+              encoding="utf-8",
+          )
           PY
 
       - name: Install uv and Python
@@ -135,6 +297,6 @@ jobs:
           git rm .github/workflows/pr54-autofix.yml
           git config user.name "NAGI"
           git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
-          git add src/pmgs_reference/validation.py tests/test_fts_integrity_contract.py
-          git commit -m "fix: scan FTS5 inverted indexes read-only"
+          git add src/pmgs_reference/validation.py tests/test_fts_integrity_contract.py docs/verification/fts-integrity-2026-08-22.md
+          git commit -m "fix: validate FTS5 indexes across SQLite versions"
           git push origin HEAD:fix/fts5-index-integrity-v2
