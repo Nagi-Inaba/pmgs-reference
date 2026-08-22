@@ -90,6 +90,7 @@ def test_hierarchy_returns_bounded_summaries_without_n_plus_one_lookup(
     assert {item["code"] for item in first["results"]}.isdisjoint(
         {item["code"] for item in second["results"]}
     )
+    # record_status is part of the documented bounded-summary contract.
     allowed = {"scheme", "edition", "code", "version", "label", "record_status"}
     assert all(set(item) <= allowed for item in first["results"])
 
