@@ -39,7 +39,6 @@ from pmgs_reference.setup import (
 from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 from pmgs_reference.validation import validate_database, write_validation_report
 
-
 _COMMANDS = frozenset(
     {
         "inventory",
@@ -774,7 +773,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if json_mode:
             return _emit_failure(command, "BUILD_FAILED", "database build failed")
         parser.exit(1, f"error: {exc}\n")
-    except RuntimeError as exc:
+    except RuntimeError:
         if json_mode:
             if command == "doctor":
                 return _emit_failure(
