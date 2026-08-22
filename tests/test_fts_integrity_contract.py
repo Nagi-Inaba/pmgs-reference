@@ -9,6 +9,7 @@ import pytest
 
 import pmgs_reference.validation as validation_module
 from pmgs_reference.validation import validate_database
+from pmgs_reference.validation_core import validate_database as validate_core_database
 
 _FTS_CHECK_NAMES = ("concept_text_fts_integrity", "document_text_fts_integrity")
 _STABLE_CHECK_KEYS = {"expected", "actual", "match"}
@@ -23,6 +24,31 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def _remove_postings_but_keep_content(
+    database: Path,
+    virtual_table: str,
+    source_query: str,
+    shadow_columns: tuple[str, ...],
+) -> int:
+    connection = sqlite3.connect(database)
+    try:
+        row = connection.execute(source_query).fetchone()
+        assert row is not None
+        rowid = int(row[0])
+        values = tuple(row[1:])
+        connection.execute(f'DELETE FROM "{virtual_table}" WHERE rowid = ?', (rowid,))
+        columns = ", ".join(("id", *shadow_columns))
+        placeholders = ", ".join("?" for _ in range(len(values) + 1))
+        connection.execute(
+            f'INSERT INTO "{virtual_table}_content"({columns}) VALUES ({placeholders})',
+            (rowid, *values),
+        )
+        connection.commit()
+        return rowid
+    finally:
+        connection.close()
+
+
 def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
     synthetic_database: Path, tmp_path: Path
 ) -> None:
@@ -33,13 +59,28 @@ def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
     result = validate_database(database)
 
     assert result.valid is True
-    for name in _FTS_CHECK_NAMES:
-        check = result.checks[name]
-        assert set(check) == _STABLE_CHECK_KEYS
-        assert check == _SUCCESS
+    assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
     assert result.checks["concept_text_fts_parity"]["match"] is True
     assert result.checks["document_text_fts_parity"]["match"] is True
     assert _sha256(database) == before
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ((3, 44, 0), False),
+        ((3, 45, 2), False),
+        ((3, 45, 3), True),
+    ],
+)
+def test_native_read_only_xintegrity_version_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    version: tuple[int, int, int],
+    expected: bool,
+) -> None:
+    monkeypatch.setattr(validation_module.sqlite3, "sqlite_version_info", version)
+
+    assert validation_module._sqlite_integrity_covers_fts5() is expected
 
 
 def test_native_xintegrity_path_does_not_create_a_database_copy(
@@ -58,7 +99,7 @@ def test_native_xintegrity_path_does_not_create_a_database_copy(
     assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
 
 
-def test_pre_344_fallback_checks_a_copy_and_preserves_the_source(
+def test_pre_3453_fallback_checks_a_copy_and_preserves_the_source(
     synthetic_database: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -85,31 +126,62 @@ def test_pre_344_fallback_checks_a_copy_and_preserves_the_source(
 
 
 @pytest.mark.parametrize(
-    ("shadow_table", "integrity_check"),
+    (
+        "virtual_table",
+        "source_query",
+        "shadow_columns",
+        "integrity_check",
+        "parity_check",
+    ),
     [
-        ("concept_text_fts_data", "concept_text_fts_integrity"),
-        ("document_text_fts_data", "document_text_fts_integrity"),
+        (
+            "concept_text_fts",
+            "SELECT text_id, text, revision_id, language, kind "
+            "FROM concept_text WHERE length(text) >= 3 ORDER BY text_id LIMIT 1",
+            ("c0", "c1", "c2", "c3"),
+            "concept_text_fts_integrity",
+            "concept_text_fts_parity",
+        ),
+        (
+            "document_text_fts",
+            "SELECT document_text_id, text, document_id, sequence_number "
+            "FROM document_text WHERE length(text) >= 3 "
+            "ORDER BY document_text_id LIMIT 1",
+            ("c0", "c1", "c2"),
+            "document_text_fts_integrity",
+            "document_text_fts_parity",
+        ),
     ],
 )
 def test_copy_check_rejects_missing_postings_while_content_rows_remain(
     synthetic_database: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    shadow_table: str,
+    virtual_table: str,
+    source_query: str,
+    shadow_columns: tuple[str, ...],
     integrity_check: str,
+    parity_check: str,
 ) -> None:
-    database = tmp_path / f"corrupt-{shadow_table}.sqlite"
+    database = tmp_path / f"missing-postings-{virtual_table}.sqlite"
     shutil.copy2(synthetic_database, database)
-    connection = sqlite3.connect(database)
-    try:
-        deleted = connection.execute(
-            f'DELETE FROM "{shadow_table}" WHERE id = (SELECT MAX(id) FROM "{shadow_table}")'
-        ).rowcount
-        connection.commit()
-    finally:
-        connection.close()
-    assert deleted == 1
+    restored_rowid = _remove_postings_but_keep_content(
+        database,
+        virtual_table,
+        source_query,
+        shadow_columns,
+    )
     before_validation = _sha256(database)
+
+    read_only = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    try:
+        visible = read_only.execute(
+            f'SELECT rowid FROM "{virtual_table}" WHERE rowid = ?',
+            (restored_rowid,),
+        ).fetchone()
+    finally:
+        read_only.close()
+    assert visible is not None
 
     checks = validation_module._copy_fts5_checks(database)
     check = checks[integrity_check]
@@ -118,12 +190,35 @@ def test_copy_check_rejects_missing_postings_while_content_rows_remain(
     assert str(check["actual"]).startswith("database_error:")
     assert database.as_posix() not in str(check["actual"])
 
+    core_result = validate_core_database(database)
+    assert core_result.checks[parity_check]["match"] is True
+
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: False)
     result = validate_database(database)
 
     assert result.valid is False
-    assert result.checks[integrity_check]["match"] is False
+    assert result.checks[integrity_check] == check
     assert _sha256(database) == before_validation
+
+
+def test_copy_failure_is_sanitized_and_fails_both_indexes(
+    synthetic_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_backup(source: Path, destination: Path) -> None:
+        raise OSError(f"cannot copy {source} to {destination}")
+
+    monkeypatch.setattr(validation_module, "_backup_database", fail_backup)
+
+    checks = validation_module._copy_fts5_checks(synthetic_database)
+
+    for name in _FTS_CHECK_NAMES:
+        assert checks[name] == {
+            "expected": "consistent",
+            "actual": "copy_error:OSError",
+            "match": False,
+        }
+        assert synthetic_database.as_posix() not in str(checks[name])
 
 
 def test_unknown_fts_table_is_rejected_before_sql_interpolation(
