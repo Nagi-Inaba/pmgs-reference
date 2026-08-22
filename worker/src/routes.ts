@@ -1,5 +1,6 @@
 import { getDocument, lookupClassification } from "./api";
 import { PublicError, unavailable } from "./errors";
+import { selectPageFormat } from "./http";
 import {
   cleanEdition,
   decodePathSegment,
@@ -73,7 +74,7 @@ function pageObjectRoute(pathname: string, env: Env, accept: string): ResolvedRo
     return null;
   }
   const kind = segments[1];
-  const wantsMarkdown = accept.toLowerCase().includes("text/markdown");
+  const wantsMarkdown = selectPageFormat(accept) === "markdown";
   const suffix = wantsMarkdown ? "md" : "html";
   let objectSuffix: string;
   let chunk: string;

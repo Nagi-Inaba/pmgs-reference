@@ -141,6 +141,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="省略時は分類と文書をそれぞれ検索する",
     )
     search.add_argument("--limit", type=int, default=20)
+    search.add_argument(
+        "--classification-offset",
+        type=int,
+        default=0,
+        help="分類検索結果の開始位置",
+    )
+    search.add_argument(
+        "--document-offset",
+        type=int,
+        default=0,
+        help="文書検索結果の開始位置",
+    )
     search.add_argument("--json", action="store_true")
 
     document = subparsers.add_parser("document", help="特許庁提供のPMGS文書を読む")
@@ -418,6 +430,8 @@ def _run_search(args: argparse.Namespace) -> int:
         args.release,
         args.language,
         args.limit,
+        classification_offset=args.classification_offset,
+        document_offset=args.document_offset,
     )
     if args.json:
         _json_output(payload)
