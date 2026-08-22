@@ -69,10 +69,14 @@ async def test_mcp_tools_return_structured_success_and_errors(synthetic_database
             "schemes": ["fi"],
             "content_types": ["classification"],
             "limit": 3,
+            "classification_offset": 1,
+            "document_offset": 0,
         },
     )
     assert search.structured_content is not None
-    assert search.structured_content["results_by_type"]["classification"]["count"] >= 1
+    classification_page = search.structured_content["results_by_type"]["classification"]
+    assert classification_page["offset"] == 1
+    assert classification_page["limit"] == 3
 
     invalid = await server.call_tool(
         "lookup_classification", {"scheme": "cpc", "code": "G06F3/048"}

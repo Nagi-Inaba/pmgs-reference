@@ -15,6 +15,6 @@ export default defineConfig({
     }),
   ],
   test: {
-    include: ["test/worker.spec.ts"],
+    include: ["test/worker.spec.ts", "test/http.spec.ts"],
   },
 });
