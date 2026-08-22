@@ -23,9 +23,7 @@ def _seed_large_document(database: Path) -> tuple[str, int, str, str, int]:
         source_file_id = int(
             connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
         )
-        release_id = str(
-            connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0]
-        )
+        release_id = str(connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0])
         maximum = int(
             connection.execute(
                 "SELECT COALESCE(MAX(sequence_number), 0) FROM document_text WHERE document_id = ?",
