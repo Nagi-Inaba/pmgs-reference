@@ -48,13 +48,14 @@ release = store.release_info()
 
 - `PMGSStore.open(path=None, *, data_dir=None)`
 - `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
-- `search(query, schemes=None, release="current", language="ja", limit=20, *, offset=0)`
-- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
-- `parents(scheme, code, release="current", edition=None)`
-- `children(scheme, code, release="current", edition=None)`
+- `search(query, schemes=None, release="current", language="ja", limit=20)`
+- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20)`
+- `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
+- `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+- `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
 - `related_documents(scheme, code, release="current", edition=None)`
 - `get_document(document_id, page=None, section=None)`
-- `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
+- `search_documents(query, release="current", language="ja", limit=20)`
 - `release_info(release="current")`
 
 IPCで`edition`を省略した場合は、正本に存在する版から`8U`、`8B`、`7`、`7E`、`6`、`5`、`4`の優先順で選ぶ。FIとFタームへ`edition`を渡すと`INVALID_EDITION`になる。`version`はIPCだけに指定でき、CLIでは`--ipc-version`を使う。
@@ -64,6 +65,8 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 分類照会は候補を推測しない。コードが存在しない場合は、空の共通レコードを`match_status: not_found`で返す。入力不正、release不明、文書不明、DBエラーは`PMGSQueryError`の安全な`code`と`message`で区別する。
 
 関係は安定順でページングし、`relation_count`、`relations_truncated`、`next_relation_offset`を返す。`relation_limit`は最大200件である。分類・文書の構造化応答がUTF-8 JSONで4 MiBを超える場合は`RESPONSE_TOO_LARGE`でfail closedにする。
+
+階層一覧は`hierarchy()`を正本とし、親または子を`count`、`limit`、`offset`、`truncated`、`next_offset`付きのbounded summaryとして返す。各summaryはscheme、edition、code、version、label、record statusだけを持ち、一件ごとの完全な`lookup()`を行わない。`parents()`と`children()`は、`limit`を指定した場合は同じページ応答を返し、省略時は互換性のため全ページのsummary listを返す。
 
 ## 文字列検索
 
@@ -75,7 +78,7 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 - `sqlite_literal_substring_lexical`
 - MCPで分類と文書が異なる経路になった場合の`mixed_lexical`
 
-`search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。各ページは`limit`、`offset`、`has_more`、`next_offset`を返す。複合検索では`classification_offset`と`document_offset`を別々に指定し、一方の結果だけを続けて取得できる。重複する本文行は分類または文書単位でまとめてからページ上限を適用する。いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
+`search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
 
 ## 文書応答の上限
 
@@ -89,20 +92,16 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 pmgs lookup fi "G06F3/048" --json
 pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
-pmgs search "改正" --content-type document --document-offset 20 --json
+pmgs search "改正" --content-type document --json
 pmgs document DOCUMENT_ID --page 1 --json
-pmgs doctor --timeout-seconds 30 --json
+pmgs doctor --json
 ```
 
 `lookup --json`は`not_found`、`version_not_found`、`not_valid_at_release`のいずれも、説明可能な共通recordを出力して終了コード1を返す。該当recordを返した正常照会は0を返す。
 
 `lookup`と`search`の`--language`既定値は`ja`である。英語は`--language en`を指定する。
 
-`doctor`はSQLite schema、release、実stdio接続、read-only annotation、`lookup_classification`、`search_pmgs`、`get_pmgs_document`の実呼び出し、照会前後hashを検査する。管理ディレクトリを指定した場合は、実ファイルhashと`current.json`の`database_sha256`を照合し、診断中にcurrent pointerが切り替わっていないことも確認する。
-
-stdio診断全体は既定30秒で有界化し、`--timeout-seconds`には有限の正数だけを指定できる。起動、初期化、tool列挙、各tool呼び出し、終了処理のいずれかで期限を超えた場合、taskをcancelしてstdio子プロセスを終了・回収し、`failure.code: MCP_TIMEOUT`と失敗時の`failure.stage`を返す。決定的なsampleをDBから選べない場合は`SAMPLE_SELECTION_FAILED`、tool応答の構造契約に失敗した場合は`MCP_CONTRACT_FAILED`を返す。例外の生メッセージや本文全量をfailureへ含めない。
-
-JSON reportの`database`はファイル名だけを返し、sample queryはSHA-256、tool結果は件数と状態の要約だけを返す。ローカル絶対path、検索語本文、取得本文、excerpt、source pathはreportへ含めない。
+`doctor`はSQLite schema、release、実stdio接続、tool 3件、read-only annotation、サンプル照会、照会前後hashを検査する。管理ディレクトリを指定した場合は、実ファイルhashと`current.json`の`database_sha256`を照合し、診断中にcurrent pointerが切り替わっていないことも確認する。
 
 ## stdio MCP
 
@@ -159,6 +158,6 @@ Windowsの一括導入、設定scope、更新、削除は[ローカルAIエー�
 
 ## 検証
 
-合成fixtureでは、Python API、JSON Schema、CLIの終了コード、MCP tool列挙、構造化応答、入力エラー、実際のstdioクライアント接続、timeout時の子プロセス終了、setup lock解放、agent kit、skill導入をpytestで検査する。
+合成fixtureでは、Python API、JSON Schema、CLIの終了コード、MCP tool列挙、構造化応答、入力エラー、実際のstdioクライアント接続、agent kit、skill導入をpytestで検査する。
 
 実データでは、FI、Fターム、IPC 8U、IPC旧版、関連PDFページ、日本語部分語検索、正本ファイルの照会前後ハッシュを検査する。
