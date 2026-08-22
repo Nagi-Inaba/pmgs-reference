@@ -48,8 +48,7 @@ def _fts5_table_statuses(connection: sqlite3.Connection) -> dict[str, str]:
     rows = {
         str(row[0]): str(row[1]) if row[1] is not None else ""
         for row in connection.execute(
-            "SELECT name, sql FROM sqlite_schema "
-            "WHERE type = 'table' AND name IN (?, ?)",
+            "SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name IN (?, ?)",
             _FTS_TABLES,
         )
     }
