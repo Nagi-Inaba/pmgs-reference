@@ -18,7 +18,7 @@ from pmgs_reference.agent_kit import (
 )
 from pmgs_reference.client_integration import ClientSelection, detect_client_targets
 from pmgs_reference.data_paths import CurrentPointerError, default_data_root
-from pmgs_reference.diagnostics import doctor_database
+from pmgs_reference.diagnostics import DEFAULT_DOCTOR_TIMEOUT_SECONDS, doctor_database
 from pmgs_reference.errors import PMGSQueryError
 from pmgs_reference.ingest.build import BuildError, build_database
 from pmgs_reference.ingest.inventory import build_inventory, write_inventory
@@ -155,6 +155,12 @@ def _build_parser() -> argparse.ArgumentParser:
     doctor = subparsers.add_parser("doctor", help="ローカルDBと実stdio MCP接続を診断する")
     _add_database_options(doctor)
     doctor.add_argument("--python-executable", type=Path)
+    doctor.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=DEFAULT_DOCTOR_TIMEOUT_SECONDS,
+        help="stdio MCP診断を終了するまでの最大秒数",
+    )
     doctor.add_argument("--json", action="store_true")
 
     agent_kit = subparsers.add_parser(
@@ -454,6 +460,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         args.db,
         data_dir=args.data_dir,
         python_executable=args.python_executable or sys.executable,
+        timeout_seconds=args.timeout_seconds,
     )
     if args.json:
         _json_output(result.as_dict())
