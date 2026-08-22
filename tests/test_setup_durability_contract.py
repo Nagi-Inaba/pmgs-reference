@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import pmgs_reference.data_paths as data_paths_module
 import pmgs_reference.setup as setup_module
 from pmgs_reference.data_paths import write_json_atomic
 from pmgs_reference.setup import SetupResult, setup_reference
@@ -13,13 +14,13 @@ def test_atomic_json_replace_syncs_the_parent_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Path] = []
-    real_sync = setup_module.fsync_directory
+    real_sync = data_paths_module.fsync_directory
 
     def recording_sync(path: Path) -> None:
         calls.append(path)
         real_sync(path)
 
-    monkeypatch.setattr(setup_module, "fsync_directory", recording_sync)
+    monkeypatch.setattr(data_paths_module, "fsync_directory", recording_sync)
     destination = tmp_path / "state" / "current.json"
 
     write_json_atomic(destination, {"status": "ready"})
@@ -76,7 +77,7 @@ def test_directory_sync_failure_does_not_report_success(
     def fail_directory_sync(path: Path) -> None:
         raise OSError("simulated directory sync failure")
 
-    monkeypatch.setattr(setup_module, "fsync_directory", fail_directory_sync)
+    monkeypatch.setattr(data_paths_module, "fsync_directory", fail_directory_sync)
 
     result = setup_reference(
         synthetic_pmgs,
