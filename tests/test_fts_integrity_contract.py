@@ -69,8 +69,8 @@ def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
     ("version", "expected"),
     [
         ((3, 44, 0), False),
-        ((3, 45, 2), False),
-        ((3, 45, 3), True),
+        ((3, 45, 0), False),
+        ((3, 45, 1), True),
     ],
 )
 def test_native_read_only_xintegrity_version_gate(
@@ -99,7 +99,7 @@ def test_native_xintegrity_path_does_not_create_a_database_copy(
     assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
 
 
-def test_pre_3453_fallback_checks_a_copy_and_preserves_the_source(
+def test_pre_3451_fallback_checks_a_copy_and_preserves_the_source(
     synthetic_database: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
