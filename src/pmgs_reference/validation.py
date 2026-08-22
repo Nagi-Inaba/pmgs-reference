@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,7 +23,7 @@ __all__ = [
 ]
 
 _FTS_TABLES = ("concept_text_fts", "document_text_fts")
-_SQLITE_FTS_XINTEGRITY_VERSION = (3, 44, 0)
+_SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 3)
 
 
 def _check(expected: object, actual: object, match: bool | None = None) -> dict[str, object]:
@@ -34,8 +35,8 @@ def _check(expected: object, actual: object, match: bool | None = None) -> dict[
 
 
 def _sqlite_integrity_covers_fts5() -> bool:
-    """Return whether PRAGMA integrity_check invokes the FTS5 xIntegrity hook."""
-    return sqlite3.sqlite_version_info >= _SQLITE_FTS_XINTEGRITY_VERSION
+    """Return whether read-only PRAGMA integrity_check reliably invokes FTS5 xIntegrity."""
+    return sqlite3.sqlite_version_info >= _SQLITE_READ_ONLY_XINTEGRITY_VERSION
 
 
 def _fts5_special_integrity_check(
@@ -51,11 +52,16 @@ def _fts5_special_integrity_check(
             ("integrity-check",),
         )
     except sqlite3.DatabaseError as exc:
+        with suppress(sqlite3.DatabaseError):
+            connection.rollback()
         return _check("consistent", f"database_error:{type(exc).__name__}", False)
+    connection.rollback()
     return _check("consistent", "consistent")
 
 
-def _connection_failure(exc: BaseException) -> dict[str, dict[str, object]]:
+def _connection_failure(
+    exc: OSError | sqlite3.DatabaseError,
+) -> dict[str, dict[str, object]]:
     failure = _check("consistent", f"copy_error:{type(exc).__name__}", False)
     return {f"{table}_integrity": dict(failure) for table in _FTS_TABLES}
 
@@ -63,6 +69,7 @@ def _connection_failure(exc: BaseException) -> dict[str, dict[str, object]]:
 def _backup_database(source_path: Path, destination_path: Path) -> None:
     source = sqlite3.connect(f"file:{source_path.as_posix()}?mode=ro", uri=True)
     try:
+        source.execute("PRAGMA query_only = ON")
         destination = sqlite3.connect(destination_path)
         try:
             source.backup(destination)
@@ -76,10 +83,7 @@ def _copy_fts5_checks(database_path: Path) -> dict[str, dict[str, object]]:
     """Copy the database, then run exact FTS5 integrity checks on the copy."""
     path = database_path.resolve()
     try:
-        with tempfile.TemporaryDirectory(
-            prefix="pmgs-reference-fts5-",
-            ignore_cleanup_errors=True,
-        ) as directory:
+        with tempfile.TemporaryDirectory(prefix="pmgs-reference-fts5-") as directory:
             copy_path = Path(directory) / "validation.sqlite"
             _backup_database(path, copy_path)
             connection = sqlite3.connect(copy_path)
