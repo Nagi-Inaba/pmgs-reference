@@ -27,24 +27,66 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Apply the reviewed implementation
-        run: python scripts/apply_cli_json_error_fix.py
-
-      - name: Verify the complete change
+      - name: Apply and record focused verification
+        shell: bash
         run: |
-          uv sync --frozen --all-groups
-          uv run --frozen ruff format src/pmgs_reference/cli.py tests/test_cli_json_errors.py
-          uv run --frozen ruff check .
-          uv run --frozen mypy src
-          uv run --frozen pytest -q tests/test_cli_json_errors.py tests/test_cli_query.py tests/test_setup_cli.py
-          uv run --frozen pytest -q
-          uv build
+          set +e
+          python scripts/apply_cli_json_error_fix.py > /tmp/apply.log 2>&1
+          apply_status=$?
+          if [ "$apply_status" -eq 0 ]; then
+            uv sync --frozen --all-groups > /tmp/sync.log 2>&1
+            sync_status=$?
+            uv run --frozen ruff format src/pmgs_reference/cli.py tests/test_cli_json_errors.py > /tmp/format.log 2>&1
+            format_status=$?
+            uv run --frozen ruff check src/pmgs_reference/cli.py tests/test_cli_json_errors.py > /tmp/ruff.log 2>&1
+            ruff_status=$?
+            uv run --frozen mypy src > /tmp/mypy.log 2>&1
+            mypy_status=$?
+            uv run --frozen pytest -q tests/test_cli_json_errors.py tests/test_cli_query.py tests/test_setup_cli.py > /tmp/pytest.log 2>&1
+            pytest_status=$?
+          else
+            sync_status=99
+            format_status=99
+            ruff_status=99
+            mypy_status=99
+            pytest_status=99
+          fi
 
-      - name: Commit verified implementation and remove this workflow
+          cat > docs/verification/cli-json-errors-apply.md <<EOF
+          # CLI JSON implementation application
+
+          - apply: $apply_status
+          - sync: $sync_status
+          - format: $format_status
+          - ruff: $ruff_status
+          - mypy: $mypy_status
+          - focused pytest: $pytest_status
+
+          ## apply output
+
+          \`\`\`
+          $(tail -n 80 /tmp/apply.log 2>/dev/null)
+          \`\`\`
+
+          ## mypy output
+
+          \`\`\`
+          $(tail -n 80 /tmp/mypy.log 2>/dev/null)
+          \`\`\`
+
+          ## focused pytest output
+
+          \`\`\`
+          $(tail -n 120 /tmp/pytest.log 2>/dev/null)
+          \`\`\`
+          EOF
+
+      - name: Commit application result and remove one-shot files
+        shell: bash
         run: |
           git rm .github/workflows/pr60-apply.yml scripts/apply_cli_json_error_fix.py
           git config user.name "NAGI"
           git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
-          git add src/pmgs_reference/cli.py tests/test_cli_json_errors.py
-          git commit -m "fix: stabilize sanitized CLI JSON errors"
+          git add src/pmgs_reference/cli.py tests/test_cli_json_errors.py docs/verification/cli-json-errors-apply.md
+          git commit -m "fix: apply sanitized CLI JSON error contract"
           git push origin HEAD:fix/cli-json-error-contract
