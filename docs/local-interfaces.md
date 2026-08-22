@@ -102,6 +102,8 @@ pmgs doctor --timeout-seconds 30 --json
 
 stdio診断全体は既定30秒で有界化し、`--timeout-seconds`には有限の正数だけを指定できる。起動、初期化、tool列挙、各tool呼び出し、終了処理のいずれかで期限を超えた場合、taskをcancelしてstdio子プロセスを終了・回収し、`failure.code: MCP_TIMEOUT`と失敗時の`failure.stage`を返す。決定的なsampleをDBから選べない場合は`SAMPLE_SELECTION_FAILED`、tool応答の構造契約に失敗した場合は`MCP_CONTRACT_FAILED`を返す。例外の生メッセージや本文全量をfailureへ含めない。
 
+JSON reportの`database`はファイル名だけを返し、sample queryはSHA-256、tool結果は件数と状態の要約だけを返す。ローカル絶対path、検索語本文、取得本文、excerpt、source pathはreportへ含めない。
+
 ## stdio MCP
 
 サーバーは次の読み取り専用toolだけを公開する。
