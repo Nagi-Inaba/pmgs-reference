@@ -4,7 +4,9 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from pmgs_reference import PMGSStore
+import pytest
+
+from pmgs_reference import PMGSQueryError, PMGSStore
 
 
 def _seed_children(database: Path, count: int = 805) -> None:
@@ -43,6 +45,26 @@ def _seed_children(database: Path, count: int = 805) -> None:
         connection.close()
 
 
+def _add_overlapping_active_revision(database: Path) -> None:
+    connection = sqlite3.connect(database)
+    try:
+        row = connection.execute(
+            "SELECT c.concept_id, cr.source_file_id FROM concept c "
+            "JOIN concept_revision cr ON cr.concept_id = c.concept_id "
+            "WHERE c.scheme = 'fi' AND c.normalized_code = 'G06F3/048' "
+            "ORDER BY cr.revision_id LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        connection.execute(
+            "INSERT INTO concept_revision(concept_id, version_indicator, valid_from, valid_to, "
+            "source_file_id, source_locator) VALUES (?, '2099.02', NULL, NULL, ?, ?)",
+            (int(row[0]), int(row[1]), "hierarchy:overlapping-active-revision"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def test_hierarchy_returns_bounded_summaries_without_n_plus_one_lookup(
     synthetic_database: Path, tmp_path: Path
 ) -> None:
@@ -68,7 +90,21 @@ def test_hierarchy_returns_bounded_summaries_without_n_plus_one_lookup(
     assert {item["code"] for item in first["results"]}.isdisjoint(
         {item["code"] for item in second["results"]}
     )
-    assert all(set(item) <= {"scheme", "edition", "code", "version", "label"} for item in first["results"])
+    allowed = {"scheme", "edition", "code", "version", "label", "record_status"}
+    assert all(set(item) <= allowed for item in first["results"])
+
+
+def test_hierarchy_rejects_multiple_active_revisions(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "hierarchy-overlap.sqlite"
+    shutil.copy2(synthetic_database, database)
+    _add_overlapping_active_revision(database)
+
+    with pytest.raises(PMGSQueryError) as error:
+        PMGSStore.open(database).hierarchy("children", "fi", "G06F", limit=20)
+
+    assert error.value.code == "MULTIPLE_ACTIVE_REVISIONS"
 
 
 def test_existing_parents_and_children_wrappers_preserve_compatibility(
