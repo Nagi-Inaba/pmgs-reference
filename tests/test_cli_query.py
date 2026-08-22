@@ -92,7 +92,6 @@ def test_lookup_search_and_document_cli(
     assert document["document_id"] == document_id
 
 
-
 def test_search_cli_accepts_independent_offsets(
     synthetic_database: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
