@@ -1,0 +1,119 @@
+name: pr60-fix-newlines
+
+on:
+  push:
+    branches:
+      - fix/cli-json-error-contract
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/cli-json-error-contract
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Repair generated newline escapes and verify
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY' > /tmp/repair.log 2>&1
+          import re
+          from pathlib import Path
+
+          path = Path("src/pmgs_reference/cli.py")
+          text = path.read_text(encoding="utf-8")
+          repaired, count = re.subn(
+              r'f"([^"\n]*)\n"\)',
+              lambda match: 'f"' + match.group(1) + r'\n")',
+              text,
+          )
+          if count != 9:
+              raise SystemExit(f"expected 9 newline repairs, got {count}")
+          compile(repaired, str(path), "exec")
+          path.write_text(repaired, encoding="utf-8")
+          print(f"repaired={count}")
+          PY
+          repair_status=$?
+
+          uv sync --frozen --all-groups > /tmp/sync.log 2>&1
+          sync_status=$?
+          uv run --frozen ruff format src/pmgs_reference/cli.py tests/test_cli_json_errors.py > /tmp/format.log 2>&1
+          format_status=$?
+          uv run --frozen ruff check . > /tmp/ruff.log 2>&1
+          ruff_status=$?
+          uv run --frozen mypy src > /tmp/mypy.log 2>&1
+          mypy_status=$?
+          uv run --frozen pytest -q tests/test_cli_json_errors.py tests/test_cli_query.py tests/test_setup_cli.py > /tmp/focused.log 2>&1
+          focused_status=$?
+          uv run --frozen pytest -q > /tmp/full.log 2>&1
+          full_status=$?
+          uv build > /tmp/build.log 2>&1
+          build_status=$?
+
+          cat > docs/verification/cli-json-errors-apply.md <<EOF
+          # CLI JSON implementation verification
+
+          - newline repair: $repair_status
+          - sync: $sync_status
+          - format: $format_status
+          - ruff: $ruff_status
+          - mypy: $mypy_status
+          - focused pytest: $focused_status
+          - full pytest: $full_status
+          - build: $build_status
+
+          ## repair output
+
+          \`\`\`
+          $(tail -n 40 /tmp/repair.log)
+          \`\`\`
+
+          ## ruff output
+
+          \`\`\`
+          $(tail -n 80 /tmp/ruff.log)
+          \`\`\`
+
+          ## mypy output
+
+          \`\`\`
+          $(tail -n 80 /tmp/mypy.log)
+          \`\`\`
+
+          ## focused pytest output
+
+          \`\`\`
+          $(tail -n 160 /tmp/focused.log)
+          \`\`\`
+
+          ## full pytest output
+
+          \`\`\`
+          $(tail -n 80 /tmp/full.log)
+          \`\`\`
+          EOF
+
+      - name: Commit repair result and remove one-shot workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pr60-fix-newlines.yml
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/cli.py tests/test_cli_json_errors.py docs/verification/cli-json-errors-apply.md
+          git commit -m "fix: repair and verify CLI JSON error implementation"
+          git push origin HEAD:fix/cli-json-error-contract
