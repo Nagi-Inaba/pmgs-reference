@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -37,62 +38,77 @@ def _sqlite_integrity_covers_fts5() -> bool:
     return sqlite3.sqlite_version_info >= _SQLITE_FTS_XINTEGRITY_VERSION
 
 
-def _fts5_index_integrity(
+def _fts5_special_integrity_check(
     connection: sqlite3.Connection,
     table: str,
-    core_integrity: str,
 ) -> dict[str, object]:
-    """Validate one FTS5 inverted index without writing to the source database."""
+    """Run FTS5's content-versus-index check on a disposable database copy."""
     if table not in _FTS_TABLES:
         raise ValueError("unsupported FTS5 table")
-
-    if core_integrity == "ok" and _sqlite_integrity_covers_fts5():
-        return _check("readable", "readable")
-
-    vocabulary = f"__pmgs_{table}_integrity_vocab"
     try:
         connection.execute(
-            f'CREATE VIRTUAL TABLE IF NOT EXISTS temp."{vocabulary}" '
-            f"USING fts5vocab(main, '{table}', 'row')"
+            f'INSERT INTO "{table}"("{table}") VALUES (?)',
+            ("integrity-check",),
         )
-        row = connection.execute(
-            f"SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) "
-            f'FROM temp."{vocabulary}"'
-        ).fetchone()
-        return _check("readable", "readable" if row is not None else "missing_result")
     except sqlite3.DatabaseError as exc:
-        return _check("readable", f"database_error:{type(exc).__name__}", False)
+        return _check("consistent", f"database_error:{type(exc).__name__}", False)
+    return _check("consistent", "consistent")
 
 
-def _connection_failure(exc: sqlite3.DatabaseError) -> dict[str, dict[str, object]]:
-    failure = _check("readable", f"database_error:{type(exc).__name__}", False)
+def _connection_failure(exc: BaseException) -> dict[str, dict[str, object]]:
+    failure = _check("consistent", f"copy_error:{type(exc).__name__}", False)
     return {f"{table}_integrity": dict(failure) for table in _FTS_TABLES}
 
 
-def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str, object]]:
+def _backup_database(source_path: Path, destination_path: Path) -> None:
+    source = sqlite3.connect(f"file:{source_path.as_posix()}?mode=ro", uri=True)
+    try:
+        destination = sqlite3.connect(destination_path)
+        try:
+            source.backup(destination)
+        finally:
+            destination.close()
+    finally:
+        source.close()
+
+
+def _copy_fts5_checks(database_path: Path) -> dict[str, dict[str, object]]:
+    """Copy the database, then run exact FTS5 integrity checks on the copy."""
     path = database_path.resolve()
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-    except sqlite3.DatabaseError as exc:
+        with tempfile.TemporaryDirectory(
+            prefix="pmgs-reference-fts5-",
+            ignore_cleanup_errors=True,
+        ) as directory:
+            copy_path = Path(directory) / "validation.sqlite"
+            _backup_database(path, copy_path)
+            connection = sqlite3.connect(copy_path)
+            try:
+                tables = {
+                    str(row[0])
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                return {
+                    f"{table}_integrity": (
+                        _fts5_special_integrity_check(connection, table)
+                        if table in tables
+                        else _check("consistent", "missing", False)
+                    )
+                    for table in _FTS_TABLES
+                }
+            finally:
+                connection.close()
+    except (OSError, sqlite3.DatabaseError) as exc:
         return _connection_failure(exc)
 
-    try:
-        tables = {
-            str(row[0])
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-        }
-        return {
-            f"{table}_integrity": (
-                _fts5_index_integrity(connection, table, core_integrity)
-                if table in tables
-                else _check("readable", "missing", False)
-            )
-            for table in _FTS_TABLES
-        }
-    except sqlite3.DatabaseError as exc:
-        return _connection_failure(exc)
-    finally:
-        connection.close()
+
+def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str, object]]:
+    if core_integrity == "ok" and _sqlite_integrity_covers_fts5():
+        success = _check("consistent", "consistent")
+        return {f"{table}_integrity": dict(success) for table in _FTS_TABLES}
+    return _copy_fts5_checks(database_path)
 
 
 def validate_database(database_path: Path) -> ValidationResult:
