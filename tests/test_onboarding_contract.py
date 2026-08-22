@@ -20,10 +20,7 @@ def test_readmes_offer_safe_paths_for_users_without_pmgs() -> None:
     )
     install = "uv tool install pmgs-reference"
     windows_path = chr(92).join(("C:", "path", "to", "JPPM2026002"))
-    preflight = (
-        f"pmgs setup {windows_path} "
-        "--client none --no-register --dry-run --json"
-    )
+    preflight = f"pmgs setup {windows_path} --client none --no-register --dry-run --json"
 
     for relative, heading, next_heading in (
         (
