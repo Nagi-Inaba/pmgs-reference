@@ -555,9 +555,7 @@ def _seed_many_search_matches(database: Path) -> None:
         source_file_id = int(
             connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
         )
-        release_id = str(
-            connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0]
-        )
+        release_id = str(connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0])
 
         dominant_concept = connection.execute(
             "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
@@ -698,7 +696,8 @@ def test_search_returns_distinct_paginated_classifications_before_applying_limit
     assert second["has_more"] is False
     assert second["next_offset"] is None
     assert {
-        item["code"] for item in first["results"]  # type: ignore[index]
+        item["code"]
+        for item in first["results"]  # type: ignore[index]
     }.isdisjoint({item["code"] for item in second["results"]})  # type: ignore[index]
 
 
