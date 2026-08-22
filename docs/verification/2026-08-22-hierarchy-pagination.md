@@ -83,6 +83,8 @@ skip 5件はWindows固有の既存契約であり、本変更固有のfailureま
 
 日英文書を最新`main`へ戻し、階層APIの記述だけを追加した。保持すべき4項目が両文書に残ることを自動確認した。
 
+API移行条件として、従来`parents()`または`children()`の完全recordに依存していた呼び出し側は、bounded summaryから必要な分類を選び、その分類だけを`lookup()`する二段階へ移行することを日英文書へ明記した。
+
 ## 最終ゲート
 
-`reference_only`修正、文書修正、本検証記録を含む最新ユーザーcommitに対する通常CI matrixの全成功、未解決review threadがないこと、および最終差分レビューをマージ条件とする。
+`reference_only`修正、文書修正、移行案内、本検証記録を含む最新ユーザーcommitに対する通常CI matrixの全成功、未解決review threadがないこと、および最終差分レビューをマージ条件とする。
