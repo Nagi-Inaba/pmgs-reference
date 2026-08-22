@@ -50,8 +50,9 @@ The public methods are:
 - `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
 - `search(query, schemes=None, release="current", language="ja", limit=20, *, offset=0)`
 - `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
-- `parents(scheme, code, release="current", edition=None)`
-- `children(scheme, code, release="current", edition=None)`
+- `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
+- `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+- `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
 - `related_documents(scheme, code, release="current", edition=None)`
 - `get_document(document_id, page=None, section=None)`
 - `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
@@ -64,6 +65,8 @@ When the IPC version is omitted, the interface returns the single revision effec
 Classification queries do not guess candidates. When a code does not exist, they return an empty common record with `match_status: not_found`. Invalid input, an unknown release, an unknown document, and a database error are distinguished by the safe `code` and `message` fields of `PMGSQueryError`.
 
 Relations are paginated in stable order and return `relation_count`, `relations_truncated`, and `next_relation_offset`. `relation_limit` has a maximum of 200. If a structured classification or document response exceeds 4 MiB as UTF-8 JSON, the interface fails closed with `RESPONSE_TOO_LARGE`.
+
+`hierarchy()` is the canonical hierarchy-list interface. It returns parents or children as bounded summaries with `count`, `limit`, `offset`, `truncated`, and `next_offset`. Each summary contains only the scheme, edition, code, version, label, and record status, without running a full `lookup()` for every item. When `limit` is passed, `parents()` and `children()` return the same paged response; when it is omitted, they preserve compatibility by returning the flattened summary list from all pages. If multiple revisions are active at the release reference date, hierarchy retrieval fails closed with `MULTIPLE_ACTIVE_REVISIONS` instead of selecting one by order. Call `lookup()` for a selected summary when full texts, properties, relations, documents, and sources are required; callers that previously consumed full records from `parents()` or `children()` must migrate to this two-step pattern.
 
 ## Text search
 
