@@ -25,9 +25,7 @@ def test_release_publish_waits_for_three_os_verification() -> None:
 
 
 def test_sdist_is_built_and_installed_in_isolation_before_publish() -> None:
-    workflow_text = (ROOT / ".github" / "workflows" / "release.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow_text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     verifier = ROOT / "scripts" / "verify_sdist_install.py"
 
     assert verifier.is_file()
