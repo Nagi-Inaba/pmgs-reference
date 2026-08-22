@@ -12,6 +12,7 @@ from pmgs_reference.validation import validate_database
 
 _FTS_CHECK_NAMES = ("concept_text_fts_integrity", "document_text_fts_integrity")
 _STABLE_CHECK_KEYS = {"expected", "actual", "match"}
+_SUCCESS = {"expected": "consistent", "actual": "consistent", "match": True}
 
 
 def _sha256(path: Path) -> str:
@@ -35,30 +36,29 @@ def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
     for name in _FTS_CHECK_NAMES:
         check = result.checks[name]
         assert set(check) == _STABLE_CHECK_KEYS
-        assert check == {"expected": "readable", "actual": "readable", "match": True}
+        assert check == _SUCCESS
     assert result.checks["concept_text_fts_parity"]["match"] is True
     assert result.checks["document_text_fts_parity"]["match"] is True
     assert _sha256(database) == before
 
 
-def test_native_xintegrity_path_does_not_start_a_fallback_scan(
+def test_native_xintegrity_path_does_not_create_a_database_copy(
     synthetic_database: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    statements: list[str] = []
-    connection = sqlite3.connect(f"file:{synthetic_database.as_posix()}?mode=ro", uri=True)
-    connection.set_trace_callback(statements.append)
+    def fail_copy(_: Path) -> dict[str, dict[str, object]]:
+        raise AssertionError("native xIntegrity must not create a fallback copy")
+
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: True)
-    try:
-        check = validation_module._fts5_index_integrity(connection, "concept_text_fts", "ok")
-    finally:
-        connection.close()
+    monkeypatch.setattr(validation_module, "_copy_fts5_checks", fail_copy)
 
-    assert check == {"expected": "readable", "actual": "readable", "match": True}
-    assert not any("fts5vocab" in statement.lower() for statement in statements)
+    result = validate_database(synthetic_database)
+
+    assert result.valid is True
+    assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
 
 
-def test_pre_344_fallback_reads_both_indexes_without_mutation(
+def test_pre_344_fallback_checks_a_copy_and_preserves_the_source(
     synthetic_database: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -66,52 +66,39 @@ def test_pre_344_fallback_reads_both_indexes_without_mutation(
     database = tmp_path / "fts-fallback.sqlite"
     shutil.copy2(synthetic_database, database)
     before = _sha256(database)
-    statements: list[str] = []
+    calls: list[Path] = []
+    real_copy_checks = validation_module._copy_fts5_checks
+
+    def recording_copy_checks(path: Path) -> dict[str, dict[str, object]]:
+        calls.append(path)
+        return real_copy_checks(path)
+
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: False)
+    monkeypatch.setattr(validation_module, "_copy_fts5_checks", recording_copy_checks)
 
-    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
-    connection.set_trace_callback(statements.append)
-    try:
-        for table in ("concept_text_fts", "document_text_fts"):
-            check = validation_module._fts5_index_integrity(connection, table, "ok")
-            assert check == {
-                "expected": "readable",
-                "actual": "readable",
-                "match": True,
-            }
-    finally:
-        connection.close()
+    result = validate_database(database)
 
-    traced = "\n".join(statements).lower()
-    assert "fts5vocab(main, 'concept_text_fts', 'row')" in traced
-    assert "fts5vocab(main, 'document_text_fts', 'row')" in traced
+    assert calls == [database]
+    assert result.valid is True
+    assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
     assert _sha256(database) == before
 
 
 @pytest.mark.parametrize(
-    ("shadow_table", "virtual_table", "integrity_check"),
+    ("shadow_table", "integrity_check"),
     [
-        (
-            "concept_text_fts_data",
-            "concept_text_fts",
-            "concept_text_fts_integrity",
-        ),
-        (
-            "document_text_fts_data",
-            "document_text_fts",
-            "document_text_fts_integrity",
-        ),
+        ("concept_text_fts_data", "concept_text_fts_integrity"),
+        ("document_text_fts_data", "document_text_fts_integrity"),
     ],
 )
-def test_fallback_rejects_corrupt_fts_shadow_index_without_mutation(
+def test_copy_check_rejects_missing_postings_while_content_rows_remain(
     synthetic_database: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     shadow_table: str,
-    virtual_table: str,
     integrity_check: str,
 ) -> None:
-    database = tmp_path / f"corrupt-{virtual_table}.sqlite"
+    database = tmp_path / f"corrupt-{shadow_table}.sqlite"
     shutil.copy2(synthetic_database, database)
     connection = sqlite3.connect(database)
     try:
@@ -123,22 +110,18 @@ def test_fallback_rejects_corrupt_fts_shadow_index_without_mutation(
         connection.close()
     assert deleted == 1
     before_validation = _sha256(database)
+
+    checks = validation_module._copy_fts5_checks(database)
+    check = checks[integrity_check]
+    assert set(check) == _STABLE_CHECK_KEYS
+    assert check["match"] is False
+    assert str(check["actual"]).startswith("database_error:")
+    assert database.as_posix() not in str(check["actual"])
+
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: False)
-
-    read_only = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
-    try:
-        fallback = validation_module._fts5_index_integrity(read_only, virtual_table, "ok")
-    finally:
-        read_only.close()
-
-    assert set(fallback) == _STABLE_CHECK_KEYS
-    assert fallback["match"] is False
-    assert str(fallback["actual"]).startswith("database_error:")
-    assert database.as_posix() not in str(fallback["actual"])
-
     result = validate_database(database)
+
     assert result.valid is False
-    assert set(result.checks[integrity_check]) == _STABLE_CHECK_KEYS
     assert result.checks[integrity_check]["match"] is False
     assert _sha256(database) == before_validation
 
@@ -146,13 +129,12 @@ def test_fallback_rejects_corrupt_fts_shadow_index_without_mutation(
 def test_unknown_fts_table_is_rejected_before_sql_interpolation(
     synthetic_database: Path,
 ) -> None:
-    connection = sqlite3.connect(f"file:{synthetic_database.as_posix()}?mode=ro", uri=True)
+    connection = sqlite3.connect(synthetic_database)
     try:
         with pytest.raises(ValueError, match="unsupported FTS5 table"):
-            validation_module._fts5_index_integrity(
+            validation_module._fts5_special_integrity_check(
                 connection,
                 "malicious'; DROP TABLE release;--",
-                "ok",
             )
     finally:
         connection.close()
