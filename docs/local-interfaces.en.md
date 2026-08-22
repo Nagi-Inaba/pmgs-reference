@@ -48,14 +48,13 @@ The public methods are:
 
 - `PMGSStore.open(path=None, *, data_dir=None)`
 - `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
-- `search(query, schemes=None, release="current", language="ja", limit=20)`
-- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20)`
-- `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
-- `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
-- `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+- `search(query, schemes=None, release="current", language="ja", limit=20, *, offset=0)`
+- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
+- `parents(scheme, code, release="current", edition=None)`
+- `children(scheme, code, release="current", edition=None)`
 - `related_documents(scheme, code, release="current", edition=None)`
 - `get_document(document_id, page=None, section=None)`
-- `search_documents(query, release="current", language="ja", limit=20)`
+- `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
 - `release_info(release="current")`
 
 When `edition` is omitted for IPC, the interface selects an edition present in the authoritative source in this priority order: `8U`, `8B`, `7`, `7E`, `6`, `5`, and `4`. Passing `edition` for FI or F-term produces `INVALID_EDITION`. `version` can be specified only for IPC; use `--ipc-version` in the CLI.
@@ -65,8 +64,6 @@ When the IPC version is omitted, the interface returns the single revision effec
 Classification queries do not guess candidates. When a code does not exist, they return an empty common record with `match_status: not_found`. Invalid input, an unknown release, an unknown document, and a database error are distinguished by the safe `code` and `message` fields of `PMGSQueryError`.
 
 Relations are paginated in stable order and return `relation_count`, `relations_truncated`, and `next_relation_offset`. `relation_limit` has a maximum of 200. If a structured classification or document response exceeds 4 MiB as UTF-8 JSON, the interface fails closed with `RESPONSE_TOO_LARGE`.
-
-`hierarchy()` is the canonical hierarchy-list interface. It returns parents or children as bounded summaries with `count`, `limit`, `offset`, `truncated`, and `next_offset`. Each summary contains only the scheme, edition, code, version, label, and record status, without running a full `lookup()` for every item. When `limit` is passed, `parents()` and `children()` return the same paged response; when it is omitted, they preserve compatibility by returning the flattened summary list from all pages.
 
 ## Text search
 
@@ -78,7 +75,7 @@ The response's `search_mode` identifies the path used as one of the following:
 - `sqlite_literal_substring_lexical`
 - `mixed_lexical` when classification and document searches use different paths in MCP
 
-For compatibility, `search()` searches classifications only. `search_pmgs()` separates classifications and documents into `results_by_type.classification` and `results_by_type.document`, applying `limit` independently to each type. Both are text searches, not semantic searches. They do not use AI to supplement synonyms, spelling variants, or classification candidates.
+For compatibility, `search()` searches classifications only. `search_pmgs()` separates classifications and documents into `results_by_type.classification` and `results_by_type.document`, applying `limit` independently to each type. Each page returns `limit`, `offset`, `has_more`, and `next_offset`. Composite searches accept separate `classification_offset` and `document_offset` values so one result type can advance without replaying the other. Duplicate matching text rows are collapsed by classification or document before the page limit is applied. Both are text searches, not semantic searches. They do not use AI to supplement synonyms, spelling variants, or classification candidates.
 
 ## Document response limits
 
@@ -92,16 +89,20 @@ Related classifications are also limited to 200 per response, with the total cou
 pmgs lookup fi "G06F3/048" --json
 pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
-pmgs search "改正" --content-type document --json
+pmgs search "改正" --content-type document --document-offset 20 --json
 pmgs document DOCUMENT_ID --page 1 --json
-pmgs doctor --json
+pmgs doctor --timeout-seconds 30 --json
 ```
 
 For `not_found`, `version_not_found`, and `not_valid_at_release`, `lookup --json` outputs an explainable common record and exits with status 1. A successful query that returns a matching record exits with status 0.
 
 The default `--language` for `lookup` and `search` is `ja`. Specify `--language en` for English.
 
-`doctor` checks the SQLite schema, release, a real stdio connection, the three tools, read-only annotations, a sample query, and hashes before and after the query. When a managed directory is specified, it also compares the actual file hash with `database_sha256` in `current.json` and confirms that the current pointer does not change during diagnostics.
+`doctor` checks the SQLite schema, release metadata, a real stdio connection, read-only annotations, actual calls to `lookup_classification`, `search_pmgs`, and `get_pmgs_document`, and the database hash before and after the calls. When a managed directory is specified, it also compares the actual file hash with `database_sha256` in `current.json` and confirms that the current pointer does not change during diagnostics.
+
+The entire stdio diagnostic is bounded to 30 seconds by default, and `--timeout-seconds` accepts only a finite positive number. If startup, initialization, tool listing, any tool call, or shutdown exceeds the deadline, the task is cancelled, the stdio child process is terminated and reaped, and the result reports `failure.code: MCP_TIMEOUT` with the active `failure.stage`. Failure to select deterministic samples from the database reports `SAMPLE_SELECTION_FAILED`; a structurally invalid tool response reports `MCP_CONTRACT_FAILED`. Raw exception messages and full retrieved text are not copied into the failure payload.
+
+The JSON report returns only the database file name; it represents the sample query by SHA-256 and tool results by status/count summaries. It does not include local absolute paths, the query text, retrieved text, excerpts, or source paths.
 
 ## stdio MCP
 
@@ -158,6 +159,6 @@ See the [local AI agent setup guide](local-agent-kit.en.md) for bulk installatio
 
 ## Verification
 
-With the synthetic fixture, pytest checks the Python API, JSON Schema, CLI exit statuses, MCP tool listing, structured responses, input errors, a real stdio client connection, the agent kit, and skill installation.
+With the synthetic fixture, pytest checks the Python API, JSON Schema, CLI exit statuses, MCP tool listing, structured responses, input errors, a real stdio client connection, child-process termination on timeout, setup-lock release, the agent kit, and skill installation.
 
 With real data, verification covers FI, F-term, IPC 8U, an older IPC edition, a related PDF page, Japanese substring search, and the authoritative source file hash before and after queries.
