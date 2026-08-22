@@ -13,7 +13,9 @@ def _seed_children(database: Path, count: int = 805) -> None:
     connection = sqlite3.connect(database)
     try:
         release_id = str(connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0])
-        source_file_id = int(connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0])
+        source_file_id = int(
+            connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
+        )
         parent_id = int(
             connection.execute(
                 "SELECT concept_id FROM concept WHERE scheme = 'fi' "

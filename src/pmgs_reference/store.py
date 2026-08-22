@@ -1024,6 +1024,22 @@ class PMGSStore:
                     (concept_id,),
                 ).fetchone()[0]
             )
+            reference_date = str(release_row["reference_date"])
+            ambiguous_revision = connection.execute(
+                target_cte + "SELECT c.concept_id FROM target_ids ids "
+                "JOIN concept c ON c.concept_id = ids.concept_id "
+                "JOIN concept_revision cr ON cr.concept_id = c.concept_id "
+                "WHERE c.record_status = 'canonical' "
+                "AND (cr.valid_from IS NULL OR cr.valid_from <= ?) "
+                "AND (cr.valid_to IS NULL OR cr.valid_to >= ?) "
+                "GROUP BY c.concept_id HAVING COUNT(*) > 1 LIMIT 1",
+                (concept_id, reference_date, reference_date),
+            ).fetchone()
+            if ambiguous_revision is not None:
+                raise PMGSQueryError(
+                    "MULTIPLE_ACTIVE_REVISIONS",
+                    "multiple classification revisions are active at the release reference date",
+                )
             rows = connection.execute(
                 target_cte + "SELECT c.scheme, c.edition, c.normalized_code, c.record_status, "
                 "cr.version_indicator, "
@@ -1043,8 +1059,8 @@ class PMGSStore:
                 (
                     concept_id,
                     valid_language,
-                    str(release_row["reference_date"]),
-                    str(release_row["reference_date"]),
+                    reference_date,
+                    reference_date,
                     valid_limit,
                     valid_offset,
                 ),
