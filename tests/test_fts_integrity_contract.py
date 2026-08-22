@@ -87,8 +87,7 @@ def test_native_read_only_xintegrity_version_gate(
     ("sql", "expected"),
     [
         (
-            "CREATE VIRTUAL TABLE concept_text_fts "
-            "/* USING fts4(text) */ USING fts5(text)",
+            "CREATE VIRTUAL TABLE concept_text_fts /* USING fts4(text) */ USING fts5(text)",
             "fts5",
         ),
         (
@@ -97,8 +96,7 @@ def test_native_read_only_xintegrity_version_gate(
             "fts4",
         ),
         (
-            'CREATE VIRTUAL TABLE "USING fts5" -- USING fts5(text)\n'
-            "USING fts4(text)",
+            'CREATE VIRTUAL TABLE "USING fts5" -- USING fts5(text)\nUSING fts4(text)',
             "fts4",
         ),
         ("CREATE TABLE concept_text_fts /* USING fts5(text) */ (text)", None),
