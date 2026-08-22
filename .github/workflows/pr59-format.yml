@@ -1,0 +1,43 @@
+name: pr59-format
+
+on:
+  push:
+    branches:
+      - fix/fts5-module-token-parser
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/fts5-module-token-parser
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Format the focused regression test
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format tests/test_fts_integrity_contract.py
+          uv run --frozen ruff check src/pmgs_reference/validation.py tests/test_fts_integrity_contract.py
+
+      - name: Commit verified formatting and remove this workflow
+        run: |
+          git rm .github/workflows/pr59-format.yml
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add tests/test_fts_integrity_contract.py
+          git commit -m "style: format FTS module parser regression tests"
+          git push origin HEAD:fix/fts5-module-token-parser
