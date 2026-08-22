@@ -1,0 +1,29 @@
+name: source-snapshot
+
+on:
+  push:
+    branches:
+      - chore/export-source-artifact
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pmgs-reference-source
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
