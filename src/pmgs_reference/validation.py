@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import tempfile
 from contextlib import suppress
@@ -23,6 +24,10 @@ __all__ = [
 ]
 
 _FTS_TABLES = ("concept_text_fts", "document_text_fts")
+_FTS5_SCHEMA_PATTERN = re.compile(
+    r"^\s*CREATE\s+VIRTUAL\s+TABLE\b.+?\bUSING\s+fts5\s*\(",
+    re.IGNORECASE | re.DOTALL,
+)
 _SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 1)
 
 
@@ -37,6 +42,56 @@ def _check(expected: object, actual: object, match: bool | None = None) -> dict[
 def _sqlite_integrity_covers_fts5() -> bool:
     """Return whether read-only PRAGMA integrity_check reliably invokes FTS5 xIntegrity."""
     return sqlite3.sqlite_version_info >= _SQLITE_READ_ONLY_XINTEGRITY_VERSION
+
+
+def _fts5_table_statuses(connection: sqlite3.Connection) -> dict[str, str]:
+    rows = {
+        str(row[0]): str(row[1]) if row[1] is not None else ""
+        for row in connection.execute(
+            "SELECT name, sql FROM sqlite_schema "
+            "WHERE type = 'table' AND name IN (?, ?)",
+            _FTS_TABLES,
+        )
+    }
+    statuses: dict[str, str] = {}
+    for table in _FTS_TABLES:
+        if table not in rows:
+            statuses[table] = "missing"
+        elif _FTS5_SCHEMA_PATTERN.search(rows[table]) is None:
+            statuses[table] = "not_fts5"
+        else:
+            statuses[table] = "fts5"
+    return statuses
+
+
+def _schema_failure_results(statuses: dict[str, str]) -> dict[str, dict[str, object]]:
+    return {
+        f"{table}_integrity": (
+            _check("consistent", "not_checked", False)
+            if status == "fts5"
+            else _check("consistent", status, False)
+        )
+        for table, status in statuses.items()
+    }
+
+
+def _source_schema_failures(
+    database_path: Path,
+) -> dict[str, dict[str, object]] | None:
+    path = database_path.resolve()
+    try:
+        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    except sqlite3.DatabaseError as exc:
+        return _database_failure(exc)
+    try:
+        statuses = _fts5_table_statuses(connection)
+    except sqlite3.DatabaseError as exc:
+        return _database_failure(exc)
+    finally:
+        connection.close()
+    if all(status == "fts5" for status in statuses.values()):
+        return None
+    return _schema_failure_results(statuses)
 
 
 def _fts5_special_integrity_check(
@@ -59,7 +114,12 @@ def _fts5_special_integrity_check(
     return _check("consistent", "consistent")
 
 
-def _connection_failure(
+def _database_failure(exc: sqlite3.DatabaseError) -> dict[str, dict[str, object]]:
+    failure = _check("consistent", f"database_error:{type(exc).__name__}", False)
+    return {f"{table}_integrity": dict(failure) for table in _FTS_TABLES}
+
+
+def _copy_failure(
     exc: OSError | sqlite3.DatabaseError,
 ) -> dict[str, dict[str, object]]:
     failure = _check("consistent", f"copy_error:{type(exc).__name__}", False)
@@ -88,27 +148,23 @@ def _copy_fts5_checks(database_path: Path) -> dict[str, dict[str, object]]:
             _backup_database(path, copy_path)
             connection = sqlite3.connect(copy_path)
             try:
-                tables = {
-                    str(row[0])
-                    for row in connection.execute(
-                        "SELECT name FROM sqlite_master WHERE type = 'table'"
-                    )
-                }
+                statuses = _fts5_table_statuses(connection)
+                if not all(status == "fts5" for status in statuses.values()):
+                    return _schema_failure_results(statuses)
                 return {
-                    f"{table}_integrity": (
-                        _fts5_special_integrity_check(connection, table)
-                        if table in tables
-                        else _check("consistent", "missing", False)
-                    )
+                    f"{table}_integrity": _fts5_special_integrity_check(connection, table)
                     for table in _FTS_TABLES
                 }
             finally:
                 connection.close()
     except (OSError, sqlite3.DatabaseError) as exc:
-        return _connection_failure(exc)
+        return _copy_failure(exc)
 
 
 def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str, object]]:
+    schema_failures = _source_schema_failures(database_path)
+    if schema_failures is not None:
+        return schema_failures
     if core_integrity == "ok" and _sqlite_integrity_covers_fts5():
         success = _check("consistent", "consistent")
         return {f"{table}_integrity": dict(success) for table in _FTS_TABLES}
