@@ -11,6 +11,10 @@ import pmgs_reference.validation as validation_module
 from pmgs_reference.validation import validate_database
 
 
+_FTS_CHECK_NAMES = ("concept_text_fts_integrity", "document_text_fts_integrity")
+_STABLE_CHECK_KEYS = {"expected", "actual", "match"}
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -19,7 +23,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
-def test_validation_adds_read_only_fts5_checks_without_mutation(
+def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
     synthetic_database: Path, tmp_path: Path
 ) -> None:
     database = tmp_path / "fts.sqlite"
@@ -29,13 +33,32 @@ def test_validation_adds_read_only_fts5_checks_without_mutation(
     result = validate_database(database)
 
     assert result.valid is True
-    for name in ("concept_text_fts_integrity", "document_text_fts_integrity"):
+    for name in _FTS_CHECK_NAMES:
         check = result.checks[name]
-        assert check["match"] is True
-        assert check["method"] in {"pragma_xintegrity", "fts5vocab"}
+        assert set(check) == _STABLE_CHECK_KEYS
+        assert check == {"expected": "readable", "actual": "readable", "match": True}
     assert result.checks["concept_text_fts_parity"]["match"] is True
     assert result.checks["document_text_fts_parity"]["match"] is True
     assert _sha256(database) == before
+
+
+def test_native_xintegrity_path_does_not_start_a_fallback_scan(
+    synthetic_database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements: list[str] = []
+    connection = sqlite3.connect(f"file:{synthetic_database.as_posix()}?mode=ro", uri=True)
+    connection.set_trace_callback(statements.append)
+    monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: True)
+    try:
+        check = validation_module._fts5_index_integrity(
+            connection, "concept_text_fts", "ok"
+        )
+    finally:
+        connection.close()
+
+    assert check == {"expected": "readable", "actual": "readable", "match": True}
+    assert not any("fts5vocab" in statement.lower() for statement in statements)
 
 
 def test_pre_344_fallback_reads_both_indexes_without_mutation(
@@ -46,17 +69,25 @@ def test_pre_344_fallback_reads_both_indexes_without_mutation(
     database = tmp_path / "fts-fallback.sqlite"
     shutil.copy2(synthetic_database, database)
     before = _sha256(database)
+    statements: list[str] = []
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: False)
 
-    result = validate_database(database)
+    connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+    connection.set_trace_callback(statements.append)
+    try:
+        for table in ("concept_text_fts", "document_text_fts"):
+            check = validation_module._fts5_index_integrity(connection, table, "ok")
+            assert check == {
+                "expected": "readable",
+                "actual": "readable",
+                "match": True,
+            }
+    finally:
+        connection.close()
 
-    assert result.valid is True
-    for name in ("concept_text_fts_integrity", "document_text_fts_integrity"):
-        check = result.checks[name]
-        assert check["match"] is True
-        assert check["method"] == "fts5vocab"
-        assert check["actual"] == "readable"
-        assert int(check["term_count"]) > 0
+    traced = "\n".join(statements).lower()
+    assert "fts5vocab(main, 'concept_text_fts', 'row')" in traced
+    assert "fts5vocab(main, 'document_text_fts', 'row')" in traced
     assert _sha256(database) == before
 
 
@@ -103,15 +134,15 @@ def test_fallback_rejects_corrupt_fts_shadow_index_without_mutation(
     finally:
         read_only.close()
 
+    assert set(fallback) == _STABLE_CHECK_KEYS
     assert fallback["match"] is False
-    assert fallback["method"] == "fts5vocab"
     assert str(fallback["actual"]).startswith("database_error:")
     assert database.as_posix() not in str(fallback["actual"])
 
     result = validate_database(database)
     assert result.valid is False
+    assert set(result.checks[integrity_check]) == _STABLE_CHECK_KEYS
     assert result.checks[integrity_check]["match"] is False
-    assert result.checks[integrity_check]["method"] == "fts5vocab"
     assert _sha256(database) == before_validation
 
 
