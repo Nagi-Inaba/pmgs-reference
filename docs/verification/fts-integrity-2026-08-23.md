@@ -5,6 +5,7 @@
 - `concept_text_fts`
 - `document_text_fts`
 - Issue #31
+- Follow-up PR #59
 
 ## Decision
 
