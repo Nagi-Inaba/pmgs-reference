@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -222,13 +223,31 @@ def test_doctor_calls_and_validates_all_three_mcp_tools(synthetic_database: Path
         python_executable=sys.executable,
         timeout_seconds=30.0,
     )
+    report = result.as_dict()
+    sample_input = result.sample["input"]
+    sample_output = result.sample["output"]
 
     assert result.ok is True
     assert result.failure is None
     assert result.checks["sample_lookup"] is True
     assert result.checks["sample_search"] is True
     assert result.checks["sample_document"] is True
-    assert set(result.sample["output"]) == {"lookup", "search", "document"}
+    assert set(sample_output) == {"lookup", "search", "document"}  # type: ignore[arg-type]
+    assert report["database"] == synthetic_database.name
+    assert "search_query" not in sample_input  # type: ignore[operator]
+    query_digest = sample_input["search_query_sha256"]  # type: ignore[index]
+    assert isinstance(query_digest, str) and len(query_digest) == 64
+    assert set(sample_output["document"]) == {  # type: ignore[index,arg-type]
+        "schema_version",
+        "document_id",
+        "segment_count",
+        "source_present",
+    }
+    serialized = json.dumps(report, ensure_ascii=False)
+    assert str(synthetic_database.resolve()) not in serialized
+    assert "Synthetic physics section" not in serialized
+    assert "Old synthetic title" not in serialized
+    assert "Canonical document segment" not in serialized
 
 
 @pytest.mark.parametrize("failed_check", ["sample_search", "sample_document"])
