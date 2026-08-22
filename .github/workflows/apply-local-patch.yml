@@ -33,7 +33,13 @@ jobs:
           TARGET=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"])' "$META")
           BASE=$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("base", "main"))' "$META")
           MESSAGE=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["message"])' "$META")
-          cat "$DIR"/part-* | base64 --decode > /tmp/change.patch
+          COMPRESSION=$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("compression", "none"))' "$META")
+          cat "$DIR"/part-* | base64 --decode > /tmp/change.payload
+          if [ "$COMPRESSION" = "gzip" ]; then
+            gzip --decompress --stdout /tmp/change.payload > /tmp/change.patch
+          else
+            cp /tmp/change.payload /tmp/change.patch
+          fi
           git fetch origin "$BASE"
           git checkout -B "$TARGET" "origin/$BASE"
           git apply --index --3way /tmp/change.patch
