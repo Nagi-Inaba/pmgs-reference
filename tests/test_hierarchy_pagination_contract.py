@@ -47,6 +47,44 @@ def _seed_children(database: Path, count: int = 805) -> None:
         connection.close()
 
 
+def _seed_reference_only_child(database: Path) -> str:
+    code = "A00A1/001"
+    connection = sqlite3.connect(database)
+    try:
+        release_id = str(connection.execute("SELECT release_id FROM release LIMIT 1").fetchone()[0])
+        source_file_id = int(
+            connection.execute("SELECT MIN(file_id) FROM source_file").fetchone()[0]
+        )
+        parent_id = int(
+            connection.execute(
+                "SELECT concept_id FROM concept WHERE scheme = 'fi' "
+                "AND normalized_code = 'G06F' LIMIT 1"
+            ).fetchone()[0]
+        )
+        child_id = int(
+            connection.execute(
+                "INSERT INTO concept(release_id, scheme, edition, code, normalized_code, "
+                "concept_type, record_status, source_file_id, source_locator) "
+                "VALUES (?, 'fi', '', ?, ?, 'hierarchy_fixture', 'reference_only', ?, ?)",
+                (release_id, code, code, source_file_id, "hierarchy:reference-only"),
+            ).lastrowid
+        )
+        connection.execute(
+            "INSERT INTO concept_revision(concept_id, version_indicator, source_file_id, "
+            "source_locator) VALUES (?, '', ?, ?)",
+            (child_id, source_file_id, "hierarchy:reference-only"),
+        )
+        connection.execute(
+            "INSERT INTO relation(from_concept_id, to_concept_id, kind, source_file_id, "
+            "source_locator) VALUES (?, ?, 'parent', ?, ?)",
+            (child_id, parent_id, source_file_id, "hierarchy:reference-only"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return code
+
+
 def _add_overlapping_active_revision(database: Path) -> None:
     connection = sqlite3.connect(database)
     try:
@@ -92,9 +130,22 @@ def test_hierarchy_returns_bounded_summaries_without_n_plus_one_lookup(
     assert {item["code"] for item in first["results"]}.isdisjoint(
         {item["code"] for item in second["results"]}
     )
-    # record_status is part of the documented bounded-summary contract.
     allowed = {"scheme", "edition", "code", "version", "label", "record_status"}
     assert all(set(item) <= allowed for item in first["results"])
+
+
+def test_hierarchy_preserves_reference_only_relations(
+    synthetic_database: Path, tmp_path: Path
+) -> None:
+    database = tmp_path / "hierarchy-reference-only.sqlite"
+    shutil.copy2(synthetic_database, database)
+    expected_code = _seed_reference_only_child(database)
+
+    page = PMGSStore.open(database).hierarchy("children", "fi", "G06F", limit=200)
+    record = next(item for item in page["results"] if item["code"] == expected_code)
+
+    assert record["record_status"] == "reference_only"
+    assert page["count"] == len(page["results"])
 
 
 def test_hierarchy_rejects_multiple_active_revisions(
