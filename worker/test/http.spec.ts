@@ -14,6 +14,7 @@ describe("HTTP representation helpers", () => {
     ["text/*;q=1, text/markdown;q=0", "html"],
     ["text/html;level=1;q=1, text/markdown;q=0.5", "markdown"],
     ["text/html;charset=UTF-8;q=1, text/markdown;q=0.5", "html"],
+    ["text/html;q=0.8, text/html;charset=utf-8;q=0.4, text/markdown;q=0.6", "markdown"],
     ["text/html;q=0;level=1, text/markdown;q=0.5", "markdown"],
     ["text/html;q=0, text/markdown;q=0", "html"],
     ["application/json", "html"],
