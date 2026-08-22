@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -109,6 +110,26 @@ def test_invalid_current_pointer_is_structured_for_non_setup_commands(
     assert str(data_root) not in json.dumps(payload, ensure_ascii=False)
 
 
+def test_unsupported_database_is_structured(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    database = tmp_path / "private" / "unsupported.sqlite"
+    database.parent.mkdir()
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = main(["lookup", "fi", "G06F", "--db", str(database), "--json"])
+
+    assert result == 1
+    payload = _failure_payload(capsys, command="lookup", code="UNSUPPORTED_DATABASE")
+    assert str(database) not in json.dumps(payload, ensure_ascii=False)
+
+
 def test_query_errors_use_the_common_failure_envelope(
     synthetic_database: Path,
     capsys: pytest.CaptureFixture[str],
@@ -128,6 +149,89 @@ def test_query_errors_use_the_common_failure_envelope(
 
     assert result == 1
     _failure_payload(capsys, command="lookup", code="INVALID_RELATION_LIMIT")
+
+
+def test_build_failure_is_structured_and_sanitized(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = str(tmp_path / "private" / "build-input")
+
+    def fail_build(*args: object, **kwargs: object) -> object:
+        raise cli_module.BuildError(f"build failed at {secret}")
+
+    monkeypatch.setattr(cli_module, "build_database", fail_build)
+
+    result = main(
+        [
+            "build",
+            secret,
+            "--release",
+            "JPPM2099001",
+            "--output",
+            str(tmp_path / "output.sqlite"),
+        ]
+    )
+
+    assert result == 1
+    payload = _failure_payload(capsys, command="build", code="BUILD_FAILED")
+    assert secret not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_validation_failure_is_one_envelope_with_structured_details(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InvalidValidation:
+        valid = False
+
+        def as_dict(self) -> dict[str, object]:
+            return {
+                "schema_version": "2.0",
+                "valid": False,
+                "checks": {"required_tables": {"match": False}},
+            }
+
+    monkeypatch.setattr(cli_module, "validate_database", lambda _: InvalidValidation())
+
+    result = main(["validate", str(tmp_path / "candidate.sqlite")])
+
+    assert result == 1
+    payload = _failure_payload(capsys, command="validate", code="VALIDATION_FAILED")
+    assert payload["details"] == InvalidValidation().as_dict()
+
+
+def test_public_export_failure_is_structured_and_sanitized(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = str(tmp_path / "private" / "policy.json")
+
+    def fail_export(*args: object, **kwargs: object) -> object:
+        raise OSError(f"cannot read {secret}")
+
+    monkeypatch.setattr(cli_module, "export_public", fail_export)
+
+    result = main(
+        [
+            "export-public",
+            "--db",
+            str(tmp_path / "source.sqlite"),
+            "--policy",
+            secret,
+            "--output",
+            str(tmp_path / "output"),
+            "--base-url",
+            "https://example.invalid/pmgs",
+        ]
+    )
+
+    assert result == 1
+    payload = _failure_payload(capsys, command="export-public", code="PUBLIC_EXPORT_FAILED")
+    assert secret not in json.dumps(payload, ensure_ascii=False)
 
 
 def test_doctor_runtime_race_is_structured_and_sanitized(
@@ -153,3 +257,24 @@ def test_doctor_runtime_race_is_structured_and_sanitized(
     serialized = json.dumps(payload, ensure_ascii=False)
     assert secret not in serialized
     assert "current.json" not in serialized
+
+
+def test_unexpected_json_runtime_error_does_not_emit_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = str(tmp_path / "private" / "unexpected")
+
+    def fail_search(*args: object, **kwargs: object) -> object:
+        raise RuntimeError(f"unexpected failure at {secret}")
+
+    monkeypatch.setattr(cli_module, "_run_search", fail_search)
+
+    result = main(["search", "query", "--db", str(tmp_path / "unused.sqlite"), "--json"])
+
+    assert result == 1
+    payload = _failure_payload(capsys, command="search", code="INTERNAL_ERROR")
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert secret not in serialized
+    assert "traceback" not in serialized.lower()
