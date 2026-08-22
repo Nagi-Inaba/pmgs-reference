@@ -50,9 +50,7 @@ def test_native_xintegrity_path_does_not_start_a_fallback_scan(
     connection.set_trace_callback(statements.append)
     monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: True)
     try:
-        check = validation_module._fts5_index_integrity(
-            connection, "concept_text_fts", "ok"
-        )
+        check = validation_module._fts5_index_integrity(connection, "concept_text_fts", "ok")
     finally:
         connection.close()
 
