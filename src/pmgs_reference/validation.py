@@ -63,11 +63,10 @@ def _fts5_index_integrity(
     try:
         connection.execute(drop_sql)
         connection.execute(
-            f'CREATE VIRTUAL TABLE temp."{vocabulary}" '
-            f"USING fts5vocab(main, '{table}', 'row')"
+            f"CREATE VIRTUAL TABLE temp.\"{vocabulary}\" USING fts5vocab(main, '{table}', 'row')"
         )
         row = connection.execute(
-            f'SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) '
+            f"SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) "
             f'FROM temp."{vocabulary}"'
         ).fetchone()
         if row is None:
@@ -107,9 +106,7 @@ def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str
     try:
         tables = {
             str(row[0])
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         return {
             f"{table}_integrity": (
