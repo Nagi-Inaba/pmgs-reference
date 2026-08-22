@@ -1,11 +1,9 @@
 name: apply-local-patch
 
 on:
-  push:
-    branches:
-      - chore/export-source-artifact
+  pull_request:
     paths:
-      - ".patchparts/**/meta.json"
+      - ".patchparts/current.json"
 
 permissions:
   contents: write
@@ -19,17 +17,14 @@ jobs:
       - name: Check out relay branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Apply patch to target branch
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
-          META=$(git diff --name-only "$BEFORE" "$AFTER" -- '.patchparts/**/meta.json' | tail -n 1)
-          test -n "$META"
-          DIR=$(dirname "$META")
+          DIR=$(python -c 'import json; print(json.load(open(".patchparts/current.json"))["directory"])')
+          META="$DIR/meta.json"
           TARGET=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["target"])' "$META")
           BASE=$(python -c 'import json,sys; print(json.load(open(sys.argv[1])).get("base", "main"))' "$META")
           MESSAGE=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["message"])' "$META")
