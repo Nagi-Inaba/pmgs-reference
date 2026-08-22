@@ -102,6 +102,8 @@ The default `--language` for `lookup` and `search` is `ja`. Specify `--language 
 
 The entire stdio diagnostic is bounded to 30 seconds by default, and `--timeout-seconds` accepts only a finite positive number. If startup, initialization, tool listing, any tool call, or shutdown exceeds the deadline, the task is cancelled, the stdio child process is terminated and reaped, and the result reports `failure.code: MCP_TIMEOUT` with the active `failure.stage`. Failure to select deterministic samples from the database reports `SAMPLE_SELECTION_FAILED`; a structurally invalid tool response reports `MCP_CONTRACT_FAILED`. Raw exception messages and full retrieved text are not copied into the failure payload.
 
+The JSON report returns only the database file name; it represents the sample query by SHA-256 and tool results by status/count summaries. It does not include local absolute paths, the query text, retrieved text, excerpts, or source paths.
+
 ## stdio MCP
 
 The server exposes only the following read-only tools:
