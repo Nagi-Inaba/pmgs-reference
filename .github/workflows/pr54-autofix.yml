@@ -1,16 +1,22 @@
 name: pr54-autofix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/fts5-index-integrity-v2
+      - main
+    types:
+      - synchronize
+      - reopened
+      - ready_for_review
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.event.pull_request.head.ref == 'fix/fts5-index-integrity-v2' &&
+      github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
