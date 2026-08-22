@@ -1,0 +1,65 @@
+name: pr53-reference-autofix
+
+on:
+  push:
+    branches:
+      - perf/paginated-hierarchy-clean
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: perf/paginated-hierarchy-clean
+          fetch-depth: 0
+
+      - name: Preserve reference-only hierarchy relations
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/pmgs_reference/store.py")
+          text = path.read_text(encoding="utf-8")
+          start = text.index("    def hierarchy(\n")
+          end = text.index("    def _all_hierarchy_summaries(\n", start)
+          block = text[start:end]
+          marker = "WHERE c.record_status = 'canonical'"
+          if block.count(marker) != 3:
+              raise SystemExit("unexpected hierarchy canonical-filter count")
+          block = block.replace(marker, "WHERE 1 = 1")
+          path.write_text(text[:start] + block + text[end:], encoding="utf-8")
+          PY
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify focused change
+        shell: bash
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          uv run --frozen ruff check src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          uv run --frozen mypy src
+          uv run --frozen pytest -q tests/test_hierarchy_pagination_contract.py tests/test_store.py
+
+      - name: Commit verified fix and remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pr53-reference-autofix.yml
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          git commit -m "fix: preserve reference-only hierarchy relations"
+          git push origin HEAD:perf/paginated-hierarchy-clean
