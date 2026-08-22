@@ -1015,20 +1015,53 @@ class PMGSStore:
         }
 
     def get_document(
-        self, document_id: str, page: int | None = None, section: str | None = None
+        self,
+        document_id: str,
+        page: int | None = None,
+        section: int | None = None,
+        *,
+        locator: str | None = None,
+        segment_limit: int = _MAX_DOCUMENT_SEGMENTS,
+        segment_offset: int = 0,
+        related_classification_limit: int = _MAX_RELATED_CONCEPTS,
+        related_classification_offset: int = 0,
     ) -> JSONDict:
         clean_id = document_id.strip()
         if not clean_id or len(clean_id) > 128 or _CONTROL_CHARACTER.search(clean_id):
             raise PMGSQueryError("INVALID_DOCUMENT_ID", "invalid PMGS document identifier")
-        if page is not None and section is not None:
+        if sum(value is not None for value in (page, section, locator)) > 1:
             raise PMGSQueryError(
-                "INVALID_DOCUMENT_SELECTOR", "page and section are mutually exclusive"
+                "INVALID_DOCUMENT_SELECTOR",
+                "page, section, and locator are mutually exclusive",
             )
         if page is not None and page < 1:
             raise PMGSQueryError("INVALID_PAGE", "page must be at least 1")
-        clean_section = section.strip() if section is not None else None
-        if clean_section == "":
-            raise PMGSQueryError("INVALID_SECTION", "section must not be empty")
+        if section is not None and section < 1:
+            raise PMGSQueryError("INVALID_SECTION", "section must be at least 1")
+        clean_locator = locator.strip() if locator is not None else None
+        if clean_locator == "":
+            raise PMGSQueryError("INVALID_LOCATOR", "locator must not be empty")
+        if clean_locator is not None and (
+            len(clean_locator) > 256 or _CONTROL_CHARACTER.search(clean_locator)
+        ):
+            raise PMGSQueryError("INVALID_LOCATOR", "locator must be 1 to 256 printable characters")
+        if not 1 <= segment_limit <= _MAX_DOCUMENT_SEGMENTS:
+            raise PMGSQueryError(
+                "INVALID_SEGMENT_LIMIT",
+                f"segment_limit must be between 1 and {_MAX_DOCUMENT_SEGMENTS}",
+            )
+        if segment_offset < 0:
+            raise PMGSQueryError("INVALID_SEGMENT_OFFSET", "segment_offset must be at least 0")
+        if not 1 <= related_classification_limit <= _MAX_RELATED_CONCEPTS:
+            raise PMGSQueryError(
+                "INVALID_RELATED_CLASSIFICATION_LIMIT",
+                f"related_classification_limit must be between 1 and {_MAX_RELATED_CONCEPTS}",
+            )
+        if related_classification_offset < 0:
+            raise PMGSQueryError(
+                "INVALID_RELATED_CLASSIFICATION_OFFSET",
+                "related_classification_offset must be at least 0",
+            )
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT d.*, sf.source_id, sf.relative_path, sf.sha256, "
@@ -1042,22 +1075,30 @@ class PMGSStore:
             filters = ["document_id = ?"]
             parameters: list[object] = [clean_id]
             if page is not None:
-                filters.append("locator = ?")
-                parameters.append(f"page:{page}")
-            elif clean_section is not None:
-                filters.append("(locator = ? OR heading = ?)")
-                parameters.extend((clean_section, clean_section))
+                filters.append("(locator = ? OR source_locator = ?)")
+                parameters.extend((f"page:{page}", f"page:{page}"))
+            elif section is not None:
+                filters.append("sequence_number = ?")
+                parameters.append(section)
+            elif clean_locator is not None:
+                filters.append("(locator = ? OR heading = ? OR source_locator = ?)")
+                parameters.extend((clean_locator, clean_locator, clean_locator))
             where = " AND ".join(filters)
             count = int(
                 connection.execute(
                     f"SELECT COUNT(*) FROM document_text WHERE {where}", parameters
                 ).fetchone()[0]
             )
+            if any(value is not None for value in (page, section, clean_locator)) and count == 0:
+                raise PMGSQueryError(
+                    "DOCUMENT_SELECTOR_NOT_FOUND",
+                    "document selector did not match any segment",
+                )
             segments = connection.execute(
                 "SELECT sequence_number, locator, heading, text, source_locator "
                 f"FROM document_text WHERE {where} "
-                "ORDER BY sequence_number LIMIT ?",
-                (*parameters, _MAX_DOCUMENT_SEGMENTS),
+                "ORDER BY sequence_number LIMIT ? OFFSET ?",
+                (*parameters, segment_limit, segment_offset),
             ).fetchall()
             related_rows = connection.execute(
                 "SELECT c.scheme, c.edition, c.normalized_code, "
@@ -1070,8 +1111,13 @@ class PMGSStore:
                 "WHERE drl.document_id = ?) links "
                 "JOIN concept c ON c.concept_id = links.concept_id "
                 "ORDER BY c.scheme, c.edition, c.normalized_code, "
-                "links.version_indicator, links.kind LIMIT ?",
-                (clean_id, clean_id, _MAX_RELATED_CONCEPTS),
+                "links.version_indicator, links.kind LIMIT ? OFFSET ?",
+                (
+                    clean_id,
+                    clean_id,
+                    related_classification_limit,
+                    related_classification_offset,
+                ),
             ).fetchall()
             related_count = int(
                 connection.execute(
@@ -1080,14 +1126,25 @@ class PMGSStore:
                     (clean_id, clean_id),
                 ).fetchone()[0]
             )
+        next_segment_offset = segment_offset + len(segments)
+        next_related_offset = related_classification_offset + len(related_rows)
         return _bounded_structured_response(
             {
                 "schema_version": SCHEMA_VERSION,
                 **self._document_summary(cast(sqlite3.Row, row)),
                 "metadata": cast(JSONValue, json.loads(str(row["metadata_json"]))),
-                "selector": {"page": page, "section": clean_section},
+                "selector": {
+                    "page": page,
+                    "section": section,
+                    "locator": clean_locator,
+                },
                 "segment_count": count,
-                "segments_truncated": count > len(segments),
+                "segment_limit": segment_limit,
+                "segment_offset": segment_offset,
+                "segments_truncated": next_segment_offset < count,
+                "next_segment_offset": (
+                    next_segment_offset if next_segment_offset < count else None
+                ),
                 "segments": [
                     {
                         "sequence_number": int(item["sequence_number"]),
@@ -1099,7 +1156,12 @@ class PMGSStore:
                     for item in segments
                 ],
                 "related_classification_count": related_count,
-                "related_classifications_truncated": related_count > len(related_rows),
+                "related_classification_limit": related_classification_limit,
+                "related_classification_offset": related_classification_offset,
+                "related_classifications_truncated": next_related_offset < related_count,
+                "next_related_classification_offset": (
+                    next_related_offset if next_related_offset < related_count else None
+                ),
                 "related_classifications": [
                     {
                         "scheme": str(item["scheme"]),

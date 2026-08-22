@@ -53,7 +53,7 @@ release = store.release_info()
 - `parents(scheme, code, release="current", edition=None)`
 - `children(scheme, code, release="current", edition=None)`
 - `related_documents(scheme, code, release="current", edition=None)`
-- `get_document(document_id, page=None, section=None)`
+- `get_document(document_id, page=None, section=None, *, locator=None, segment_limit=200, segment_offset=0, related_classification_limit=200, related_classification_offset=0)`
 - `search_documents(query, release="current", language="ja", limit=20)`
 - `release_info(release="current")`
 
@@ -77,11 +77,13 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 
 `search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
 
-## 文書応答の上限
+## 文書selectorとページング
 
-`get_document`へ`page`も`section`も指定しない場合、1応答を200節までに制限する。文書全体がそれを超える場合は`segments_truncated: true`と総数を返す。
+`page`、`section`、`locator`は相互排他である。`page`はPDF等の1始まりページ番号、`section`は`document_text.sequence_number`に対応する1始まりのsegment番号を表す。文字列でlocator、heading、source locatorを完全一致させる場合だけ`locator`を使う。同じselector名はPython API、CLI、stdio MCP、公開APIで同じ型と意味を持つ。
 
-関連分類も1応答200件までとし、総数と`related_classifications_truncated`を返す。PDFは`page=1`のようにページ単位で取得できる。
+segmentは`segment_limit`と`segment_offset`でページングする。応答は`segment_count`、`segment_limit`、`segment_offset`、`segments_truncated`、`next_segment_offset`を返す。関連分類は独立した`related_classification_limit`と`related_classification_offset`を使い、`related_classification_count`、`related_classifications_truncated`、`next_related_classification_offset`を返す。各limitの上限は200件である。
+
+`segments_truncated: true`または`related_classifications_truncated: true`の場合は、対応する`next_*_offset`を次の呼出しへ渡す。存在しないselectorは`DOCUMENT_SELECTOR_NOT_FOUND`、selectorの同時指定は`INVALID_DOCUMENT_SELECTOR`としてfail closedにする。
 
 ## CLI
 
@@ -91,6 +93,8 @@ pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --json
 pmgs document DOCUMENT_ID --page 1 --json
+pmgs document DOCUMENT_ID --section 201 --segment-limit 50 --segment-offset 0 --json
+pmgs document DOCUMENT_ID --locator "page:1" --related-classification-limit 50 --json
 pmgs doctor --json
 ```
 

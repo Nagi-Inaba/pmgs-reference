@@ -146,7 +146,14 @@ def _build_parser() -> argparse.ArgumentParser:
     document = subparsers.add_parser("document", help="特許庁提供のPMGS文書を読む")
     document.add_argument("document_id")
     _add_database_options(document)
-    document.add_argument("--page", type=int)
+    selector = document.add_mutually_exclusive_group()
+    selector.add_argument("--page", type=int, help="PDF等の1始まりのページ番号")
+    selector.add_argument("--section", type=int, help="1始まりのsegment sequence番号")
+    selector.add_argument("--locator", help="locator、heading、source locatorの完全一致")
+    document.add_argument("--segment-limit", type=int, default=200)
+    document.add_argument("--segment-offset", type=int, default=0)
+    document.add_argument("--related-classification-limit", type=int, default=200)
+    document.add_argument("--related-classification-offset", type=int, default=0)
     document.add_argument("--json", action="store_true")
 
     mcp = subparsers.add_parser("mcp", help="読み取り専用stdio MCP serverを起動する")
@@ -437,7 +444,14 @@ def _run_search(args: argparse.Namespace) -> int:
 
 def _run_document(args: argparse.Namespace) -> int:
     payload = PMGSStore.open(args.db, data_dir=args.data_dir).get_document(
-        args.document_id, args.page
+        args.document_id,
+        page=args.page,
+        section=args.section,
+        locator=args.locator,
+        segment_limit=args.segment_limit,
+        segment_offset=args.segment_offset,
+        related_classification_limit=args.related_classification_limit,
+        related_classification_offset=args.related_classification_offset,
     )
     if args.json:
         _json_output(payload)

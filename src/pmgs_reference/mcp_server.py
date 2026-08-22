@@ -37,7 +37,8 @@ Version = Annotated[
     str,
     Field(pattern=r"^(?:[0-9]{4}\.[0-9]{2}|\([0-9]{4}\.[0-9]{2}\))$"),
 ]
-Section = Annotated[str, Field(min_length=1, max_length=128)]
+Section = Annotated[int, Field(ge=1)]
+Locator = Annotated[str, Field(min_length=1, max_length=256)]
 Limit = Annotated[int, Field(ge=1, le=100)]
 RelationLimit = Annotated[int, Field(ge=1, le=200)]
 Offset = Annotated[int, Field(ge=0)]
@@ -167,9 +168,23 @@ def create_server(
         document_id: Code,
         page: Annotated[int, Field(ge=1)] | None = None,
         section: Section | None = None,
+        locator: Locator | None = None,
+        segment_limit: RelationLimit = 200,
+        segment_offset: Offset = 0,
+        related_classification_limit: RelationLimit = 200,
+        related_classification_offset: Offset = 0,
     ) -> dict[str, JSONValue]:
         try:
-            return store.get_document(document_id, page, section)
+            return store.get_document(
+                document_id,
+                page=page,
+                section=section,
+                locator=locator,
+                segment_limit=segment_limit,
+                segment_offset=segment_offset,
+                related_classification_limit=related_classification_limit,
+                related_classification_offset=related_classification_offset,
+            )
         except PMGSQueryError as error:
             raise _tool_error(error) from error
         except (OSError, sqlite3.Error, ValueError) as error:

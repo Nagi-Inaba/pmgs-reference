@@ -401,7 +401,7 @@ export async function getDocument(
   }
   const chunkEntry = findDocumentChunk(manifestPayload.chunks, page, section);
   if (chunkEntry === null || !chunkEntry.json_key.startsWith(`${prefix}/`)) {
-    throw new PublicError(404, "DOCUMENT_NOT_FOUND", "document section not found");
+    throw new PublicError(404, "DOCUMENT_SELECTOR_NOT_FOUND", "document selector not found");
   }
   const chunkPayload = await reader.getJson(chunkEntry.json_key);
   if (
@@ -422,7 +422,7 @@ export async function getDocument(
     return true;
   });
   if ((page !== null || section !== null) && segments.length === 0) {
-    throw new PublicError(404, "DOCUMENT_NOT_FOUND", "document section not found");
+    throw new PublicError(404, "DOCUMENT_SELECTOR_NOT_FOUND", "document selector not found");
   }
   const chunkIndex = manifestPayload.chunks.findIndex(
     (entry) => entry.chunk_id === chunkEntry.chunk_id,
