@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 _FTS_TABLES = ("concept_text_fts", "document_text_fts")
-_SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 3)
+_SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 1)
 
 
 def _check(expected: object, actual: object, match: bool | None = None) -> dict[str, object]:
