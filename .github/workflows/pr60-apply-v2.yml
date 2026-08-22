@@ -1,0 +1,98 @@
+name: pr60-apply-v2
+
+on:
+  push:
+    branches:
+      - fix/cli-json-error-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/cli-json-error-contract
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Apply and record focused verification
+        shell: bash
+        run: |
+          set +e
+          python scripts/apply_cli_json_error_fix_v2.py > /tmp/apply.log 2>&1
+          apply_status=$?
+          if [ "$apply_status" -eq 0 ]; then
+            uv sync --frozen --all-groups > /tmp/sync.log 2>&1
+            sync_status=$?
+            uv run --frozen ruff format src/pmgs_reference/cli.py tests/test_cli_json_errors.py > /tmp/format.log 2>&1
+            format_status=$?
+            uv run --frozen ruff check src/pmgs_reference/cli.py tests/test_cli_json_errors.py > /tmp/ruff.log 2>&1
+            ruff_status=$?
+            uv run --frozen mypy src > /tmp/mypy.log 2>&1
+            mypy_status=$?
+            uv run --frozen pytest -q tests/test_cli_json_errors.py tests/test_cli_query.py tests/test_setup_cli.py > /tmp/pytest.log 2>&1
+            pytest_status=$?
+          else
+            sync_status=99
+            format_status=99
+            ruff_status=99
+            mypy_status=99
+            pytest_status=99
+          fi
+
+          cat > docs/verification/cli-json-errors-apply.md <<EOF
+          # CLI JSON implementation application v2
+
+          - apply: $apply_status
+          - sync: $sync_status
+          - format: $format_status
+          - ruff: $ruff_status
+          - mypy: $mypy_status
+          - focused pytest: $pytest_status
+
+          ## apply output
+
+          \`\`\`
+          $(tail -n 80 /tmp/apply.log 2>/dev/null)
+          \`\`\`
+
+          ## ruff output
+
+          \`\`\`
+          $(tail -n 80 /tmp/ruff.log 2>/dev/null)
+          \`\`\`
+
+          ## mypy output
+
+          \`\`\`
+          $(tail -n 80 /tmp/mypy.log 2>/dev/null)
+          \`\`\`
+
+          ## focused pytest output
+
+          \`\`\`
+          $(tail -n 160 /tmp/pytest.log 2>/dev/null)
+          \`\`\`
+          EOF
+
+      - name: Commit application result and remove one-shot files
+        shell: bash
+        run: |
+          git rm .github/workflows/pr60-apply-v2.yml scripts/apply_cli_json_error_fix_v2.py
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/cli.py tests/test_cli_json_errors.py docs/verification/cli-json-errors-apply.md
+          git commit -m "fix: apply marker-based CLI JSON error contract"
+          git push origin HEAD:fix/cli-json-error-contract
