@@ -10,7 +10,7 @@
 
 The canonical database is never opened for writing. The existing structural and semantic validator remains content-identical in `validation_core.py`; the public `validation.py` facade adds two dedicated FTS5 checks while preserving `ValidationResult`, `logical_digest`, `validate_database`, and `write_validation_report`.
 
-SQLite 3.44.0 added virtual-table `xIntegrity` coverage to `PRAGMA integrity_check`, but read-only FTS3/FTS5 handling was corrected in SQLite 3.45.3. PMGS Reference therefore relies on native `PRAGMA integrity_check` coverage only on SQLite 3.45.3 or newer and only when the core integrity result is `ok`.
+SQLite 3.44.0 added virtual-table `xIntegrity` coverage to `PRAGMA integrity_check`. SQLite 3.45.1 fixed read-only databases containing FTS3 and FTS5 tables. PMGS Reference therefore relies on native `PRAGMA integrity_check` coverage only on SQLite 3.45.1 or newer and only when the core integrity result is `ok`.
 
 For earlier SQLite runtimes, or when the core integrity result is already abnormal, validation creates a disposable full database copy using SQLite's backup API. The source connection uses `mode=ro` and `query_only`. The copy is opened for writing and each FTS5 table receives the official `integrity-check` special command. This checks both the internal index structures and, for these non-external-content tables, consistency between the stored content and the inverted index.
 
@@ -42,13 +42,14 @@ This keeps validation reports and synthetic determinism identical across support
 `tests/test_fts_integrity_contract.py` verifies:
 
 1. healthy databases receive both dedicated checks and retain the same SHA-256;
-2. SQLite 3.44.0 through 3.45.2 use the fallback because read-only native coverage is not considered reliable;
-3. the native path does not create a redundant database copy;
-4. the fallback checks one disposable copy and preserves the source;
-5. a content shadow row can remain visible while its postings are absent, the existing visible-row parity still succeeds, and the exact copy check rejects the database;
-6. backup failure is sanitized and fails both indexes;
-7. arbitrary table names are rejected before SQL interpolation;
-8. successful check payloads remain identical across supported platforms.
+2. SQLite 3.44.0 through 3.45.0 use the fallback because read-only native coverage is not reliable;
+3. SQLite 3.45.1 and newer may use the native path;
+4. the native path does not create a redundant database copy;
+5. the fallback checks one disposable copy and preserves the source;
+6. a content shadow row can remain visible while its postings are absent, the existing visible-row parity still succeeds, and the exact copy check rejects the database;
+7. backup failure is sanitized and fails both indexes;
+8. arbitrary table names are rejected before SQL interpolation;
+9. successful check payloads remain identical across supported platforms.
 
 ## Cost and unobserved evidence
 
