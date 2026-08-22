@@ -50,8 +50,9 @@ release = store.release_info()
 - `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
 - `search(query, schemes=None, release="current", language="ja", limit=20, *, offset=0)`
 - `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
-- `parents(scheme, code, release="current", edition=None)`
-- `children(scheme, code, release="current", edition=None)`
+- `hierarchy(direction, scheme, code, release="current", edition=None, language="ja", *, limit=50, offset=0)`
+- `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
+- `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
 - `related_documents(scheme, code, release="current", edition=None)`
 - `get_document(document_id, page=None, section=None)`
 - `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
@@ -64,6 +65,8 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 分類照会は候補を推測しない。コードが存在しない場合は、空の共通レコードを`match_status: not_found`で返す。入力不正、release不明、文書不明、DBエラーは`PMGSQueryError`の安全な`code`と`message`で区別する。
 
 関係は安定順でページングし、`relation_count`、`relations_truncated`、`next_relation_offset`を返す。`relation_limit`は最大200件である。分類・文書の構造化応答がUTF-8 JSONで4 MiBを超える場合は`RESPONSE_TOO_LARGE`でfail closedにする。
+
+階層一覧は`hierarchy()`を正本とし、親または子を`count`、`limit`、`offset`、`truncated`、`next_offset`付きのbounded summaryとして返す。各summaryはscheme、edition、code、version、label、record statusだけを持ち、一件ごとの完全な`lookup()`を行わない。`parents()`と`children()`は、`limit`を指定した場合は同じページ応答を返し、省略時は互換性のため全ページのsummary listを返す。release基準日に複数revisionが同時にactiveな場合は、並び順で一つを選ばず`MULTIPLE_ACTIVE_REVISIONS`でfail closedにする。
 
 ## 文字列検索
 
