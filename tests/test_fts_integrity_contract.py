@@ -121,6 +121,10 @@ def test_unknown_fts_table_is_rejected_before_sql_interpolation(
     connection = sqlite3.connect(f"file:{synthetic_database.as_posix()}?mode=ro", uri=True)
     try:
         with pytest.raises(ValueError, match="unsupported FTS5 table"):
-            validation_module._fts5_index_integrity(connection, "malicious'; DROP TABLE release;--", "ok")
+            validation_module._fts5_index_integrity(
+                connection,
+                "malicious'; DROP TABLE release;--",
+                "ok",
+            )
     finally:
         connection.close()
