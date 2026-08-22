@@ -3,17 +3,31 @@ export type PageFormat = "html" | "markdown";
 interface MediaRange {
   type: string;
   subtype: string;
+  parameters: Readonly<Record<string, string>>;
   quality: number;
   order: number;
 }
 
-const REPRESENTATIONS: Readonly<Record<PageFormat, readonly [string, string]>> = {
-  html: ["text", "html"],
-  markdown: ["text", "markdown"],
+interface Representation {
+  type: string;
+  subtype: string;
+  parameters: Readonly<Record<string, string>>;
+}
+
+const REPRESENTATIONS: Readonly<Record<PageFormat, Representation>> = {
+  html: { type: "text", subtype: "html", parameters: { charset: "utf-8" } },
+  markdown: { type: "text", subtype: "markdown", parameters: { charset: "utf-8" } },
 };
 
+function unquote(raw: string): string {
+  const value = raw.trim();
+  return value.length >= 2 && value.startsWith('"') && value.endsWith('"')
+    ? value.slice(1, -1)
+    : value;
+}
+
 function parseQuality(raw: string): number {
-  const parsed = Number(raw.trim().replace(/^"|"$/gu, ""));
+  const parsed = Number(unquote(raw));
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0;
 }
 
@@ -28,32 +42,52 @@ function parseAccept(value: string): MediaRange[] {
     if (rawType === undefined || rawSubtype === undefined || extra.length > 0) {
       continue;
     }
+
+    const parameters: Record<string, string> = {};
     let quality = 1;
+    let sawQuality = false;
     for (const rawParameter of rawParameters) {
-      const [rawName, rawValue] = rawParameter.split("=", 2);
-      if (rawName?.trim().toLowerCase() === "q") {
-        quality = rawValue === undefined ? 0 : parseQuality(rawValue);
-        break;
+      const separator = rawParameter.indexOf("=");
+      const rawName = separator < 0 ? rawParameter : rawParameter.slice(0, separator);
+      const rawValue = separator < 0 ? "" : rawParameter.slice(separator + 1);
+      const name = rawName.trim().toLowerCase();
+      if (name === "") continue;
+      if (!sawQuality && name === "q") {
+        quality = rawValue === "" ? 0 : parseQuality(rawValue);
+        sawQuality = true;
+        continue;
       }
+      if (!sawQuality) {
+        const parameterValue = unquote(rawValue);
+        parameters[name] = name === "charset" ? parameterValue.toLowerCase() : parameterValue;
+      }
+      // Parameters after q are accept extensions and do not constrain the media range.
     }
-    ranges.push({ type: rawType, subtype: rawSubtype, quality, order });
+    ranges.push({ type: rawType, subtype: rawSubtype, parameters, quality, order });
   }
   return ranges;
 }
 
-function matchSpecificity(range: MediaRange, type: string, subtype: string): number {
-  if (range.type === type && range.subtype === subtype) return 2;
-  if (range.type === type && range.subtype === "*") return 1;
+function parametersMatch(range: MediaRange, representation: Representation): boolean {
+  return Object.entries(range.parameters).every(
+    ([name, value]) => representation.parameters[name] === value,
+  );
+}
+
+function matchSpecificity(range: MediaRange, representation: Representation): number {
+  if (!parametersMatch(range, representation)) return -1;
+  if (range.type === representation.type && range.subtype === representation.subtype) return 2;
+  if (range.type === representation.type && range.subtype === "*") return 1;
   if (range.type === "*" && range.subtype === "*") return 0;
   return -1;
 }
 
 function representationQuality(ranges: MediaRange[], format: PageFormat): number {
-  const [type, subtype] = REPRESENTATIONS[format];
+  const representation = REPRESENTATIONS[format];
   let selected: MediaRange | null = null;
   let selectedSpecificity = -1;
   for (const range of ranges) {
-    const specificity = matchSpecificity(range, type, subtype);
+    const specificity = matchSpecificity(range, representation);
     if (specificity < 0) continue;
     if (
       selected === null ||
