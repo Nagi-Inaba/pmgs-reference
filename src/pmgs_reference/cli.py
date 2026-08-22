@@ -187,8 +187,7 @@ class JapaneseArgumentParser(argparse.ArgumentParser):
             )
             self.exit(2)
         self.print_usage(sys.stderr)
-        self.exit(2, f"{self.prog}: エラー: {message}
-")
+        self.exit(2, f"{self.prog}: エラー: {message}\n")
 
 
 def _build_parser(
@@ -750,18 +749,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "CURRENT_POINTER_INVALID",
                 "managed current pointer is invalid",
             )
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except SetupOperationError as exc:
         if json_mode:
             return _emit_failure(command, "SETUP_FAILED", "setup operation failed")
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except PMGSQueryError as exc:
         if json_mode:
             return _emit_failure(command, exc.code, _safe_query_message(exc.code))
-        parser.exit(1, f"error [{exc.code}]: {exc.message}
-")
+        parser.exit(1, f"error [{exc.code}]: {exc.message}\n")
     except FileNotFoundError as exc:
         if json_mode:
             return _emit_failure(
@@ -769,18 +765,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "FILE_NOT_FOUND",
                 "required file or directory was not found",
             )
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except PermissionError as exc:
         if json_mode:
             return _emit_failure(command, "PERMISSION_DENIED", "permission denied")
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except BuildError as exc:
         if json_mode:
             return _emit_failure(command, "BUILD_FAILED", "database build failed")
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except RuntimeError as exc:
         if json_mode:
             if command == "doctor":
@@ -800,14 +793,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "public export failed",
                 )
             return _emit_failure(command, "IO_ERROR", "I/O operation failed")
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except ValueError as exc:
         if json_mode:
             code, message = _value_error_code(command)
             return _emit_failure(command, code, message)
-        parser.exit(1, f"error: {exc}
-")
+        parser.exit(1, f"error: {exc}\n")
     except Exception:
         if json_mode:
             return _emit_failure(command, "INTERNAL_ERROR", "internal operation failed")
