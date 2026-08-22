@@ -210,12 +210,16 @@ async def _check_stdio(
     classification_group = (
         search_groups.get("classification") if isinstance(search_groups, dict) else None
     )
+    classification_count = (
+        classification_group.get("count") if isinstance(classification_group, dict) else None
+    )
     search_ok = (
         search_payload.get("schema_version") == "2.0"
         and isinstance(classification_group, dict)
         and classification_group.get("requested") is True
-        and isinstance(classification_group.get("count"), int)
-        and int(classification_group["count"]) >= 1
+        and isinstance(classification_count, int)
+        and not isinstance(classification_count, bool)
+        and classification_count >= 1
     )
     segments = document_payload.get("segments")
     document_ok = (
