@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
@@ -10,6 +11,11 @@ import pmgs_reference.setup as local_setup_module
 from pmgs_reference import __version__
 from pmgs_reference.cli import main
 from pmgs_reference.client_integration import ClientTarget
+
+
+class InteractiveInput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def test_setup_help_and_package_version_are_public(capsys: pytest.CaptureFixture[str]) -> None:
@@ -99,6 +105,36 @@ def test_json_dry_run_writes_one_result_to_stdout_and_progress_to_stderr(
     assert payload["inventory"]["file_count"] == 26
     assert "棚卸し" in captured.err
     assert not data_root.exists()
+
+
+def test_interactive_registration_prompt_shows_the_resolved_executable(
+    synthetic_pmgs: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "npm" / "codex.cmd"
+    target = ClientTarget("codex", executable)
+    monkeypatch.setattr(cli_module, "detect_client_targets", lambda _selection: (target,))
+    monkeypatch.setattr(cli_module.sys, "stdin", InteractiveInput("n\n"))
+
+    result = main(
+        [
+            "setup",
+            str(synthetic_pmgs),
+            "--release",
+            "JPPM2099001",
+            "--data-dir",
+            str(tmp_path / "data"),
+            "--client",
+            "auto",
+            "--dry-run",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert str(executable) in captured.err
 
 
 def test_human_setup_reports_the_client_that_failed(

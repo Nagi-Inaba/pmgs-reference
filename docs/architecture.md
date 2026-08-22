@@ -125,6 +125,7 @@ v1はsource policyを一つに限定する。
 
 - PMGS入力は信頼済み形式とはみなさず、サイズ、文字コード、列数、XML解析、PDF抽出を検証する。
 - CLI引数、環境変数、HTTP query、path parameterはすべて外部入力として検証する。
+- Codex・Claude Codeの自動検出は`PATH`をローカル実行環境の信頼入力として扱う。ただしWindowsの暗黙の作業ディレクトリ探索と空・相対`PATH`要素は使用せず、対話登録では実行前に解決済みパスを表示する。
 - 公開exportはローカルパス、ユーザー名、認証情報、元ファイル、SQLiteを含まないことを検査する。
 - R2 keyはallowlist済みのscheme、release、languageと、Pythonが生成したmanifestから組み立てる。
 

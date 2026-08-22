@@ -29,7 +29,7 @@ You need:
 - [uv](https://docs.astral.sh/uv/)
 - an extracted PMGS directory (a ZIP file cannot be passed directly)
 - enough free space at the database destination
-- when registering with Codex or Claude Code, the selected CLI is installed and available on `PATH`
+- when registering with Codex or Claude Code, the selected CLI is installed and available from an absolute `PATH` entry. On Windows, setup does not implicitly search the working directory and shows the resolved executable in interactive confirmation
 
 The PMGS directory must use a release name made of `JPPM` followed by digits, such as `JPPM2026002`; otherwise pass the release explicitly, for example `--release JPPM2026002`.
 For JPPM2026002, the measured pre-build requirement is about 7.56 GB of free space and the completed SQLite database is about 3.37 GB.
