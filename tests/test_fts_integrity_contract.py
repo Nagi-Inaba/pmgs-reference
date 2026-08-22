@@ -221,6 +221,68 @@ def test_copy_failure_is_sanitized_and_fails_both_indexes(
         assert synthetic_database.as_posix() not in str(checks[name])
 
 
+@pytest.mark.parametrize(
+    ("virtual_table", "create_sql", "insert_sql", "integrity_check"),
+    [
+        (
+            "concept_text_fts",
+            "CREATE TABLE concept_text_fts("
+            "text TEXT NOT NULL, revision_id INTEGER NOT NULL, "
+            "language TEXT NOT NULL, kind TEXT NOT NULL)",
+            "INSERT INTO concept_text_fts(rowid, text, revision_id, language, kind) "
+            "SELECT text_id, text, revision_id, language, kind FROM concept_text",
+            "concept_text_fts_integrity",
+        ),
+        (
+            "document_text_fts",
+            "CREATE TABLE document_text_fts("
+            "text TEXT NOT NULL, document_id TEXT NOT NULL, "
+            "sequence_number INTEGER NOT NULL)",
+            "INSERT INTO document_text_fts(rowid, text, document_id, sequence_number) "
+            "SELECT document_text_id, text, document_id, sequence_number FROM document_text",
+            "document_text_fts_integrity",
+        ),
+    ],
+)
+def test_native_path_rejects_non_fts_table_with_the_expected_name(
+    synthetic_database: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    virtual_table: str,
+    create_sql: str,
+    insert_sql: str,
+    integrity_check: str,
+) -> None:
+    database = tmp_path / f"ordinary-{virtual_table}.sqlite"
+    shutil.copy2(synthetic_database, database)
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(f'DROP TABLE "{virtual_table}"')
+        connection.execute(create_sql)
+        connection.execute(insert_sql)
+        connection.commit()
+    finally:
+        connection.close()
+
+    core_result = validate_core_database(database)
+    assert core_result.valid is True
+
+    def unexpected_copy(_: Path) -> dict[str, dict[str, object]]:
+        raise AssertionError("invalid FTS5 schema must fail before copying")
+
+    monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: True)
+    monkeypatch.setattr(validation_module, "_copy_fts5_checks", unexpected_copy)
+
+    result = validate_database(database)
+
+    assert result.valid is False
+    assert result.checks[integrity_check] == {
+        "expected": "consistent",
+        "actual": "not_fts5",
+        "match": False,
+    }
+
+
 def test_unknown_fts_table_is_rejected_before_sql_interpolation(
     synthetic_database: Path,
 ) -> None:
