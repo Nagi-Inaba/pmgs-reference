@@ -60,8 +60,8 @@ def _as_limit(limit: int) -> int:
 
 
 def _as_offset(offset: int) -> int:
-    if offset < 0:
-        raise PMGSQueryError("INVALID_OFFSET", "offset must be at least 0")
+    if not 0 <= offset <= 2**63 - 1:
+        raise PMGSQueryError("INVALID_OFFSET", "offset must fit in a SQLite signed 64-bit integer")
     return offset
 
 

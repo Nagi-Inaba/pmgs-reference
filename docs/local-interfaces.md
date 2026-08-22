@@ -75,7 +75,7 @@ IPCのversion省略時はrelease基準日に有効な唯一のrevisionを返す�
 - `sqlite_literal_substring_lexical`
 - MCPで分類と文書が異なる経路になった場合の`mixed_lexical`
 
-`search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。各ページは`limit`、`offset`、`has_more`、`next_offset`を返す。複合検索では`classification_offset`と`document_offset`を別々に指定し、一方の結果だけを続けて取得できる。重複する本文行は分類または文書単位でまとめてからページ上限を適用する。いずれも文字列検索であ㒊、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
+`search()`は互換性のため分類だけを検索する。`search_pmgs()`は分類と文書を`results_by_type.classification`と`results_by_type.document`へ分け、`limit`を各種類へ独立適用する。各ページは`limit`、`offset`、`has_more`、`next_offset`を返す。複合検索では`classification_offset`と`document_offset`を別々に指定し、一方の結果だけを続けて取得できる。重複する本文行は分類または文書単位でまとめてからページ上限を適用する。いずれも文字列検索であり、意味検索ではない。類義語、表記揺れ、分類候補をAIで補わない。
 
 ## 文書応答の上限
 
