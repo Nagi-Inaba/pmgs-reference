@@ -17,4 +17,4 @@ CI run #441 reproduced the expected failures for argparse errors, always-JSON co
 - human mode keeps the existing readable stderr behavior;
 - UI-language localization remains outside this PR and is tracked by Issue #33.
 
-The first exact-text patch failed with `parser class anchor mismatch`. A marker-based v2 application now replaces only the parser class, parser construction, validation handler, and `main()` exception boundary. Final implementation, hosted CI evidence, review findings, and remaining limitations will be recorded after GREEN verification.
+The first exact-text patch failed with `parser class anchor mismatch`. The marker-based v2 patch applied the intended regions, but nested source generation converted nine `\n` escapes into literal line breaks inside f-strings. A bounded nine-replacement repair now restores those escapes before running format, mypy, focused tests, the full suite, and package build.
