@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import pmgs_reference.setup as setup_module
+import pmgs_reference.setup as setup_service
 from pmgs_reference.diagnostics import DoctorResult
 from pmgs_reference.setup import setup_reference
 
@@ -43,7 +43,7 @@ def test_setup_lock_is_released_after_a_doctor_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     data_root = tmp_path / "pmgs-reference"
-    real_doctor = setup_module.doctor_database
+    real_doctor = setup_service.doctor_database
     calls = 0
 
     def fail_once(database: str | Path, **kwargs: object) -> DoctorResult:
@@ -53,7 +53,7 @@ def test_setup_lock_is_released_after_a_doctor_timeout(
             return _timeout_result(Path(database))
         return real_doctor(database, **kwargs)
 
-    monkeypatch.setattr(setup_module, "doctor_database", fail_once)
+    monkeypatch.setattr(setup_service, "doctor_database", fail_once)
 
     failed = setup_reference(
         synthetic_pmgs,
