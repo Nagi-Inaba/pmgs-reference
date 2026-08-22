@@ -59,6 +59,12 @@ def _as_limit(limit: int) -> int:
     return limit
 
 
+def _as_offset(offset: int) -> int:
+    if not 0 <= offset <= 2**63 - 1:
+        raise PMGSQueryError("INVALID_OFFSET", "offset must fit in a SQLite signed 64-bit integer")
+    return offset
+
+
 def _as_relation_page(limit: int, offset: int) -> tuple[int, int]:
     if not 1 <= limit <= _MAX_RELATION_LIMIT:
         raise PMGSQueryError(
@@ -785,12 +791,15 @@ class PMGSStore:
         release: str = "current",
         language: str = "ja",
         limit: int = 20,
+        *,
+        offset: int = 0,
     ) -> JSONDict:
-        """Search only canonical classifications active at the release reference date."""
+        """Search canonical classifications with stable distinct-result pagination."""
         valid_query = _as_query(query)
         valid_schemes = self._validated_schemes(schemes)
         valid_language = _as_language(language)
         valid_limit = _as_limit(limit)
+        valid_offset = _as_offset(offset)
         placeholders = ",".join("?" for _ in valid_schemes)
         with self._connect() as connection:
             release_row = self._resolve_release(connection, release)
@@ -807,16 +816,25 @@ class PMGSStore:
             )
             if self.search_tokenizer == "trigram" and _uses_trigram(valid_query):
                 rows = connection.execute(
-                    "SELECT c.scheme, c.edition, c.normalized_code, cr.version_indicator, ct.kind, "
+                    "WITH raw_matches AS ("
+                    "SELECT c.scheme, c.edition, c.normalized_code, cr.version_indicator, "
+                    "ct.kind, ct.text_id AS match_id, "
                     "snippet(concept_text_fts, 0, '', '', ' … ', 24) AS excerpt, "
                     "bm25(concept_text_fts) AS rank, sf.source_id FROM concept_text_fts "
                     "JOIN concept_text ct ON ct.text_id = concept_text_fts.rowid "
                     + common
                     + "WHERE concept_text_fts MATCH ? AND c.release_id = ? AND "
                     + active
-                    + f"AND c.scheme IN ({placeholders}) AND ct.language = ? "
-                    "ORDER BY rank, c.scheme, c.edition DESC, c.normalized_code, "
-                    "cr.version_indicator, ct.kind LIMIT ?",
+                    + f"AND c.scheme IN ({placeholders}) AND ct.language = ?"
+                    "), ranked_matches AS ("
+                    "SELECT *, ROW_NUMBER() OVER ("
+                    "PARTITION BY scheme, edition, normalized_code, version_indicator "
+                    "ORDER BY rank, kind, match_id) AS identity_rank FROM raw_matches"
+                    ") SELECT scheme, edition, normalized_code, version_indicator, kind, "
+                    "excerpt, rank, source_id, match_id FROM ranked_matches "
+                    "WHERE identity_rank = 1 "
+                    "ORDER BY rank, scheme, edition DESC, normalized_code, version_indicator, "
+                    "kind, match_id LIMIT ? OFFSET ?",
                     (
                         _fts_expression(valid_query),
                         release_id,
@@ -824,7 +842,8 @@ class PMGSStore:
                         reference_date,
                         *valid_schemes,
                         valid_language,
-                        valid_limit * 5,
+                        valid_limit + 1,
+                        valid_offset,
                     ),
                 ).fetchall()
                 search_mode = "sqlite_fts5_trigram_lexical"
@@ -832,14 +851,23 @@ class PMGSStore:
                 terms = valid_query.split()
                 like_conditions = " AND ".join("ct.text LIKE ? ESCAPE '\\'" for _ in terms)
                 rows = connection.execute(
-                    "SELECT c.scheme, c.edition, c.normalized_code, cr.version_indicator, ct.kind, "
-                    "ct.text AS excerpt, 0.0 AS rank, sf.source_id FROM concept_text ct "
+                    "WITH raw_matches AS ("
+                    "SELECT c.scheme, c.edition, c.normalized_code, cr.version_indicator, "
+                    "ct.kind, ct.text_id AS match_id, ct.text AS excerpt, 0.0 AS rank, "
+                    "sf.source_id FROM concept_text ct "
                     + common
                     + f"WHERE {like_conditions} AND c.release_id = ? AND "
                     + active
-                    + f"AND c.scheme IN ({placeholders}) AND ct.language = ? "
-                    "ORDER BY c.scheme, c.edition DESC, c.normalized_code, "
-                    "cr.version_indicator, ct.kind LIMIT ?",
+                    + f"AND c.scheme IN ({placeholders}) AND ct.language = ?"
+                    "), ranked_matches AS ("
+                    "SELECT *, ROW_NUMBER() OVER ("
+                    "PARTITION BY scheme, edition, normalized_code, version_indicator "
+                    "ORDER BY kind, match_id) AS identity_rank FROM raw_matches"
+                    ") SELECT scheme, edition, normalized_code, version_indicator, kind, "
+                    "excerpt, rank, source_id, match_id FROM ranked_matches "
+                    "WHERE identity_rank = 1 "
+                    "ORDER BY scheme, edition DESC, normalized_code, version_indicator, "
+                    "kind, match_id LIMIT ? OFFSET ?",
                     (
                         *(_like_pattern(term) for term in terms),
                         release_id,
@@ -847,29 +875,24 @@ class PMGSStore:
                         reference_date,
                         *valid_schemes,
                         valid_language,
-                        valid_limit * 5,
+                        valid_limit + 1,
+                        valid_offset,
                     ),
                 ).fetchall()
                 search_mode = "sqlite_literal_substring_lexical"
+        has_more = len(rows) > valid_limit
+        page_rows = rows[:valid_limit]
         results: list[JSONValue] = []
-        seen: set[tuple[str, str, str, str]] = set()
-        for row in rows:
-            identity = (
-                str(row["scheme"]),
-                str(row["edition"]),
-                str(row["normalized_code"]),
-                str(row["version_indicator"]),
-            )
-            if identity in seen:
-                continue
-            seen.add(identity)
+        for row in page_rows:
+            edition_value = str(row["edition"])
+            version_value = str(row["version_indicator"])
             results.append(
                 {
                     "content_type": "classification",
-                    "scheme": identity[0],
-                    "edition": _edition_value(identity[1]),
-                    "code": identity[2],
-                    "version": identity[3] or None,
+                    "scheme": str(row["scheme"]),
+                    "edition": _edition_value(edition_value),
+                    "code": str(row["normalized_code"]),
+                    "version": version_value or None,
                     "kind": str(row["kind"]),
                     "excerpt": str(row["excerpt"])
                     if search_mode.endswith("trigram_lexical")
@@ -878,8 +901,7 @@ class PMGSStore:
                     "rank": float(row["rank"]),
                 }
             )
-            if len(results) == valid_limit:
-                break
+        next_offset = valid_offset + len(results)
         return {
             "schema_version": SCHEMA_VERSION,
             "release_id": release_id,
@@ -889,6 +911,10 @@ class PMGSStore:
             "language": valid_language,
             "schemes": list(valid_schemes),
             "count": len(results),
+            "limit": valid_limit,
+            "offset": valid_offset,
+            "has_more": has_more,
+            "next_offset": next_offset if has_more else None,
             "results": results,
         }
 
@@ -900,16 +926,32 @@ class PMGSStore:
         release: str = "current",
         language: str = "ja",
         limit: int = 20,
+        *,
+        classification_offset: int = 0,
+        document_offset: int = 0,
     ) -> JSONDict:
-        """Search classifications and documents, applying the limit independently to each."""
+        """Search classifications and documents with independent page positions."""
         requested = _validated_content_types(content_types)
         classification = (
-            self.search(query, schemes, release, language, limit)
+            self.search(
+                query,
+                schemes,
+                release,
+                language,
+                limit,
+                offset=classification_offset,
+            )
             if "classification" in requested
             else None
         )
         document = (
-            self.search_documents(query, release, language, limit)
+            self.search_documents(
+                query,
+                release,
+                language,
+                limit,
+                offset=document_offset,
+            )
             if "document" in requested
             else None
         )
@@ -926,6 +968,10 @@ class PMGSStore:
             return {
                 "requested": payload is not None,
                 "count": cast(int, payload["count"]) if payload is not None else 0,
+                "limit": cast(int, payload["limit"]) if payload is not None else limit,
+                "offset": cast(int, payload["offset"]) if payload is not None else 0,
+                "has_more": cast(bool, payload["has_more"]) if payload is not None else False,
+                "next_offset": payload["next_offset"] if payload is not None else None,
                 "search_mode": str(payload["search_mode"]) if payload is not None else None,
                 "results": cast(list[JSONValue], payload["results"]) if payload is not None else [],
             }
@@ -941,6 +987,10 @@ class PMGSStore:
                 next(iter(search_modes)) if len(search_modes) == 1 else "mixed_lexical"
             ),
             "count": len(flat_results),
+            "has_more": any(
+                payload is not None and payload.get("has_more") is True
+                for payload in (classification, document)
+            ),
             "results": flat_results,
             "results_by_type": {
                 "classification": group(classification),
@@ -1116,59 +1166,87 @@ class PMGSStore:
         )
 
     def search_documents(
-        self, query: str, release: str = "current", language: str = "ja", limit: int = 20
+        self,
+        query: str,
+        release: str = "current",
+        language: str = "ja",
+        limit: int = 20,
+        *,
+        offset: int = 0,
     ) -> JSONDict:
+        """Search documents with stable distinct-document pagination."""
         valid_query = _as_query(query)
         valid_language = _as_language(language)
         valid_limit = _as_limit(limit)
+        valid_offset = _as_offset(offset)
         with self._connect() as connection:
             release_row = self._resolve_release(connection, release)
             release_id = str(release_row["release_id"])
             if self.search_tokenizer == "trigram" and _uses_trigram(valid_query):
                 rows = connection.execute(
+                    "WITH raw_matches AS ("
                     "SELECT d.document_id, d.kind, d.language, d.title, "
-                    "dt.sequence_number, dt.locator, "
+                    "dt.sequence_number, dt.locator, dt.document_text_id AS match_id, "
                     "snippet(document_text_fts, 0, '', '', ' … ', 24) AS excerpt, "
                     "bm25(document_text_fts) AS rank, sf.source_id FROM document_text_fts "
                     "JOIN document_text dt ON dt.document_text_id = document_text_fts.rowid "
                     "JOIN document d ON d.document_id = dt.document_id "
                     "JOIN source_file sf ON sf.file_id = d.source_file_id "
                     "WHERE document_text_fts MATCH ? AND d.release_id = ? "
-                    "AND d.language IN (?, 'und') "
-                    "ORDER BY rank, d.document_id, dt.sequence_number LIMIT ?",
-                    (_fts_expression(valid_query), release_id, valid_language, valid_limit * 5),
+                    "AND d.language IN (?, 'und')"
+                    "), ranked_matches AS ("
+                    "SELECT *, ROW_NUMBER() OVER (PARTITION BY document_id "
+                    "ORDER BY rank, sequence_number, match_id) AS identity_rank "
+                    "FROM raw_matches"
+                    ") SELECT document_id, kind, language, title, sequence_number, locator, "
+                    "excerpt, rank, source_id, match_id FROM ranked_matches "
+                    "WHERE identity_rank = 1 "
+                    "ORDER BY rank, document_id, sequence_number, match_id LIMIT ? OFFSET ?",
+                    (
+                        _fts_expression(valid_query),
+                        release_id,
+                        valid_language,
+                        valid_limit + 1,
+                        valid_offset,
+                    ),
                 ).fetchall()
                 search_mode = "sqlite_fts5_trigram_lexical"
             else:
                 terms = valid_query.split()
                 like_conditions = " AND ".join("dt.text LIKE ? ESCAPE '\\'" for _ in terms)
                 rows = connection.execute(
+                    "WITH raw_matches AS ("
                     "SELECT d.document_id, d.kind, d.language, d.title, "
-                    "dt.sequence_number, dt.locator, "
+                    "dt.sequence_number, dt.locator, dt.document_text_id AS match_id, "
                     "dt.text AS excerpt, 0.0 AS rank, sf.source_id FROM document_text dt "
                     "JOIN document d ON d.document_id = dt.document_id "
                     "JOIN source_file sf ON sf.file_id = d.source_file_id "
-                    f"WHERE {like_conditions} AND d.release_id = ? AND d.language IN (?, 'und') "
-                    "ORDER BY d.document_id, dt.sequence_number LIMIT ?",
+                    f"WHERE {like_conditions} AND d.release_id = ? "
+                    "AND d.language IN (?, 'und')"
+                    "), ranked_matches AS ("
+                    "SELECT *, ROW_NUMBER() OVER (PARTITION BY document_id "
+                    "ORDER BY sequence_number, match_id) AS identity_rank FROM raw_matches"
+                    ") SELECT document_id, kind, language, title, sequence_number, locator, "
+                    "excerpt, rank, source_id, match_id FROM ranked_matches "
+                    "WHERE identity_rank = 1 "
+                    "ORDER BY document_id, sequence_number, match_id LIMIT ? OFFSET ?",
                     (
                         *(_like_pattern(term) for term in terms),
                         release_id,
                         valid_language,
-                        valid_limit * 5,
+                        valid_limit + 1,
+                        valid_offset,
                     ),
                 ).fetchall()
                 search_mode = "sqlite_literal_substring_lexical"
+        has_more = len(rows) > valid_limit
+        page_rows = rows[:valid_limit]
         results: list[JSONValue] = []
-        seen: set[str] = set()
-        for row in rows:
-            document_id = str(row["document_id"])
-            if document_id in seen:
-                continue
-            seen.add(document_id)
+        for row in page_rows:
             results.append(
                 {
                     "content_type": "document",
-                    "document_id": document_id,
+                    "document_id": str(row["document_id"]),
                     "kind": str(row["kind"]),
                     "language": str(row["language"]),
                     "title": str(row["title"]),
@@ -1181,8 +1259,7 @@ class PMGSStore:
                     "rank": float(row["rank"]),
                 }
             )
-            if len(results) == valid_limit:
-                break
+        next_offset = valid_offset + len(results)
         return {
             "schema_version": SCHEMA_VERSION,
             "release_id": release_id,
@@ -1191,6 +1268,10 @@ class PMGSStore:
             "search_mode": search_mode,
             "language": valid_language,
             "count": len(results),
+            "limit": valid_limit,
+            "offset": valid_offset,
+            "has_more": has_more,
+            "next_offset": next_offset if has_more else None,
             "results": results,
         }
 
