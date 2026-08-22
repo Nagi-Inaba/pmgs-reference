@@ -1,0 +1,50 @@
+name: pr60-apply
+
+on:
+  push:
+    branches:
+      - fix/cli-json-error-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/cli-json-error-contract
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Apply the reviewed implementation
+        run: python scripts/apply_cli_json_error_fix.py
+
+      - name: Verify the complete change
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format src/pmgs_reference/cli.py tests/test_cli_json_errors.py
+          uv run --frozen ruff check .
+          uv run --frozen mypy src
+          uv run --frozen pytest -q tests/test_cli_json_errors.py tests/test_cli_query.py tests/test_setup_cli.py
+          uv run --frozen pytest -q
+          uv build
+
+      - name: Commit verified implementation and remove this workflow
+        run: |
+          git rm .github/workflows/pr60-apply.yml scripts/apply_cli_json_error_fix.py
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/cli.py tests/test_cli_json_errors.py
+          git commit -m "fix: stabilize sanitized CLI JSON errors"
+          git push origin HEAD:fix/cli-json-error-contract
