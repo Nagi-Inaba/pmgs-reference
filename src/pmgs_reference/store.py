@@ -1073,7 +1073,7 @@ class PMGSStore:
                 connection.execute(
                     target_cte + "SELECT COUNT(*) FROM target_ids ids "
                     "JOIN concept c ON c.concept_id = ids.concept_id "
-                    "WHERE c.record_status = 'canonical'",
+                    "WHERE 1 = 1",
                     (concept_id,),
                 ).fetchone()[0]
             )
@@ -1081,7 +1081,7 @@ class PMGSStore:
                 target_cte + "SELECT c.concept_id FROM target_ids ids "
                 "JOIN concept c ON c.concept_id = ids.concept_id "
                 "JOIN concept_revision cr ON cr.concept_id = c.concept_id "
-                "WHERE c.record_status = 'canonical' "
+                "WHERE 1 = 1 "
                 "AND (cr.valid_from IS NULL OR cr.valid_from <= ?) "
                 "AND (cr.valid_to IS NULL OR cr.valid_to >= ?) "
                 "GROUP BY c.concept_id HAVING COUNT(*) > 1 LIMIT 1",
@@ -1106,7 +1106,7 @@ class PMGSStore:
                 "AND (candidate.valid_from IS NULL OR candidate.valid_from <= ?) "
                 "AND (candidate.valid_to IS NULL OR candidate.valid_to >= ?) "
                 "ORDER BY candidate.version_indicator, candidate.revision_id LIMIT 1) "
-                "WHERE c.record_status = 'canonical' "
+                "WHERE 1 = 1 "
                 "ORDER BY c.scheme, c.edition, c.normalized_code, "
                 "COALESCE(cr.version_indicator, '') LIMIT ? OFFSET ?",
                 (
