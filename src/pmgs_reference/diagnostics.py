@@ -264,15 +264,15 @@ async def _check_stdio(
         and classification_count >= 1
     )
     segments = document_payload.get("segments")
-    sources = document_payload.get("sources")
+    source = document_payload.get("source")
     document_ok = (
         not document.is_error
         and document_payload.get("schema_version") == "2.0"
         and document_payload.get("document_id") == document_id
         and isinstance(segments, list)
         and len(segments) >= 1
-        and isinstance(sources, list)
-        and len(sources) >= 1
+        and isinstance(source, dict)
+        and bool(source.get("relative_id"))
     )
     checks = {
         "mcp_server_identity": initialized.server_info.name == MCP_SERVER_NAME,
