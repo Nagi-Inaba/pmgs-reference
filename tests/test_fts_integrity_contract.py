@@ -83,6 +83,34 @@ def test_native_read_only_xintegrity_version_gate(
     assert validation_module._sqlite_integrity_covers_fts5() is expected
 
 
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        (
+            "CREATE VIRTUAL TABLE concept_text_fts "
+            "/* USING fts4(text) */ USING fts5(text)",
+            "fts5",
+        ),
+        (
+            "CREATE VIRTUAL TABLE concept_text_fts "
+            "/* USING fts5(tokenize='trigram') */ USING fts4(text)",
+            "fts4",
+        ),
+        (
+            'CREATE VIRTUAL TABLE "USING fts5" -- USING fts5(text)\n'
+            "USING fts4(text)",
+            "fts4",
+        ),
+        ("CREATE TABLE concept_text_fts /* USING fts5(text) */ (text)", None),
+        ("CREATE VIRTUAL TABLE concept_text_fts /* USING fts5(text)", None),
+    ],
+)
+def test_virtual_table_module_parser_ignores_comments_and_quoted_names(
+    sql: str, expected: str | None
+) -> None:
+    assert validation_module._virtual_table_module(sql) == expected
+
+
 def test_native_xintegrity_path_does_not_create_a_database_copy(
     synthetic_database: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -277,6 +305,58 @@ def test_native_path_rejects_non_fts_table_with_the_expected_name(
 
     assert result.valid is False
     assert result.checks[integrity_check] == {
+        "expected": "consistent",
+        "actual": "not_fts5",
+        "match": False,
+    }
+
+
+def test_comment_spoofed_fts4_table_is_not_classified_as_fts5(
+    synthetic_database: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "comment-spoof.sqlite"
+    shutil.copy2(synthetic_database, database)
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute('DROP TABLE "concept_text_fts"')
+        try:
+            connection.execute(
+                "CREATE VIRTUAL TABLE concept_text_fts "
+                "/* USING fts5(text, tokenize = 'trigram') */ "
+                "USING fts4(text, revision_id, language, kind)"
+            )
+        except sqlite3.OperationalError as exc:
+            if "no such module" in str(exc).lower():
+                pytest.skip("SQLite runtime does not provide FTS4")
+            raise
+        connection.execute(
+            "INSERT INTO concept_text_fts(rowid, text, revision_id, language, kind) "
+            "SELECT text_id, text, revision_id, language, kind FROM concept_text"
+        )
+        connection.commit()
+        schema_sql = str(
+            connection.execute(
+                "SELECT sql FROM sqlite_schema WHERE name = 'concept_text_fts'"
+            ).fetchone()[0]
+        )
+    finally:
+        connection.close()
+
+    assert "USING fts5" in schema_sql
+    assert validation_module._virtual_table_module(schema_sql) == "fts4"
+
+    def unexpected_copy(_: Path) -> dict[str, dict[str, object]]:
+        raise AssertionError("spoofed module must fail before copying")
+
+    monkeypatch.setattr(validation_module, "_sqlite_integrity_covers_fts5", lambda: True)
+    monkeypatch.setattr(validation_module, "_copy_fts5_checks", unexpected_copy)
+
+    result = validate_database(database)
+
+    assert result.valid is False
+    assert result.checks["concept_text_fts_integrity"] == {
         "expected": "consistent",
         "actual": "not_fts5",
         "match": False,
