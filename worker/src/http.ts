@@ -76,9 +76,16 @@ function parametersMatch(range: MediaRange, representation: Representation): boo
 
 function matchSpecificity(range: MediaRange, representation: Representation): number {
   if (!parametersMatch(range, representation)) return -1;
-  if (range.type === representation.type && range.subtype === representation.subtype) return 2;
-  if (range.type === representation.type && range.subtype === "*") return 1;
-  if (range.type === "*" && range.subtype === "*") return 0;
+  const parameterSpecificity = Object.keys(range.parameters).length;
+  if (range.type === representation.type && range.subtype === representation.subtype) {
+    return 2000 + parameterSpecificity;
+  }
+  if (range.type === representation.type && range.subtype === "*") {
+    return 1000 + parameterSpecificity;
+  }
+  if (range.type === "*" && range.subtype === "*") {
+    return parameterSpecificity;
+  }
   return -1;
 }
 
