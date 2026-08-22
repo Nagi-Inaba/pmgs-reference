@@ -12,7 +12,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Check out source
@@ -20,11 +20,25 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.13"
+
+      - name: Prepare offline verification dependencies
+        run: |
+          uv sync --frozen --all-groups
+          mkdir -p .offline-site-packages
+          cp -a .venv/lib/python3.13/site-packages/. .offline-site-packages/
+
       - name: Upload source snapshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pmgs-reference-source
-          path: .
+          path: |
+            .
+            !.venv
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
