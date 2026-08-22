@@ -18,6 +18,20 @@ v0.4.0は3 OSの隔離wheel試験、実PMGSのA/B構築、Codexの実MCP評価�
 Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。
 検証値と未観測項目は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)に記録しています。
 
+## PMGSをまだ持っていない場合
+
+PMGSは、特許庁（JPO）の[特許情報の一括ダウンロードサービス](https://www.jpo.go.jp/system/laws/sesaku/data/download.html)から、利用者自身が登録条件と[利用規約](https://www.jpo.go.jp/system/laws/sesaku/data/document/download/terms_of_use_bulk_data_download_service.pdf)を確認して正規に取得するデータです。
+
+このリポジトリは、JPOへの登録、認証、PMGSの自動ダウンロードを代行しません。登録ID、パスワード、申込書、元のZIP、展開後の原資料、生成したSQLiteをGitHub、Issue、外部AIサービスへ送らないでください。
+
+取得後は、ZIPをローカルで展開し、`JPPM`と数字からなる版ディレクトリを確認してから、まず書き込みを行わない事前確認を実行します。
+
+```powershell
+pmgs setup C:\path\to\JPPM2026002 --client none --no-register --dry-run --json
+```
+
+取得条件と公開範囲の詳細は[登録条件と公開形態](docs/registered-use-terms.md)を参照してください。
+
 ## PMGSを持っている人が今すぐ使う
 
 v0.4.0の第一選択はPyPI版です。

@@ -701,6 +701,18 @@ def test_search_returns_distinct_paginated_classifications_before_applying_limit
     }.isdisjoint({item["code"] for item in second["results"]})  # type: ignore[index]
 
 
+def test_search_rejects_offsets_outside_sqlite_integer_range(
+    synthetic_database: Path,
+) -> None:
+    store = PMGSStore.open(synthetic_database)
+
+    with pytest.raises(PMGSQueryError, match="SQLite signed 64-bit integer"):
+        store.search("Synthetic", offset=2**63)
+
+    with pytest.raises(PMGSQueryError, match="SQLite signed 64-bit integer"):
+        store.search_documents("Synthetic", offset=2**63)
+
+
 @pytest.mark.parametrize(
     ("query", "mode"),
     [
