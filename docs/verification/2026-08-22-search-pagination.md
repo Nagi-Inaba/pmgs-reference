@@ -17,6 +17,19 @@
 - FTS5経路と短語LIKE経路の両方を検証する。
 - `2**63`のoffsetがSQLiteへ到達する前に構造化エラーになる。
 
-## 検証状態
+## Hosted CI evidence
 
-レビュー指摘を反映したcommit `a7016d602dcf3e4115a35646e16962cbb3ff2993`を基準に、GitHub Actionsの全必須チェックを実行する。この記録を追加したcommitのhosted CI結果を最終マージ判定に使用する。
+レビュー指摘を反映したコードと初版の本検証記録を含むcommit `285a45bb474a2ad2826c6f75e4d6b31f80218820`を、GitHub Actions CI run `32565932960`（run #233）で検証した。
+
+- Python 3.12 / 3.14: Ubuntu、Windows、macOSの全jobが成功。
+- Installed wheel: Ubuntu、Windows、macOSの全jobが成功。
+- Synthetic determinism: Ubuntu、Windows、macOSとcross-OS compareが成功。
+- Cloudflare Worker on Node 22が成功。
+- Ubuntu / Python 3.12のfull pytestは`245 passed, 5 skipped in 27.28s`。
+- skipはWindows専用契約・Windows command lookup・Windows cmd.exe integration・Windows junction coverageの5件で、対象の検索ページング経路ではない。
+- repository boundary: 178 candidate files、違反なし。
+- Ruff check、Ruff format check、mypyが成功。
+- wheelとsdistのbuildが成功。
+- CI failure: 0。
+
+この後のcommitは上記測定結果を記録する文書変更のみであり、production codeおよび回帰testは変更しない。最終マージ前に、この文書変更を含むheadでも必須CIを再実行する。
