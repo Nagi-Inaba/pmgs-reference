@@ -12,16 +12,17 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import Any
 
 from pmgs_reference import cli_core as _core
+from pmgs_reference.client_integration import detect_client_targets
 from pmgs_reference.data_paths import CurrentPointerError
 from pmgs_reference.errors import PMGSQueryError
 from pmgs_reference.ingest.build import BuildError
+from pmgs_reference.mcp_server import run_stdio
 from pmgs_reference.setup import SetupOperationError, SetupUsageError
 from pmgs_reference.store import JSONDict
 
 JapaneseArgumentParser = _core.JapaneseArgumentParser
 _build_parser = _core._build_parser
 _json_output = _core._json_output
-detect_client_targets = _core.detect_client_targets
 
 _run_inventory = _core._run_inventory
 _run_build = _core._run_build
@@ -155,7 +156,7 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "document":
         return _run_document(args)
     if args.command == "mcp":
-        _core.run_stdio(args.db, data_dir=args.data_dir)
+        run_stdio(args.db, data_dir=args.data_dir)
         return 0
     if args.command == "doctor":
         return _run_doctor(args)
