@@ -1,0 +1,353 @@
+name: pr53-autofix
+
+on:
+  push:
+    branches:
+      - perf/paginated-hierarchy-clean
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: perf/paginated-hierarchy-clean
+          fetch-depth: 0
+
+      - name: Apply paginated hierarchy implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/pmgs_reference/store.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    def _hierarchy(
+                  self,
+                  direction: Literal["parents", "children"],
+                  scheme: str,
+                  code: str,
+                  release: str,
+                  edition: str | None,
+              ) -> list[JSONDict]:
+                  desired = "parent" if direction == "parents" else "child"
+                  output: list[JSONDict] = []
+                  relation_offset = 0
+                  while True:
+                      record = self.lookup(
+                          scheme,
+                          code,
+                          release,
+                          edition,
+                          relation_limit=_MAX_RELATION_LIMIT,
+                          relation_offset=relation_offset,
+                      )
+                      relations = cast(list[JSONValue], record["relations"])
+                      for item in relations:
+                          if isinstance(item, dict) and item.get("type") == desired:
+                              output.append(
+                                  self.lookup(
+                                      str(item["scheme"]),
+                                      str(item["code"]),
+                                      release,
+                                      cast(str | None, item.get("edition")),
+                                  )
+                              )
+                      next_offset = record["next_relation_offset"]
+                      if next_offset is None:
+                          break
+                      relation_offset = int(cast(int, next_offset))
+                  return output
+
+              def parents(
+                  self, scheme: str, code: str, release: str = "current", edition: str | None = None
+              ) -> list[JSONDict]:
+                  return self._hierarchy("parents", scheme, code, release, edition)
+
+              def children(
+                  self, scheme: str, code: str, release: str = "current", edition: str | None = None
+              ) -> list[JSONDict]:
+                  return self._hierarchy("children", scheme, code, release, edition)
+          '''
+          new = '''    def hierarchy(
+                  self,
+                  direction: Literal["parents", "children"],
+                  scheme: str,
+                  code: str,
+                  release: str = "current",
+                  edition: str | None = None,
+                  language: str = "ja",
+                  *,
+                  limit: int = 50,
+                  offset: int = 0,
+              ) -> JSONDict:
+                  """Return one stable page of bounded parent or child summaries."""
+                  if direction not in {"parents", "children"}:
+                      raise PMGSQueryError(
+                          "INVALID_HIERARCHY_DIRECTION",
+                          "direction must be parents or children",
+                      )
+                  valid_scheme = _as_scheme(scheme)
+                  valid_code = _as_code(code)
+                  valid_language = _as_language(language)
+                  valid_limit, valid_offset = _as_relation_page(limit, offset)
+                  normalized_code = normalize_code(valid_scheme, valid_code)
+
+                  with self._connect() as connection:
+                      release_row = self._resolve_release(connection, release)
+                      release_id = str(release_row["release_id"])
+                      reference_date = str(release_row["reference_date"])
+                      resolved_edition = self._resolve_edition(
+                          connection, release_id, valid_scheme, edition
+                      )
+                      concept = self._concept_row(
+                          connection,
+                          release_id,
+                          valid_scheme,
+                          resolved_edition,
+                          normalized_code,
+                      )
+                      if concept is None:
+                          return _bounded_structured_response(
+                              {
+                                  "schema_version": SCHEMA_VERSION,
+                                  "release_id": release_id,
+                                  "reference_date": reference_date,
+                                  "direction": direction,
+                                  "scheme": valid_scheme,
+                                  "edition": _edition_value(resolved_edition),
+                                  "code": normalized_code,
+                                  "language": valid_language,
+                                  "count": 0,
+                                  "limit": valid_limit,
+                                  "offset": valid_offset,
+                                  "truncated": False,
+                                  "next_offset": None,
+                                  "results": [],
+                              }
+                          )
+
+                      concept_id = int(concept["concept_id"])
+                      if direction == "parents":
+                          target_expression = "r.to_concept_id"
+                          relation_predicate = "r.from_concept_id = ? AND r.kind = 'parent'"
+                      else:
+                          target_expression = "r.from_concept_id"
+                          relation_predicate = "r.to_concept_id = ? AND r.kind = 'parent'"
+
+                      target_cte = (
+                          "WITH target_ids AS (SELECT "
+                          + target_expression
+                          + " AS concept_id FROM relation r WHERE "
+                          + relation_predicate
+                          + ") "
+                      )
+                      count = int(
+                          connection.execute(
+                              target_cte + "SELECT COUNT(*) FROM target_ids ids "
+                              "JOIN concept c ON c.concept_id = ids.concept_id "
+                              "WHERE c.record_status = 'canonical'",
+                              (concept_id,),
+                          ).fetchone()[0]
+                      )
+                      ambiguous_revision = connection.execute(
+                          target_cte
+                          + "SELECT c.concept_id FROM target_ids ids "
+                          "JOIN concept c ON c.concept_id = ids.concept_id "
+                          "JOIN concept_revision cr ON cr.concept_id = c.concept_id "
+                          "WHERE c.record_status = 'canonical' "
+                          "AND (cr.valid_from IS NULL OR cr.valid_from <= ?) "
+                          "AND (cr.valid_to IS NULL OR cr.valid_to >= ?) "
+                          "GROUP BY c.concept_id HAVING COUNT(*) > 1 LIMIT 1",
+                          (concept_id, reference_date, reference_date),
+                      ).fetchone()
+                      if ambiguous_revision is not None:
+                          raise PMGSQueryError(
+                              "MULTIPLE_ACTIVE_REVISIONS",
+                              "multiple classification revisions are active at the release reference date",
+                          )
+                      rows = connection.execute(
+                          target_cte
+                          + "SELECT c.scheme, c.edition, c.normalized_code, c.record_status, "
+                          "cr.version_indicator, "
+                          "(SELECT ct.text FROM concept_text ct "
+                          "WHERE ct.revision_id = cr.revision_id AND ct.language = ? "
+                          "AND ct.kind = 'label' ORDER BY ct.sequence_number, ct.text_id LIMIT 1) "
+                          "AS label FROM target_ids ids "
+                          "JOIN concept c ON c.concept_id = ids.concept_id "
+                          "LEFT JOIN concept_revision cr ON cr.revision_id = ("
+                          "SELECT candidate.revision_id FROM concept_revision candidate "
+                          "WHERE candidate.concept_id = c.concept_id "
+                          "AND (candidate.valid_from IS NULL OR candidate.valid_from <= ?) "
+                          "AND (candidate.valid_to IS NULL OR candidate.valid_to >= ?) "
+                          "ORDER BY candidate.version_indicator, candidate.revision_id LIMIT 1) "
+                          "WHERE c.record_status = 'canonical' "
+                          "ORDER BY c.scheme, c.edition, c.normalized_code, "
+                          "COALESCE(cr.version_indicator, '') LIMIT ? OFFSET ?",
+                          (
+                              concept_id,
+                              valid_language,
+                              reference_date,
+                              reference_date,
+                              valid_limit,
+                              valid_offset,
+                          ),
+                      ).fetchall()
+
+                  results: list[JSONValue] = [
+                      {
+                          "scheme": str(row["scheme"]),
+                          "edition": _edition_value(row["edition"]),
+                          "code": str(row["normalized_code"]),
+                          "version": (
+                              str(row["version_indicator"])
+                              if row["version_indicator"] not in {None, ""}
+                              else None
+                          ),
+                          "label": str(row["label"]) if row["label"] is not None else None,
+                          "record_status": str(row["record_status"]),
+                      }
+                      for row in rows
+                  ]
+                  next_offset = valid_offset + len(results)
+                  return _bounded_structured_response(
+                      {
+                          "schema_version": SCHEMA_VERSION,
+                          "release_id": release_id,
+                          "reference_date": reference_date,
+                          "direction": direction,
+                          "scheme": valid_scheme,
+                          "edition": _edition_value(resolved_edition),
+                          "code": normalized_code,
+                          "language": valid_language,
+                          "count": count,
+                          "limit": valid_limit,
+                          "offset": valid_offset,
+                          "truncated": next_offset < count,
+                          "next_offset": next_offset if next_offset < count else None,
+                          "results": results,
+                      }
+                  )
+
+              def _all_hierarchy_summaries(
+                  self,
+                  direction: Literal["parents", "children"],
+                  scheme: str,
+                  code: str,
+                  release: str,
+                  edition: str | None,
+                  language: str,
+                  offset: int,
+              ) -> list[JSONDict]:
+                  output: list[JSONDict] = []
+                  current_offset = offset
+                  while True:
+                      page = self.hierarchy(
+                          direction,
+                          scheme,
+                          code,
+                          release,
+                          edition,
+                          language,
+                          limit=_MAX_RELATION_LIMIT,
+                          offset=current_offset,
+                      )
+                      output.extend(
+                          cast(JSONDict, item)
+                          for item in cast(list[JSONValue], page["results"])
+                      )
+                      next_offset = page["next_offset"]
+                      if next_offset is None:
+                          return output
+                      current_offset = int(cast(int, next_offset))
+
+              def parents(
+                  self,
+                  scheme: str,
+                  code: str,
+                  release: str = "current",
+                  edition: str | None = None,
+                  language: str = "ja",
+                  *,
+                  limit: int | None = None,
+                  offset: int = 0,
+              ) -> list[JSONDict] | JSONDict:
+                  """Return legacy flattened summaries, or one explicit bounded page."""
+                  if limit is not None:
+                      return self.hierarchy(
+                          "parents",
+                          scheme,
+                          code,
+                          release,
+                          edition,
+                          language,
+                          limit=limit,
+                          offset=offset,
+                      )
+                  return self._all_hierarchy_summaries(
+                      "parents", scheme, code, release, edition, language, offset
+                  )
+
+              def children(
+                  self,
+                  scheme: str,
+                  code: str,
+                  release: str = "current",
+                  edition: str | None = None,
+                  language: str = "ja",
+                  *,
+                  limit: int | None = None,
+                  offset: int = 0,
+              ) -> list[JSONDict] | JSONDict:
+                  """Return legacy flattened summaries, or one explicit bounded page."""
+                  if limit is not None:
+                      return self.hierarchy(
+                          "children",
+                          scheme,
+                          code,
+                          release,
+                          edition,
+                          language,
+                          limit=limit,
+                          offset=offset,
+                      )
+                  return self._all_hierarchy_summaries(
+                      "children", scheme, code, release, edition, language, offset
+                  )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("legacy hierarchy block not found exactly once")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify focused implementation
+        shell: bash
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          uv run --frozen ruff check src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          uv run --frozen mypy src
+          uv run --frozen pytest -q tests/test_hierarchy_pagination_contract.py tests/test_store.py
+
+      - name: Commit verified implementation and remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pr53-autofix.yml
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/store.py tests/test_hierarchy_pagination_contract.py
+          git commit -m "fix: implement hierarchy paging without revision guessing"
+          git push origin HEAD:perf/paginated-hierarchy-clean
