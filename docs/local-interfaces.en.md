@@ -48,13 +48,13 @@ The public methods are:
 
 - `PMGSStore.open(path=None, *, data_dir=None)`
 - `lookup(scheme, code, release="current", edition=None, language="ja", *, version=None, relation_limit=50, relation_offset=0)`
-- `search(query, schemes=None, release="current", language="ja", limit=20)`
-- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20)`
+- `search(query, schemes=None, release="current", language="ja", limit=20, *, offset=0)`
+- `search_pmgs(query, schemes=None, content_types=None, release="current", language="ja", limit=20, *, classification_offset=0, document_offset=0)`
 - `parents(scheme, code, release="current", edition=None)`
 - `children(scheme, code, release="current", edition=None)`
 - `related_documents(scheme, code, release="current", edition=None)`
 - `get_document(document_id, page=None, section=None)`
-- `search_documents(query, release="current", language="ja", limit=20)`
+- `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
 - `release_info(release="current")`
 
 When `edition` is omitted for IPC, the interface selects an edition present in the authoritative source in this priority order: `8U`, `8B`, `7`, `7E`, `6`, `5`, and `4`. Passing `edition` for FI or F-term produces `INVALID_EDITION`. `version` can be specified only for IPC; use `--ipc-version` in the CLI.
@@ -75,7 +75,7 @@ The response's `search_mode` identifies the path used as one of the following:
 - `sqlite_literal_substring_lexical`
 - `mixed_lexical` when classification and document searches use different paths in MCP
 
-For compatibility, `search()` searches classifications only. `search_pmgs()` separates classifications and documents into `results_by_type.classification` and `results_by_type.document`, applying `limit` independently to each type. Both are text searches, not semantic searches. They do not use AI to supplement synonyms, spelling variants, or classification candidates.
+For compatibility, `search()` searches classifications only. `search_pmgs()` separates classifications and documents into `results_by_type.classification` and `results_by_type.document`, applying `limit` independently to each type. Each page returns `limit`, `offset`, `has_more`, and `next_offset`. Composite searches accept separate `classification_offset` and `document_offset` values so one result type can advance without replaying the other. Duplicate matching text rows are collapsed by classification or document before the page limit is applied. Both are text searches, not semantic searches. They do not use AI to supplement synonyms, spelling variants, or classification candidates.
 
 ## Document response limits
 
@@ -89,7 +89,7 @@ Related classifications are also limited to 200 per response, with the total cou
 pmgs lookup fi "G06F3/048" --json
 pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
-pmgs search "改正" --content-type document --json
+pmgs search "改正" --content-type document --document-offset 20 --json
 pmgs document DOCUMENT_ID --page 1 --json
 pmgs doctor --json
 ```

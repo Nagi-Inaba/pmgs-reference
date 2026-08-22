@@ -6,7 +6,7 @@ The project does not accept PMGS source packages, generated databases, full publ
 
 ## Development setup
 
-Use Python 3.12 or 3.14, `uv`, Node.js 22, and npm 10.
+Use Python 3.12, 3.13, or 3.14, `uv`, Node.js 22, and npm 10.
 
 ```powershell
 uv sync --frozen --all-groups

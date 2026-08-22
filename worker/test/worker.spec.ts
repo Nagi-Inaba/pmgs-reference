@@ -225,12 +225,20 @@ describe("static and negotiated routes", () => {
     const markdown = await request("/ja/classification/G06F3", {
       headers: { Accept: "text/markdown" },
     });
+    const rejectedMarkdown = await request("/ja/classification/G06F3", {
+      headers: { Accept: "text/html;q=1, text/markdown;q=0" },
+    });
+    const preferredMarkdown = await request("/ja/classification/G06F3", {
+      headers: { Accept: "text/html;q=0.5, text/markdown;q=1" },
+    });
 
     expect(html.status).toBe(200);
     expect(html.headers.get("Content-Type")).toContain("text/html");
     expect(html.headers.get("Vary")).toContain("Accept");
     expect(await html.text()).toContain("FI interaction 公式定義");
     expect(markdown.headers.get("Content-Type")).toContain("text/markdown");
+    expect(rejectedMarkdown.headers.get("Content-Type")).toContain("text/html");
+    expect(preferredMarkdown.headers.get("Content-Type")).toContain("text/markdown");
     const markdownBody = await markdown.text();
     expect(markdownBody).toContain("# FI G06F3/048");
     expect(markdownBody).toContain("合成テストデータを変換して作成しています");
@@ -291,11 +299,14 @@ describe("HTTP policy", () => {
   it("handles preflight, methods, CORS, and security headers", async () => {
     const options = await request("/api/v1/lookup", { method: "OPTIONS" });
     const post = await request("/api/v1/lookup", { method: "POST" });
+    const staticOptions = await request("/ja/classification/G06F3", { method: "OPTIONS" });
 
     expect(options.status).toBe(204);
     expect(options.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(post.status).toBe(405);
-    expect(post.headers.get("Allow")).toContain("GET");
+    expect(post.headers.get("Allow")).toBe("GET, HEAD, OPTIONS");
+    expect(staticOptions.status).toBe(405);
+    expect(staticOptions.headers.get("Allow")).toBe("GET, HEAD");
     expect(post.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
     expect(post.headers.get("Strict-Transport-Security")).toContain("max-age=31536000");
     expect(post.headers.get("X-Content-Type-Options")).toBe("nosniff");

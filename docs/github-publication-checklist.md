@@ -99,15 +99,19 @@ patent-classification pmgs intellectual-property openapi mcp cloudflare-workers
 次のmatrixがGitHub-hosted runnerで成功することを確認する。
 
 - Python 3.12 on Ubuntu
+- Python 3.13 on Ubuntu
 - Python 3.14 on Ubuntu
 - Python 3.12 on Windows
 - Python 3.14 on Windows
 - Python 3.12 on macOS
 - Python 3.14 on macOS
 - 隔離wheelからの`pmgs setup`、再実行、`doctor` on Ubuntu、Windows、macOS
+- Python 3.13の隔離wheelからの`pmgs setup`、再実行、`doctor` on Ubuntu
 - Cloudflare Worker on Node.js 22
 
-local成功をhosted CI成功と読み替えない。
+Python 3.13については、source-levelのfull testとinstalled-wheel E2EをUbuntuで追加検証する。3.12と3.14の既存3 OS matrixはOS依存挙動の回帰検証として維持する。
+
+workflowへcheckを追加しただけではhosted成功とはみなさない。新しいcheckは、実際のGitHub-hosted runが成功し、そのrun IDと測定結果を検証記録へ残した後にのみ`observed`として扱う。local成功をhosted CI成功と読み替えない。
 
 ## visibility変更前の停止条件
 

@@ -1,4 +1,5 @@
 import { PublicError } from "./errors";
+import { allowedMethods } from "./http";
 
 const CONTENT_SIGNAL = "search=yes, ai-input=yes, ai-train=no";
 const CSP = [
@@ -80,7 +81,7 @@ export function errorResponse(error: PublicError, r2Reads = 0): Response {
 
 export function methodNotAllowed(api: boolean): Response {
   const headers = new Headers({
-    Allow: "GET, HEAD, OPTIONS",
+    Allow: allowedMethods(api),
     "Content-Type": api ? "application/json; charset=utf-8" : "text/plain; charset=utf-8",
   });
   applyOptions(headers, { api, cache: "none" });
