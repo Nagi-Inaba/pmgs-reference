@@ -17,13 +17,15 @@ Issue #19 / PR #60
 - argparse and missing-required-option errors, including always-JSON commands
 - missing files and permission failures
 - invalid managed `current.json`
-- unsupported databases
+- unsupported or malformed SQLite databases
 - stable `PMGSQueryError` codes with sanitized messages
 - database build failures
 - `validate` results with `valid=false`
 - public export I/O failures
 - doctor current-pointer races
 - unexpected runtime errors in JSON mode
+- literal `--json` queries after the `--` end-of-options marker
+- invalid doctor timeout values at parse time
 
 ## TDD evidence
 
@@ -31,9 +33,9 @@ CI run #441 verified the initial RED state: seven focused failures reproduced hu
 
 The first exact-text patch failed with `parser class anchor mismatch`. A marker-based patch limited the production change to the parser class, parser construction, validation output, and `main()` exception boundary. Nested source generation initially converted nine `\n` escapes into literal line breaks; a bounded nine-replacement repair restored valid syntax. Focused tests, the full suite, mypy, Ruff, and package build then passed.
 
-## Hosted CI evidence
+## Hosted CI evidence before final review fixes
 
-Final user head: `b0d6ccf3261e71022f416b0e1b0507cd71712cdc`  
+User head: `b0d6ccf3261e71022f416b0e1b0507cd71712cdc`  
 Merge ref with current `main`: `2cdd5de98f12bdd3a84b3000d383ed5180091bcd`  
 GitHub Actions: CI run #479 (`32589973232`)
 
@@ -46,7 +48,7 @@ GitHub Actions: CI run #479 (`32589973232`)
 - pytest: `300 passed, 5 skipped in 34.06s`
 - wheel and sdist build: success
 
-The five skips are pre-existing Windows-specific contracts. This change introduced no failure or skip on Ubuntu.
+The five skips are pre-existing Windows-specific contracts.
 
 ### Full matrix
 
@@ -59,6 +61,16 @@ All jobs passed:
 - Cloudflare Worker on Node 22
 - synthetic determinism on Ubuntu, Windows, and macOS
 - cross-OS determinism comparison
+
+## Review corrections
+
+Codex review identified two valid edge cases and one already-covered condition.
+
+- JSON option detection must stop at `--`; otherwise a literal query named `--json` changes failure output to JSON.
+- `sqlite3.DatabaseError` must be mapped before the generic exception handler so corrupt SQLite input is classified as `UNSUPPORTED_DATABASE` or `VALIDATION_FAILED`.
+- doctor timeout values are already validated by argparse's `_positive_finite_float`; a regression test now fixes the expected `ARGUMENT_ERROR` behavior.
+
+The review-fix commit is required to rerun the full hosted CI matrix before merge.
 
 ## Remaining scope
 
