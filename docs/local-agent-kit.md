@@ -13,7 +13,7 @@ v0.4.0の第一選択はPyPI版です。
 - PMGSをZIPから展開し、ディレクトリとして参照できる。ZIPファイルは`pmgs setup`へ直接指定できない。
 - PMGSディレクトリ名が`JPPM`と数字からなる版名（例：`JPPM2026002`）である。異なる名前の場合は`--release JPPM2026002`のように版を明示する。
 - 構築先に十分な空き容量がある。JPPM2026002の実測では、構築前に約7.56 GBが必要で、完成したSQLiteは約3.37 GBだった。
-- CodexまたはClaude Codeへ登録する場合は、対象のCLIがインストール済みで`PATH`から実行できる。SQLiteだけを構築する場合は不要である。
+- CodexまたはClaude Codeへ登録する場合は、対象のCLIがインストール済みで絶対パスの`PATH`要素から実行できる。Windowsでは作業ディレクトリを暗黙に探索しない。SQLiteだけを構築する場合は不要である。
 
 Gitは、後述するクローン方式を選ぶ場合だけ必要です。
 
@@ -116,10 +116,10 @@ pmgs setup /path/to/JPPM2026002 --client codex --register
 5. 合格したSQLiteだけを現行版へ切り替える。
 6. 選択したCodex・Claude CodeへMCPと共通スキルを登録する。
 
-CodexまたはClaude Codeが見つかると、次のように確認します。Enterだけで登録します。
+CodexまたはClaude Codeが見つかると、解決済みの実行ファイルを表示して確認します。Enterだけで登録します。
 
 ```text
-codexにPMGS Referenceを登録しますか? [Y/n]
+codexにPMGS Referenceを登録しますか? (実行ファイル: <解決済みcodex実行ファイル>) [Y/n]
 ```
 
 セットアップ後に`pmgs doctor --json`を実行します。
@@ -189,7 +189,7 @@ MCPを接続できないAIは、`pmgs ... --json`の結果またはPython APIを
 
 ## クライアントを指定する
 
-`--client auto`が既定で、端末にあるCodexとClaude Codeを検出します。対象や登録動作を固定したい場合は明示します。
+`--client auto`が既定で、端末にあるCodexとClaude Codeを検出します。Windowsでは空または相対指定の`PATH`要素と暗黙の作業ディレクトリを探索しません。対話実行は解決済みパスを確認でき、`--register`はその確認を省略するため、信頼できる`PATH`でだけ使用します。対象や登録動作を固定したい場合は明示します。
 
 CodexとClaude Codeには、同じ読み取り専用stdio MCPサーバー実装と共通スキルを登録します。
 Codexからのlive MCP利用は検証済みです。Claude Code向けの設定生成と登録処理は自動試験済みですが、Claude CodeのモデルからMCPを実際に呼び出す評価は、評価用アカウントの制約により`not_observed`です。

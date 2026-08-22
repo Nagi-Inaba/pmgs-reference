@@ -1,11 +1,13 @@
 # 現在の状態
 
-- 更新日: 2026-08-14
+- 更新日: 2026-08-22
 - 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約、PMGS保有者向け導線をPull Request #6と#8からmainへ統合済み
 - 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
 - 公開状態: GitHub source repository、[PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)は公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
+
+2026年8月22日に、Windowsのclient自動検出からOS既定の暗黙の作業ディレクトリ探索と空・相対`PATH`要素を除外した。対話登録には解決済み実行ファイルを表示し、絶対`PATH`上のnpm形式`.cmd` launcherは維持する。setup・client・agent kitの回帰61件が合格し、Windows権限を要する既存symlink試験1件だけをskipした。全体pytestは236件合格、同じ権限理由のsymlink試験7件skipだった。lock、repository boundary 177候補、Ruff、mypy、wheel・sdist build、Worker 31件、WebMCP 3件、npm auditも合格した。公開済みv0.4.0 wheelにはこの変更を含めず、ローカルsource変更として扱う。
 
 2026年8月14日に、別のPMGS releaseを使う手順を日英READMEと導入ガイドへ追加した。実際の`JPPM`版directoryを直接指定する方法、任意名directoryだけで`--release`を使う方法、名前だけでは版を確認できない境界、複数版の安全な切替、未知形式のfail-closed、固定v0.4.0導入、独自`--data-dir`でのlookup、Codex・Claude Code CLIの前提、macOS・Linuxの一行例を同じオンボーディング契約として記録した。
 

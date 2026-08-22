@@ -261,11 +261,17 @@ _SETUP_PROGRESS = {
 }
 
 
-def _prompt_registration(client: str, language: str) -> bool:
+def _prompt_registration(client: str, executable: Path, language: str) -> bool:
+    display_executable = "".join(
+        character if character.isprintable() else f"\\u{ord(character):04x}"
+        for character in str(executable)
+    )
     if language == "en":
-        prompt = f"Register PMGS Reference with {client}? [Y/n] "
+        prompt = f"Register PMGS Reference with {client} (executable: {display_executable})? [Y/n] "
     else:
-        prompt = f"{client}にPMGS Referenceを登録しますか? [Y/n] "
+        prompt = (
+            f"{client}にPMGS Referenceを登録しますか? (実行ファイル: {display_executable}) [Y/n] "
+        )
     print(prompt, end="", file=sys.stderr, flush=True)
     answer = sys.stdin.readline().strip().lower()
     return answer not in {"n", "no"}
@@ -338,7 +344,7 @@ def _run_setup(args: argparse.Namespace) -> int:
             target.client
             for target in targets
             if target.executable is not None
-            and _prompt_registration(target.client, str(args.language))
+            and _prompt_registration(target.client, target.executable, str(args.language))
         ]
 
     messages = _SETUP_PROGRESS[str(args.language)]

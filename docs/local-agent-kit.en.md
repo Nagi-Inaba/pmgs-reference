@@ -13,7 +13,7 @@ Confirm the following before starting a build:
 - The PMGS ZIP has been extracted and can be accessed as a directory. `pmgs setup` does not accept the ZIP file itself.
 - The PMGS directory name is a release name made of `JPPM` followed by digits, such as `JPPM2026002`. For another directory name, pass the release explicitly, for example `--release JPPM2026002`.
 - The database destination has enough free space. For JPPM2026002, the measured pre-build requirement is about 7.56 GB and the completed SQLite database is about 3.37 GB.
-- When registering with Codex or Claude Code, the selected CLI is installed and available on `PATH`. It is not required when building only SQLite.
+- When registering with Codex or Claude Code, the selected CLI is installed and available from an absolute `PATH` entry. On Windows, setup does not implicitly search the working directory. The CLI is not required when building only SQLite.
 
 Git is required only for the clone route described below.
 
@@ -116,10 +116,10 @@ Setup performs these stages:
 5. Activate only the verified database.
 6. Register the MCP server and shared skill with the selected clients.
 
-When Codex or Claude Code is detected, setup asks for confirmation. Press Enter to accept the default:
+When Codex or Claude Code is detected, setup shows the resolved executable and asks for confirmation. Press Enter to accept the default:
 
 ```text
-Register PMGS Reference with codex? [Y/n]
+Register PMGS Reference with codex (executable: <resolved-codex-executable>)? [Y/n]
 ```
 
 Run `pmgs doctor --json` after setup.
@@ -189,7 +189,7 @@ For an AI client without MCP support, use `pmgs ... --json` output or the Python
 
 ## Select clients
 
-`--client auto` is the default and detects installed Codex and Claude Code clients. Use explicit options when you want a fixed target or non-interactive behavior.
+`--client auto` is the default and detects installed Codex and Claude Code clients. On Windows, empty or relative `PATH` entries and the implicit working-directory search are ignored. Interactive setup shows the resolved path; `--register` skips that prompt and should be used only with a trusted `PATH`. Use explicit options when you want a fixed target or non-interactive behavior.
 
 Codex and Claude Code register the same read-only stdio MCP server implementation and shared skill.
 Live MCP use from Codex is verified. Claude Code configuration generation and registration are covered by automated tests, but an actual MCP call from a Claude Code model remains `not_observed` because of the evaluation account limitation.

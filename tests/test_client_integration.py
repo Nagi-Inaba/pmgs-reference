@@ -13,6 +13,7 @@ from pmgs_reference.client_integration import (
     ClientTarget,
     CommandResult,
     SubprocessCommandRunner,
+    detect_client_targets,
     integrate_clients,
     windows_batch_command,
 )
@@ -60,6 +61,44 @@ def _targets(tmp_path: Path) -> tuple[ClientTarget, ...]:
         ClientTarget("codex", tmp_path / "codex.exe"),
         ClientTarget("claude", tmp_path / "claude.exe"),
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows command lookup behavior")
+def test_auto_detection_ignores_an_implicit_current_directory_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    working_directory = tmp_path / "untrusted-working-directory"
+    unrelated_path_directory = tmp_path / "path-directory"
+    working_directory.mkdir()
+    unrelated_path_directory.mkdir()
+    (working_directory / "codex.cmd").write_text("@exit /b 0\n", encoding="utf-8")
+    monkeypatch.chdir(working_directory)
+    monkeypatch.setenv("PATH", str(unrelated_path_directory))
+    monkeypatch.setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+    monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
+
+    targets = detect_client_targets("auto")
+
+    assert targets == ()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows command lookup behavior")
+def test_auto_detection_keeps_an_absolute_path_batch_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path_directory = tmp_path / "npm"
+    path_directory.mkdir()
+    launcher = path_directory / "codex.cmd"
+    launcher.write_text("@exit /b 0\n", encoding="utf-8")
+    monkeypatch.setenv("PATH", str(path_directory))
+    monkeypatch.setenv("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+
+    targets = detect_client_targets("auto")
+
+    assert len(targets) == 1
+    assert targets[0].client == "codex"
+    assert targets[0].executable is not None
+    assert targets[0].executable.samefile(launcher)
 
 
 def test_declined_clients_do_not_execute_or_write(tmp_path: Path) -> None:
@@ -246,13 +285,33 @@ def test_claude_custom_config_directory_is_used_consistently(
     assert not (home / ".claude").exists()
 
 
-def test_windows_batch_command_rejects_shell_metacharacters() -> None:
+@pytest.mark.parametrize(
+    "metacharacter",
+    ["\r", "\n", '"', "&", "|", "<", ">", "^", "%", "!", "(", ")"],
+    ids=[
+        "carriage-return",
+        "newline",
+        "quote",
+        "ampersand",
+        "pipe",
+        "redirect-in",
+        "redirect-out",
+        "caret",
+        "percent",
+        "bang",
+        "open-paren",
+        "close-paren",
+    ],
+)
+def test_windows_batch_command_rejects_shell_metacharacters(metacharacter: str) -> None:
     with pytest.raises(ValueError, match="metacharacters"):
         windows_batch_command(
             Path("C:/tools/claude.cmd"),
-            ["mcp", "add", "--data-dir", "C:/managed&whoami"],
+            ["mcp", "add", "--data-dir", f"C:/managed{metacharacter}suffix"],
         )
 
+
+def test_windows_batch_command_wraps_a_safe_launcher() -> None:
     safe = windows_batch_command(
         Path("C:/Program Files/Claude/claude.cmd"),
         ["mcp", "list", "--json"],

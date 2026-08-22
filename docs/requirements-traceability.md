@@ -34,7 +34,7 @@
 | AGENT-02 | 同じ読み取り専用skillを両clientへ非破壊で導入する | verified | hash一致、冪等、上書き拒否、途中失敗回収、同時競合保持test |
 | AGENT-03 | 実stdio接続とSQLite不変性を診断する | verified | `pmgs doctor`の実client、tool契約、照会前後hash、managed pointer SHA不一致と診断中pointer切替の拒否test |
 | AGENT-04 | 日本語を既定にし、英語へ切り替えられる | verified | CLI、skill、日英README、Web top、`llms.txt`のtest |
-| AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性test、3 OS wheel E2E |
+| AGENT-05 | client登録を管理ディレクトリ参照にし、同一設定を再利用して競合を上書きしない | verified | fake Codex・Claude Codeのargv、再利用、競合、部分失敗、`CLAUDE_CONFIG_DIR`、Windows batch安全性、暗黙CWD除外、絶対PATH launcher維持、確認時の実行パス表示test、3 OS wheel E2E |
 | AGENT-06 | Codexが読み取り専用MCPを使い、取得本文を命令として実行しない | verified | 隔離wheelの全10ケースに合格し、禁止tool呼出し0件を機械判定 |
 | AGENT-07 | Claude Codeが読み取り専用MCPを使い、取得本文を命令として実行しない | not_observed | 設定、skill、分離環境、tool制限は自動検証済み。現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため、修正後のlive MCP評価は未観測。ユーザー承認によりsource統合の阻害条件から外し、Claude live互換性の成功は主張しない |
 | AGENT-08 | PMGS保有者とAIがinstall、dry-run、setup、doctor、lookupを安全に開始できる | verified | 日英READMEと導入ガイドの機械可読契約、展開済みdirectory・容量・client分岐、別releaseの実directory指定・任意名だけでの`--release`・名前だけでは版を確認できない境界、固定package版、独自`--data-dir`のlookup、archive拒否、MCP tool descriptionと配布skillの非アップロード・取得本文境界を回帰testで検証 |

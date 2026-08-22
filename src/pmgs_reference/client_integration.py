@@ -95,10 +95,29 @@ def windows_batch_command(executable: Path, arguments: Sequence[str]) -> str:
     return f'{command_prefix} "{command_line}"'
 
 
+def _which_client(command: str) -> str | None:
+    """Search PATH without Windows' implicit current-directory lookup."""
+    if os.name != "nt":
+        return shutil.which(command)
+    path = os.environ.get("PATH")
+    if not path:
+        return None
+    for raw_directory in path.split(os.pathsep):
+        if not raw_directory:
+            continue
+        directory = Path(raw_directory).expanduser()
+        if not directory.is_absolute():
+            continue
+        resolved = shutil.which(str(directory / command), path=str(directory))
+        if resolved is not None:
+            return resolved
+    return None
+
+
 def detect_client_targets(
     selection: ClientSelection,
     *,
-    which: Callable[[str], str | None] = shutil.which,
+    which: Callable[[str], str | None] = _which_client,
 ) -> tuple[ClientTarget, ...]:
     """Resolve selected clients without executing or modifying them."""
     if selection not in {"auto", "none", "codex", "claude", "both"}:
