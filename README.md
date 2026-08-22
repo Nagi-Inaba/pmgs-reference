@@ -134,7 +134,7 @@ Set-Location pmgs-reference
 uv tool install .
 ```
 
-版を明示する方法、Claude Code、保存先、非対話実行、JSON結果の詳細は[CodexとClaude Codeへの導入ガイド](docs/local-agent-kit.md)にまとめています。
+版を明示する方法、Claude Code、保存先、非対話実行、JSON結果の詳細は[CodexとClaude Codeへの導入ガイド](docs/local-agent-kit.md)にまとめています。CLIのhelpと人向け表示だけを英語へ切り替える場合は、コマンドの前に`--ui-language en`を指定します。
 
 ## AI向け利用契約
 

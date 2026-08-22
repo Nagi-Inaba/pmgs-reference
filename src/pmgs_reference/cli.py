@@ -40,11 +40,24 @@ from pmgs_reference.store import JSONDict, JSONValue, PMGSStore
 from pmgs_reference.validation import validate_database, write_validation_report
 
 
-class JapaneseArgumentParser(argparse.ArgumentParser):
-    """Keep the canonical CLI help headings and error prefix in Japanese."""
+class LocalizedArgumentParser(argparse.ArgumentParser):
+    """Render parser help and errors in the selected UI language."""
+
+    def __init__(
+        self,
+        *args: object,
+        ui_language: str = "ja",
+        json_mode: bool = False,
+        **kwargs: object,
+    ) -> None:
+        self.ui_language = ui_language
+        self.json_mode = json_mode
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
     def format_help(self) -> str:
         text = super().format_help()
+        if self.ui_language == "en":
+            return text
         for original, translated in (
             ("usage:", "使い方:"),
             ("positional arguments:", "位置引数:"),
@@ -55,32 +68,143 @@ class JapaneseArgumentParser(argparse.ArgumentParser):
         return text
 
     def format_usage(self) -> str:
-        return super().format_usage().replace("usage:", "使い方:", 1)
+        text = super().format_usage()
+        return text if self.ui_language == "en" else text.replace("usage:", "使い方:", 1)
 
     def error(self, message: str) -> Never:
+        if self.json_mode:
+            command = self.prog.split(maxsplit=1)[1] if " " in self.prog else None
+            _json_output(
+                {
+                    "schema_version": "1.0",
+                    "status": "failed",
+                    "command": command,
+                    "error": {"code": "ARGUMENT_ERROR", "message": message},
+                }
+            )
+            self.exit(2)
         self.print_usage(sys.stderr)
-        self.exit(2, f"{self.prog}: エラー: {message}\n")
+        prefix = "error" if self.ui_language == "en" else "エラー"
+        self.exit(2, f"{self.prog}: {prefix}: {message}\n")
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = JapaneseArgumentParser(
-        prog="pmgs", description="PMGS Referenceの構築と読み取り専用照会"
+class UILanguageError(ValueError):
+    """Raised when the global UI-language option is malformed."""
+
+
+_ALWAYS_JSON_COMMANDS = frozenset(
+    {
+        "inventory",
+        "build",
+        "validate",
+        "agent-kit",
+        "install-agent-skill",
+        "export-public",
+        "validate-public",
+        "audit-public",
+    }
+)
+
+
+def _extract_ui_language(argv: Sequence[str]) -> tuple[str, list[str], bool]:
+    language = "ja"
+    explicit = False
+    cleaned: list[str] = []
+    index = 0
+    items = list(argv)
+    while index < len(items):
+        token = items[index]
+        if token == "--ui-language":
+            if explicit:
+                raise UILanguageError("--ui-language may be specified only once")
+            if index + 1 >= len(items):
+                raise UILanguageError("--ui-language requires ja or en")
+            language = items[index + 1]
+            explicit = True
+            index += 2
+            continue
+        if token.startswith("--ui-language="):
+            if explicit:
+                raise UILanguageError("--ui-language may be specified only once")
+            language = token.partition("=")[2]
+            explicit = True
+            index += 1
+            continue
+        cleaned.append(token)
+        index += 1
+    if language not in {"ja", "en"}:
+        raise UILanguageError("--ui-language must be ja or en")
+    return language, cleaned, explicit
+
+
+def _command_hint(argv: Sequence[str]) -> str | None:
+    return next((token for token in argv if not token.startswith("-")), None)
+
+
+def _json_mode(argv: Sequence[str]) -> bool:
+    return "--json" in argv or _command_hint(argv) in _ALWAYS_JSON_COMMANDS
+
+
+def _message(ui_language: str, japanese: str, english: str) -> str:
+    return english if ui_language == "en" else japanese
+
+
+def _build_parser(ui_language: str = "ja", *, json_mode: bool = False) -> argparse.ArgumentParser:
+    class SelectedArgumentParser(LocalizedArgumentParser):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            super().__init__(
+                *args,
+                ui_language=ui_language,
+                json_mode=json_mode,
+                **kwargs,
+            )
+
+    parser = SelectedArgumentParser(
+        prog="pmgs",
+        description=_message(
+            ui_language,
+            "PMGS Referenceの構築と読み取り専用照会",
+            "Build and query PMGS Reference through read-only interfaces",
+        ),
+    )
+    parser.add_argument(
+        "--ui-language",
+        choices=("ja", "en"),
+        default=ui_language,
+        help=_message(ui_language, "CLI表示の言語", "language for CLI help and human output"),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, parser_class=SelectedArgumentParser
+    )
 
-    inventory = subparsers.add_parser("inventory", help="PMGS packageを棚卸しする")
+    inventory = subparsers.add_parser(
+        "inventory",
+        help=_message(ui_language, "PMGS packageを棚卸しする", "inventory a PMGS package"),
+    )
     inventory.add_argument("source_dir", type=Path)
     inventory.add_argument("--output", type=Path, required=True)
     inventory.add_argument("--summary", type=Path)
 
-    build = subparsers.add_parser("build", help="PMGSの正本SQLiteを構築する")
+    build = subparsers.add_parser(
+        "build",
+        help=_message(
+            ui_language, "PMGSの正本SQLiteを構築する", "build the canonical PMGS SQLite database"
+        ),
+    )
     build.add_argument("source_dir", type=Path)
     build.add_argument("--release", required=True)
     build.add_argument("--output", type=Path, required=True)
     build.add_argument("--report", type=Path)
 
-    setup = subparsers.add_parser("setup", help="PMGSを安全に構築しCodexやClaude Codeへ接続する")
+    setup = subparsers.add_parser(
+        "setup",
+        help=_message(
+            ui_language,
+            "PMGSを安全に構築しCodexやClaude Codeへ接続する",
+            "safely build PMGS and connect Codex or Claude Code",
+        ),
+    )
     setup.add_argument(
         "source",
         type=Path,
@@ -116,11 +240,19 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--json", action="store_true", help="結果をJSONオブジェクト1件で出力")
     setup.add_argument("--language", choices=("ja", "en"), default="ja", help="進捗と案内の言語")
 
-    validate = subparsers.add_parser("validate", help="PMGS SQLiteを検証する")
+    validate = subparsers.add_parser(
+        "validate",
+        help=_message(ui_language, "PMGS SQLiteを検証する", "validate a PMGS SQLite database"),
+    )
     validate.add_argument("database", type=Path)
     validate.add_argument("--report", type=Path)
 
-    lookup = subparsers.add_parser("lookup", help="特許分類を完全一致で照会する")
+    lookup = subparsers.add_parser(
+        "lookup",
+        help=_message(
+            ui_language, "特許分類を完全一致で照会する", "look up an exact patent classification"
+        ),
+    )
     lookup.add_argument("scheme", choices=("fi", "fterm", "ipc"))
     lookup.add_argument("code")
     _add_query_options(lookup)
@@ -130,7 +262,9 @@ def _build_parser() -> argparse.ArgumentParser:
     lookup.add_argument("--relation-offset", type=int, default=0)
     lookup.add_argument("--json", action="store_true")
 
-    search = subparsers.add_parser("search", help="PMGSを文字列検索する")
+    search = subparsers.add_parser(
+        "search", help=_message(ui_language, "PMGSを文字列検索する", "search PMGS text")
+    )
     search.add_argument("query")
     _add_query_options(search)
     search.add_argument("--scheme", action="append", choices=("fi", "fterm", "ipc"))
@@ -143,22 +277,46 @@ def _build_parser() -> argparse.ArgumentParser:
     search.add_argument("--limit", type=int, default=20)
     search.add_argument("--json", action="store_true")
 
-    document = subparsers.add_parser("document", help="特許庁提供のPMGS文書を読む")
+    document = subparsers.add_parser(
+        "document",
+        help=_message(
+            ui_language, "特許庁提供のPMGS文書を読む", "read a JPO-provided PMGS document"
+        ),
+    )
     document.add_argument("document_id")
     _add_database_options(document)
     document.add_argument("--page", type=int)
     document.add_argument("--json", action="store_true")
 
-    mcp = subparsers.add_parser("mcp", help="読み取り専用stdio MCP serverを起動する")
+    mcp = subparsers.add_parser(
+        "mcp",
+        help=_message(
+            ui_language,
+            "読み取り専用stdio MCP serverを起動する",
+            "run the read-only stdio MCP server",
+        ),
+    )
     _add_database_options(mcp)
 
-    doctor = subparsers.add_parser("doctor", help="ローカルDBと実stdio MCP接続を診断する")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help=_message(
+            ui_language,
+            "ローカルDBと実stdio MCP接続を診断する",
+            "diagnose the local database and stdio MCP connection",
+        ),
+    )
     _add_database_options(doctor)
     doctor.add_argument("--python-executable", type=Path)
     doctor.add_argument("--json", action="store_true")
 
     agent_kit = subparsers.add_parser(
-        "agent-kit", help="Codex・Claude Code用のローカル接続fileを生成する"
+        "agent-kit",
+        help=_message(
+            ui_language,
+            "Codex・Claude Code用のローカル接続fileを生成する",
+            "generate local connection files for Codex and Claude Code",
+        ),
     )
     _add_database_options(agent_kit, required=True)
     agent_kit.add_argument("--output", type=Path, required=True)
@@ -166,12 +324,22 @@ def _build_parser() -> argparse.ArgumentParser:
     agent_kit.add_argument("--client", choices=("codex", "claude", "both"), default="both")
 
     install_skill = subparsers.add_parser(
-        "install-agent-skill", help="共通PMGS参照skillをローカルへ導入する"
+        "install-agent-skill",
+        help=_message(
+            ui_language,
+            "共通PMGS参照skillをローカルへ導入する",
+            "install the shared PMGS reference skill",
+        ),
     )
     install_skill.add_argument("--client", choices=("codex", "claude", "both"), default="both")
     install_skill.add_argument("--home", type=Path)
 
-    export = subparsers.add_parser("export-public", help="決定論的な公開候補を生成する")
+    export = subparsers.add_parser(
+        "export-public",
+        help=_message(
+            ui_language, "決定論的な公開候補を生成する", "generate a deterministic public candidate"
+        ),
+    )
     export.add_argument("--db", type=Path, required=True)
     export.add_argument("--policy", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
@@ -180,12 +348,22 @@ def _build_parser() -> argparse.ArgumentParser:
     export.add_argument("--report", type=Path)
 
     validate_public = subparsers.add_parser(
-        "validate-public", help="生成した公開候補treeを検証する"
+        "validate-public",
+        help=_message(
+            ui_language,
+            "生成した公開候補treeを検証する",
+            "validate a generated public candidate tree",
+        ),
     )
     validate_public.add_argument("public_root", type=Path)
     validate_public.add_argument("--report", type=Path)
 
-    audit_public = subparsers.add_parser("audit-public", help="検証済み公開候補A/Bを監査する")
+    audit_public = subparsers.add_parser(
+        "audit-public",
+        help=_message(
+            ui_language, "検証済み公開候補A/Bを監査する", "audit two validated public candidates"
+        ),
+    )
     audit_public.add_argument("--db", type=Path, required=True)
     audit_public.add_argument("--first-root", type=Path, required=True)
     audit_public.add_argument("--second-root", type=Path, required=True)
@@ -328,6 +506,7 @@ def _setup_human_output(result: SetupResult, language: str) -> None:
 
 
 def _run_setup(args: argparse.Namespace) -> int:
+    ui_language = args.ui_language if args.ui_language_explicit else args.language
     non_interactive = bool(args.non_interactive or args.json)
     if non_interactive and args.register is None:
         raise SetupUsageError(
@@ -344,10 +523,10 @@ def _run_setup(args: argparse.Namespace) -> int:
             target.client
             for target in targets
             if target.executable is not None
-            and _prompt_registration(target.client, target.executable, str(args.language))
+            and _prompt_registration(target.client, target.executable, str(ui_language))
         ]
 
-    messages = _SETUP_PROGRESS[str(args.language)]
+    messages = _SETUP_PROGRESS[str(ui_language)]
 
     def progress(stage: str) -> None:
         message = messages.get(stage)
@@ -366,7 +545,7 @@ def _run_setup(args: argparse.Namespace) -> int:
     if args.json:
         _json_output(result.as_dict())
     else:
-        _setup_human_output(result, str(args.language))
+        _setup_human_output(result, str(ui_language))
     return 0 if result.status in {"ready", "already_ready", "dry_run"} else 1
 
 
@@ -458,12 +637,20 @@ def _run_doctor(args: argparse.Namespace) -> int:
     if args.json:
         _json_output(result.as_dict())
     else:
-        state = "成功" if result.ok else "失敗"
-        print(f"PMGS診断: {state}")
-        print(f"リリース: {result.release['release_id']}")
-        print(f"tool: {', '.join(result.tool_names)}")
-        for error in result.errors:
-            print(f"エラー: {error}")
+        if args.ui_language == "en":
+            state = "success" if result.ok else "failure"
+            print(f"PMGS diagnostic: {state}")
+            print(f"Release: {result.release['release_id']}")
+            print(f"Tools: {', '.join(result.tool_names)}")
+            for error in result.errors:
+                print(f"Error: {error}")
+        else:
+            state = "成功" if result.ok else "失敗"
+            print(f"PMGS診断: {state}")
+            print(f"リリース: {result.release['release_id']}")
+            print(f"tool: {', '.join(result.tool_names)}")
+            for error in result.errors:
+                print(f"エラー: {error}")
     return 0 if result.ok else 1
 
 
@@ -528,9 +715,45 @@ def _run_audit_public(args: argparse.Namespace) -> int:
     return 0 if result.ready else 1
 
 
+def _json_requested(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False) or args.command in _ALWAYS_JSON_COMMANDS)
+
+
+def _runtime_error_payload(command: str | None, code: str, message: str) -> JSONDict:
+    return {
+        "schema_version": "1.0",
+        "status": "failed",
+        "command": command,
+        "error": {"code": code, "message": message},
+    }
+
+
+def _emit_runtime_error(
+    args: argparse.Namespace, code: str, message: str, *, exit_code: int = 1
+) -> int:
+    _json_output(_runtime_error_payload(args.command, code, message))
+    return exit_code
+
+
+def _human_runtime_error(
+    parser: argparse.ArgumentParser, ui_language: str, code: str, message: str
+) -> Never:
+    prefix = "error" if ui_language == "en" else "エラー"
+    parser.exit(1, f"{parser.prog}: {prefix} [{code}]: {message}\n")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    json_mode = _json_mode(raw_argv)
+    try:
+        ui_language, cleaned_argv, ui_language_explicit = _extract_ui_language(raw_argv)
+    except UILanguageError as exc:
+        parser = _build_parser("ja", json_mode=json_mode)
+        parser.error(str(exc))
+    parser = _build_parser(ui_language, json_mode=json_mode)
+    args = parser.parse_args(cleaned_argv)
+    args.ui_language = ui_language
+    args.ui_language_explicit = ui_language_explicit
     try:
         if args.command == "inventory":
             return _run_inventory(args)
@@ -562,34 +785,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "audit-public":
             return _run_audit_public(args)
     except SetupUsageError as exc:
-        if getattr(args, "json", False):
-            _json_output(
-                {
-                    "schema_version": "1.0",
-                    "status": "failed",
-                    "error": {"code": "SETUP_USAGE", "message": str(exc)},
-                }
-            )
-            return 2
+        if _json_requested(args):
+            return _emit_runtime_error(args, "SETUP_USAGE", str(exc), exit_code=2)
         parser.error(str(exc))
-    except (SetupOperationError, CurrentPointerError) as exc:
-        if args.command == "setup" and getattr(args, "json", False):
-            _json_output(
-                {
-                    "schema_version": "1.0",
-                    "status": "failed",
-                    "error": {"code": "SETUP_FAILED", "message": str(exc)},
-                }
+    except SetupOperationError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(args, "SETUP_FAILED", "PMGS setup failed")
+        _human_runtime_error(parser, ui_language, "SETUP_FAILED", str(exc))
+    except CurrentPointerError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(
+                args, "CURRENT_POINTER_INVALID", "PMGS current pointer is invalid"
             )
-            return 1
-        parser.exit(1, f"error: {exc}\n")
+        _human_runtime_error(parser, ui_language, "CURRENT_POINTER_INVALID", str(exc))
     except PMGSQueryError as exc:
-        if getattr(args, "json", False):
-            _json_output({"error": {"code": exc.code, "message": exc.message}})
-            return 1
-        parser.exit(1, f"error [{exc.code}]: {exc.message}\n")
-    except (BuildError, OSError, ValueError) as exc:
-        parser.exit(1, f"error: {exc}\n")
+        if _json_requested(args):
+            return _emit_runtime_error(args, exc.code, exc.message)
+        _human_runtime_error(parser, ui_language, exc.code, exc.message)
+    except FileNotFoundError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(
+                args, "FILE_NOT_FOUND", "PMGS Reference database was not found"
+            )
+        _human_runtime_error(parser, ui_language, "FILE_NOT_FOUND", str(exc))
+    except BuildError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(args, "BUILD_FAILED", "PMGS build failed")
+        _human_runtime_error(parser, ui_language, "BUILD_FAILED", str(exc))
+    except OSError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(
+                args, "IO_ERROR", "PMGS operation failed due to an I/O error"
+            )
+        _human_runtime_error(parser, ui_language, "IO_ERROR", str(exc))
+    except ValueError as exc:
+        if _json_requested(args):
+            return _emit_runtime_error(
+                args, "INVALID_STATE", "PMGS operation rejected invalid state or input"
+            )
+        _human_runtime_error(parser, ui_language, "INVALID_STATE", str(exc))
     parser.error(f"unsupported command: {args.command}")
     return 2
 

@@ -134,7 +134,7 @@ Set-Location pmgs-reference
 uv tool install .
 ```
 
-See the [Codex and Claude Code setup guide](docs/local-agent-kit.en.md) for explicit releases, Claude Code, custom storage, non-interactive use, and JSON output.
+See the [Codex and Claude Code setup guide](docs/local-agent-kit.en.md) for explicit releases, Claude Code, custom storage, non-interactive use, and JSON output. Prefix a command with `--ui-language en` to render CLI help and human-readable output in English without changing the language of retrieved PMGS text.
 
 ## AI usage contract
 

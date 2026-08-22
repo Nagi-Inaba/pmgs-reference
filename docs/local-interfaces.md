@@ -92,7 +92,12 @@ pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --json
 pmgs document DOCUMENT_ID --page 1 --json
 pmgs doctor --json
+pmgs --ui-language en doctor
 ```
+
+`--ui-language ja|en`はCLIのhelp、引数エラー、人向け出力だけを切り替える。日本語が既定であり、`lookup`や`search`の取得本文を選ぶ`--language`とは別の指定である。
+
+`--json`を持つコマンドは、runtime error時も標準出力へJSON objectを1件だけ返す。共通envelopeは`schema_version`、`status`、`command`、`error.code`、`error.message`を持ち、終了コードは非0のまま維持する。file path、credential、stack traceはJSON errorへ含めない。`inventory`、`build`、`validate`、`agent-kit`、`install-agent-skill`、`export-public`、`validate-public`、`audit-public`は正常時からJSON固定のため、失敗時も同じ契約を使う。
 
 `lookup --json`は`not_found`、`version_not_found`、`not_valid_at_release`のいずれも、説明可能な共通recordを出力して終了コード1を返す。該当recordを返した正常照会は0を返す。
 

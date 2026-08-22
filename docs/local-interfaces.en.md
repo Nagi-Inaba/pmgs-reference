@@ -92,7 +92,12 @@ pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --json
 pmgs document DOCUMENT_ID --page 1 --json
 pmgs doctor --json
+pmgs --ui-language en doctor
 ```
+
+`--ui-language ja|en` changes only CLI help, argument errors, and human-readable output. Japanese remains the default. This option is separate from `--language`, which selects retrieved text for `lookup` and `search`.
+
+Commands with `--json` return exactly one JSON object on standard output for runtime failures as well as successes. The common envelope contains `schema_version`, `status`, `command`, `error.code`, and `error.message`, while retaining a nonzero exit status. JSON errors omit file paths, credentials, and stack traces. `inventory`, `build`, `validate`, `agent-kit`, `install-agent-skill`, `export-public`, `validate-public`, and `audit-public` already use JSON for successful output and use the same envelope on failure.
 
 For `not_found`, `version_not_found`, and `not_valid_at_release`, `lookup --json` outputs an explainable common record and exits with status 1. A successful query that returns a matching record exits with status 0.
 
