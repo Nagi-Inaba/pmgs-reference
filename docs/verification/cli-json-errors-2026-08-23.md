@@ -2,6 +2,19 @@
 
 Issue #19 / PR #60
 
-RED: CI run #441 reproduced seven failures covering argparse errors, always-JSON commands, missing files, invalid current pointers, PMGS query errors, and doctor runtime races. The implementation must return one sanitized JSON object on stdout with a nonzero exit status and no local paths, credentials, or stack traces.
+## RED evidence
 
-Final implementation, hosted CI evidence, review findings, and remaining limitations will be recorded after GREEN verification.
+CI run #441 reproduced the expected failures for argparse errors, always-JSON commands, missing files, invalid current pointers, PMGS query errors, and doctor runtime races. The expanded RED suite additionally covers unsupported databases, build failures, validation-negative results with retained details, public export failures, and unexpected runtime errors.
+
+## Required contract
+
+- exceptional failures emit exactly one JSON object on stdout;
+- exit status remains nonzero;
+- stderr is empty in JSON mode;
+- the common envelope contains `schema_version`, `status`, `command`, `error.code`, and `error.message`;
+- validation-negative results retain the structured validation result under `details`;
+- local paths, credentials, raw exception text, and stack traces are not reflected;
+- human mode keeps the existing readable stderr behavior;
+- UI-language localization remains outside this PR and is tracked by Issue #33.
+
+The first exact-text patch failed with `parser class anchor mismatch`. A marker-based v2 application now replaces only the parser class, parser construction, validation handler, and `main()` exception boundary. Final implementation, hosted CI evidence, review findings, and remaining limitations will be recorded after GREEN verification.
