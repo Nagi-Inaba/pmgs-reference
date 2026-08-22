@@ -52,7 +52,7 @@ class DoctorResult:
         return {
             "schema_version": "2.0",
             "ok": self.ok,
-            "database": str(self.database),
+            "database": self.database.name,
             "database_sha256": self.database_sha256,
             "release": self.release,
             "checks": cast(dict[str, JSONValue], self.checks),
@@ -241,6 +241,8 @@ async def _check_stdio(
     lookup_payload = cast(JSONDict, lookup.structured_content or {})
     search_payload = cast(JSONDict, search.structured_content or {})
     document_payload = cast(JSONDict, document.structured_content or {})
+    lookup_sources = lookup_payload.get("sources")
+    lookup_texts = lookup_payload.get("texts")
     lookup_ok = (
         not lookup.is_error
         and lookup_payload.get("schema_version") == "2.0"
@@ -253,6 +255,9 @@ async def _check_stdio(
     )
     classification_count = (
         classification_group.get("count") if isinstance(classification_group, dict) else None
+    )
+    classification_results = (
+        classification_group.get("results") if isinstance(classification_group, dict) else None
     )
     search_ok = (
         not search.is_error
@@ -286,9 +291,31 @@ async def _check_stdio(
         checks,
         names,
         {
-            "lookup": lookup_payload,
-            "search": search_payload,
-            "document": document_payload,
+            "lookup": {
+                "schema_version": lookup_payload.get("schema_version"),
+                "match_status": lookup_payload.get("match_status"),
+                "reference_date_present": bool(lookup_payload.get("reference_date")),
+                "source_count": len(lookup_sources) if isinstance(lookup_sources, list) else 0,
+                "text_count": len(lookup_texts) if isinstance(lookup_texts, list) else 0,
+            },
+            "search": {
+                "schema_version": search_payload.get("schema_version"),
+                "classification_requested": (
+                    classification_group.get("requested")
+                    if isinstance(classification_group, dict)
+                    else False
+                ),
+                "classification_count": classification_count,
+                "returned_count": (
+                    len(classification_results) if isinstance(classification_results, list) else 0
+                ),
+            },
+            "document": {
+                "schema_version": document_payload.get("schema_version"),
+                "document_id": document_payload.get("document_id"),
+                "segment_count": len(segments) if isinstance(segments, list) else 0,
+                "source_present": isinstance(source, dict) and bool(source.get("relative_id")),
+            },
         },
     )
 
@@ -358,7 +385,7 @@ def doctor_database(
         document_id = _document_sample(resolved_database)
         sample_input = {
             **classification_sample,
-            "search_query": search_query,
+            "search_query_sha256": hashlib.sha256(search_query.encode("utf-8")).hexdigest().upper(),
             "document_id": document_id,
         }
     except (OSError, sqlite3.Error, ValueError) as exc:
