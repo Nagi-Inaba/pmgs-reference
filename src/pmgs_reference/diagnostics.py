@@ -22,6 +22,7 @@ EXPECTED_MCP_TOOLS: Final = (
     "search_pmgs",
     "get_pmgs_document",
 )
+DEFAULT_DOCTOR_TIMEOUT_SECONDS: Final = 30.0
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class DoctorResult:
     tool_names: tuple[str, ...]
     sample: JSONDict
     errors: tuple[str, ...]
+    failure: JSONDict | None = None
 
     def as_dict(self) -> JSONDict:
         return {
@@ -48,6 +50,7 @@ class DoctorResult:
             "tool_names": list(self.tool_names),
             "sample": self.sample,
             "errors": list(self.errors),
+            "failure": self.failure,
         }
 
 
@@ -95,11 +98,57 @@ def _sample_identity(database: Path) -> JSONDict:
     }
 
 
+def _search_sample(database: Path) -> str:
+    connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        row = connection.execute(
+            "SELECT ct.text FROM concept_text ct "
+            "JOIN concept_revision cr ON cr.revision_id = ct.revision_id "
+            "JOIN concept c ON c.concept_id = cr.concept_id "
+            "JOIN release r ON r.release_id = c.release_id "
+            "WHERE c.record_status = 'canonical' AND ct.language = 'ja' "
+            "AND trim(ct.text) != '' "
+            "AND (cr.valid_from IS NULL OR cr.valid_from <= r.reference_date) "
+            "AND (cr.valid_to IS NULL OR cr.valid_to >= r.reference_date) "
+            "ORDER BY CASE c.scheme WHEN 'fi' THEN 0 WHEN 'fterm' THEN 1 ELSE 2 END, "
+            "c.edition, c.normalized_code, cr.version_indicator, ct.sequence_number, ct.text_id "
+            "LIMIT 1"
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise ValueError("PMGS Reference database contains no searchable classification text")
+    text = " ".join(str(row[0]).split())
+    for term in text.split():
+        if len(term) >= 3:
+            return term[:64]
+    return text[:64]
+
+
+def _document_sample(database: Path) -> str:
+    connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        row = connection.execute(
+            "SELECT d.document_id FROM document d "
+            "WHERE EXISTS (SELECT 1 FROM document_text dt WHERE dt.document_id = d.document_id) "
+            "ORDER BY d.kind, d.document_id LIMIT 1"
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise ValueError("PMGS Reference database contains no readable documents")
+    return str(row[0])
+
+
 async def _check_stdio(
     database: Path,
     python_executable: Path,
     sample: JSONDict,
     *,
+    search_query: str,
+    document_id: str,
     data_dir: Path | None = None,
 ) -> tuple[dict[str, bool], tuple[str, ...], JSONDict]:
     locator = ["--data-dir", str(data_dir)] if data_dir is not None else ["--db", str(database)]
@@ -112,22 +161,35 @@ async def _check_stdio(
             *locator,
         ],
     )
-    arguments: dict[str, JSONValue] = {
+    lookup_arguments: dict[str, JSONValue] = {
         "scheme": sample["scheme"],
         "code": sample["code"],
         "language": "ja",
     }
     if sample["edition"] is not None:
-        arguments["edition"] = sample["edition"]
+        lookup_arguments["edition"] = sample["edition"]
     if sample["version"] is not None:
-        arguments["version"] = sample["version"]
+        lookup_arguments["version"] = sample["version"]
     async with (
         stdio_client(parameters) as (read_stream, write_stream),
         ClientSession(read_stream, write_stream) as session,
     ):
         initialized = await session.initialize()
         listed = await session.list_tools()
-        lookup = await session.call_tool("lookup_classification", arguments)
+        lookup = await session.call_tool("lookup_classification", lookup_arguments)
+        search = await session.call_tool(
+            "search_pmgs",
+            {
+                "query": search_query,
+                "content_types": ["classification"],
+                "language": "ja",
+                "limit": 1,
+            },
+        )
+        document = await session.call_tool(
+            "get_pmgs_document",
+            {"document_id": document_id},
+        )
 
     names = tuple(tool.name for tool in listed.tools)
     annotations_ok = all(
@@ -136,19 +198,73 @@ async def _check_stdio(
         and tool.annotations.destructive_hint is False
         for tool in listed.tools
     )
-    payload = cast(JSONDict, lookup.structured_content or {})
-    sample_ok = (
-        payload.get("schema_version") == "2.0"
-        and payload.get("match_status") in {"exact", "normalized_exact"}
-        and bool(payload.get("reference_date"))
+    lookup_payload = cast(JSONDict, lookup.structured_content or {})
+    search_payload = cast(JSONDict, search.structured_content or {})
+    document_payload = cast(JSONDict, document.structured_content or {})
+    lookup_ok = (
+        lookup_payload.get("schema_version") == "2.0"
+        and lookup_payload.get("match_status") in {"exact", "normalized_exact"}
+        and bool(lookup_payload.get("reference_date"))
+    )
+    search_groups = search_payload.get("results_by_type")
+    classification_group = (
+        search_groups.get("classification") if isinstance(search_groups, dict) else None
+    )
+    search_ok = (
+        search_payload.get("schema_version") == "2.0"
+        and isinstance(classification_group, dict)
+        and classification_group.get("requested") is True
+        and isinstance(classification_group.get("count"), int)
+        and int(classification_group["count"]) >= 1
+    )
+    segments = document_payload.get("segments")
+    document_ok = (
+        document_payload.get("schema_version") == "2.0"
+        and document_payload.get("document_id") == document_id
+        and isinstance(segments, list)
+        and len(segments) >= 1
     )
     checks = {
         "mcp_server_identity": initialized.server_info.name == MCP_SERVER_NAME,
         "mcp_tool_contract": names == EXPECTED_MCP_TOOLS,
         "mcp_tools_read_only": annotations_ok,
-        "sample_lookup": sample_ok,
+        "sample_lookup": lookup_ok,
+        "sample_search": search_ok,
+        "sample_document": document_ok,
     }
-    return checks, names, payload
+    return (
+        checks,
+        names,
+        {
+            "lookup": lookup_payload,
+            "search": search_payload,
+            "document": document_payload,
+        },
+    )
+
+
+async def _run_stdio_check(
+    database: Path,
+    python_executable: Path,
+    sample: JSONDict,
+    *,
+    search_query: str,
+    document_id: str,
+    data_dir: Path | None = None,
+    timeout_seconds: float = DEFAULT_DOCTOR_TIMEOUT_SECONDS,
+) -> tuple[dict[str, bool], tuple[str, ...], JSONDict]:
+    """Run the complete stdio diagnostic within one cancellation boundary."""
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+    async with asyncio.timeout(timeout_seconds):
+        return await _check_stdio(
+            database,
+            python_executable,
+            sample,
+            search_query=search_query,
+            document_id=document_id,
+            data_dir=data_dir,
+        )
 
 
 def doctor_database(
@@ -156,8 +272,11 @@ def doctor_database(
     *,
     data_dir: str | Path | None = None,
     python_executable: str | Path | None = None,
+    timeout_seconds: float = DEFAULT_DOCTOR_TIMEOUT_SECONDS,
 ) -> DoctorResult:
-    """Verify a database, real stdio handshake, read-only tools, and hash stability."""
+    """Verify a database, all stdio tools, bounded runtime, and hash stability."""
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
     resolved_data_dir = Path(data_dir).expanduser().resolve() if data_dir is not None else None
     target = resolve_database(database, data_dir=resolved_data_dir)
     store = PMGSStore.open(database, data_dir=resolved_data_dir)
@@ -172,27 +291,62 @@ def doctor_database(
 
     before = _sha256(resolved_database)
     release = store.release_info()
-    sample_input = _sample_identity(resolved_database)
+    classification_sample = _sample_identity(resolved_database)
+    search_query = _search_sample(resolved_database)
+    document_id = _document_sample(resolved_database)
+    sample_input: JSONDict = {
+        **classification_sample,
+        "search_query": search_query,
+        "document_id": document_id,
+    }
     errors: list[str] = []
+    failure: JSONDict | None = None
     try:
         stdio_checks, tool_names, sample_output = asyncio.run(
-            _check_stdio(
+            _run_stdio_check(
                 resolved_database,
                 resolved_python,
-                sample_input,
+                classification_sample,
+                search_query=search_query,
+                document_id=document_id,
                 data_dir=resolved_data_dir,
+                timeout_seconds=timeout_seconds,
             )
         )
+    except TimeoutError:
+        stdio_checks = {
+            "mcp_server_identity": False,
+            "mcp_tool_contract": False,
+            "mcp_tools_read_only": False,
+            "sample_lookup": False,
+            "sample_search": False,
+            "sample_document": False,
+        }
+        tool_names = ()
+        sample_output = {}
+        failure = {
+            "code": "MCP_TIMEOUT",
+            "stage": "stdio",
+            "message": "stdio MCP diagnostic timed out",
+        }
+        errors.append("stdio MCP diagnostic timed out")
     except Exception as exc:  # pragma: no cover - platform failures remain in the report
         stdio_checks = {
             "mcp_server_identity": False,
             "mcp_tool_contract": False,
             "mcp_tools_read_only": False,
             "sample_lookup": False,
+            "sample_search": False,
+            "sample_document": False,
         }
         tool_names = ()
         sample_output = {}
-        errors.append(f"stdio MCP check failed: {type(exc).__name__}: {exc}")
+        failure = {
+            "code": "MCP_CHECK_FAILED",
+            "stage": "stdio",
+            "message": "stdio MCP diagnostic failed",
+        }
+        errors.append(f"stdio MCP check failed: {type(exc).__name__}")
     after = _sha256(resolved_database)
     checks = {
         "database_schema": True,
@@ -224,4 +378,5 @@ def doctor_database(
         tool_names=tool_names,
         sample={"input": sample_input, "output": sample_output},
         errors=tuple(errors),
+        failure=failure,
     )
