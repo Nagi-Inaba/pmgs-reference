@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
 from pmgs_reference.validation_core import (
     ValidationResult,
     logical_digest,
-    validate_database as _validate_core_database,
     write_validation_report,
+)
+from pmgs_reference.validation_core import (
+    validate_database as _validate_core_database,
 )
 
 __all__ = [
@@ -94,10 +97,8 @@ def _fts5_index_integrity(
             "sqlite_version": sqlite3.sqlite_version,
         }
     finally:
-        try:
+        with suppress(sqlite3.DatabaseError):
             connection.execute(drop_sql)
-        except sqlite3.DatabaseError:
-            pass
 
 
 def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str, object]]:
