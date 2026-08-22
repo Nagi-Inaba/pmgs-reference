@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -12,9 +11,7 @@ from pmgs_reference.validation_core import (
     logical_digest,
     write_validation_report,
 )
-from pmgs_reference.validation_core import (
-    validate_database as _validate_core_database,
-)
+from pmgs_reference.validation_core import validate_database as _validate_core_database
 
 __all__ = [
     "ValidationResult",
@@ -50,63 +47,41 @@ def _fts5_index_integrity(
         raise ValueError("unsupported FTS5 table")
 
     if core_integrity == "ok" and _sqlite_integrity_covers_fts5():
-        return {
-            "expected": "readable",
-            "actual": "covered_by_pragma_integrity_check",
-            "match": True,
-            "method": "pragma_xintegrity",
-            "sqlite_version": sqlite3.sqlite_version,
-        }
+        return _check("readable", "readable")
 
     vocabulary = f"__pmgs_{table}_integrity_vocab"
-    drop_sql = f'DROP TABLE IF EXISTS temp."{vocabulary}"'
     try:
-        connection.execute(drop_sql)
         connection.execute(
-            f"CREATE VIRTUAL TABLE temp.\"{vocabulary}\" USING fts5vocab(main, '{table}', 'row')"
+            f'CREATE VIRTUAL TABLE IF NOT EXISTS temp."{vocabulary}" '
+            f"USING fts5vocab(main, '{table}', 'row')"
         )
         row = connection.execute(
-            f"SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) "
+            f'SELECT COUNT(*), COALESCE(SUM(doc), 0), COALESCE(SUM(cnt), 0) '
             f'FROM temp."{vocabulary}"'
         ).fetchone()
-        if row is None:
-            return {
-                "expected": "readable",
-                "actual": "missing_result",
-                "match": False,
-                "method": "fts5vocab",
-                "sqlite_version": sqlite3.sqlite_version,
-            }
-        return {
-            "expected": "readable",
-            "actual": "readable",
-            "match": True,
-            "method": "fts5vocab",
-            "sqlite_version": sqlite3.sqlite_version,
-            "term_count": int(row[0]),
-            "term_document_pairs": int(row[1]),
-            "token_occurrences": int(row[2]),
-        }
+        return _check("readable", "readable" if row is not None else "missing_result")
     except sqlite3.DatabaseError as exc:
-        return {
-            "expected": "readable",
-            "actual": f"database_error:{type(exc).__name__}",
-            "match": False,
-            "method": "fts5vocab",
-            "sqlite_version": sqlite3.sqlite_version,
-        }
-    finally:
-        with suppress(sqlite3.DatabaseError):
-            connection.execute(drop_sql)
+        return _check("readable", f"database_error:{type(exc).__name__}", False)
+
+
+def _connection_failure(exc: sqlite3.DatabaseError) -> dict[str, dict[str, object]]:
+    failure = _check("readable", f"database_error:{type(exc).__name__}", False)
+    return {f"{table}_integrity": dict(failure) for table in _FTS_TABLES}
 
 
 def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str, object]]:
     path = database_path.resolve()
-    connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    try:
+        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    except sqlite3.DatabaseError as exc:
+        return _connection_failure(exc)
+
     try:
         tables = {
             str(row[0])
-            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
         }
         return {
             f"{table}_integrity": (
@@ -117,14 +92,7 @@ def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str
             for table in _FTS_TABLES
         }
     except sqlite3.DatabaseError as exc:
-        failure = {
-            "expected": "readable",
-            "actual": f"database_error:{type(exc).__name__}",
-            "match": False,
-            "method": "connection",
-            "sqlite_version": sqlite3.sqlite_version,
-        }
-        return {f"{table}_integrity": dict(failure) for table in _FTS_TABLES}
+        return _connection_failure(exc)
     finally:
         connection.close()
 
