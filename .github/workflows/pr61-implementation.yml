@@ -1,0 +1,60 @@
+name: pr61-implementation
+
+on:
+  push:
+    branches:
+      - fix/fts5-schema-contract
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/fts5-schema-contract
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Apply implementation
+        shell: bash
+        run: python scripts/apply_fts_schema_contract.py
+
+      - name: Verify Python contract
+        shell: bash
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format src/pmgs_reference/fts_schema.py src/pmgs_reference/validation.py src/pmgs_reference/store.py tests/test_fts_schema_contract.py scripts/apply_fts_schema_contract.py
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen mypy src
+          uv run --frozen pytest -q tests/test_fts_schema_contract.py tests/test_fts_integrity_contract.py tests/test_store.py
+          uv run --frozen pytest -q
+          uv build
+
+      - name: Verify Worker and bundled interfaces
+        shell: bash
+        run: |
+          npm --prefix worker ci
+          npm --prefix worker run verify
+
+      - name: Commit verified implementation and remove one-shot files
+        shell: bash
+        run: |
+          git rm .github/workflows/pr61-implementation.yml scripts/apply_fts_schema_contract.py
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add src/pmgs_reference/fts_schema.py src/pmgs_reference/validation.py src/pmgs_reference/store.py tests/test_fts_schema_contract.py docs/verification/fts5-schema-contract-2026-08-23.md
+          git commit -m "fix: enforce canonical FTS5 schema contracts"
+          git push origin HEAD:fix/fts5-schema-contract
