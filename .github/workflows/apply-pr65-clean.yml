@@ -37,6 +37,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sha256sum .github/pr65-final-patch/part-*.txt
+          wc -c .github/pr65-final-patch/part-*.txt
           cat .github/pr65-final-patch/part-*.txt \
             | tr -d '\r\n' \
             | base64 --decode \
