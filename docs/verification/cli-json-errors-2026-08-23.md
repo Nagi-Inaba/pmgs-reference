@@ -70,7 +70,19 @@ Codex review identified three edge cases that are covered by the final implement
 - `sqlite3.DatabaseError` is mapped before the generic exception handler so corrupt SQLite input is classified as `UNSUPPORTED_DATABASE` or `VALIDATION_FAILED`.
 - doctor timeout parsing uses `_positive_finite_float`, rejecting `0`, negative values, `NaN`, and positive or negative infinity as a sanitized `ARGUMENT_ERROR`.
 
-The final review-fix branch contains no temporary workflow or patch script. A fresh hosted CI matrix on the final three-file diff is required before merge.
+The final review-fix branch contains no temporary workflow or patch script.
+
+## Post-review hosted matrix
+
+GitHub Actions CI run #515 (`32612318647`) tested the review-corrected three-file diff against the then-current `main` merge ref. All jobs passed.
+
+- Ubuntu Python 3.12: `309 passed, 9 skipped`; repository boundary, Ruff, format, mypy, wheel, and sdist succeeded.
+- Python 3.12 and 3.14 succeeded on Ubuntu, Windows, and macOS.
+- Python 3.13 and its installed-wheel check succeeded on Ubuntu.
+- Installed-wheel checks succeeded on Ubuntu, Windows, and macOS.
+- Worker verification and three-platform synthetic determinism comparison succeeded.
+
+Branch protection is still the final authority: the merge is allowed only when the current head and current `main` merge ref carry every required check.
 
 ## Remaining scope
 
