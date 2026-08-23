@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import sqlite3
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -76,7 +78,10 @@ def _command_hint(argv: Sequence[str]) -> str | None:
 
 
 def _wants_json(argv: Sequence[str], command: str | None) -> bool:
-    return command in _ALWAYS_JSON_COMMANDS or "--json" in argv
+    option_tokens = list(argv)
+    if "--" in option_tokens:
+        option_tokens = option_tokens[: option_tokens.index("--")]
+    return command in _ALWAYS_JSON_COMMANDS or "--json" in option_tokens
 
 
 def _failure_payload(
@@ -145,6 +150,16 @@ def _value_error_code(command: str) -> tuple[str, str]:
     if command in {"export-public", "validate-public", "audit-public"}:
         return "PUBLIC_OPERATION_FAILED", "public export operation failed"
     return "INVALID_STATE", "invalid local state"
+
+
+def _positive_finite_float(raw: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from exc
+    if value <= 0 or not math.isfinite(value):
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return value
 
 
 class JapaneseArgumentParser(argparse.ArgumentParser):
@@ -313,7 +328,7 @@ def _build_parser(
     doctor.add_argument("--python-executable", type=Path)
     doctor.add_argument(
         "--timeout-seconds",
-        type=float,
+        type=_positive_finite_float,
         default=DEFAULT_DOCTOR_TIMEOUT_SECONDS,
         help="stdio MCP診断を終了するまでの最大秒数",
     )
@@ -792,6 +807,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "public export failed",
                 )
             return _emit_failure(command, "IO_ERROR", "I/O operation failed")
+        parser.exit(1, f"error: {exc}\n")
+    except sqlite3.DatabaseError as exc:
+        if json_mode:
+            if command == "build":
+                return _emit_failure(command, "BUILD_FAILED", "database build failed")
+            code, message = _value_error_code(command)
+            return _emit_failure(command, code, message)
         parser.exit(1, f"error: {exc}\n")
     except ValueError as exc:
         if json_mode:

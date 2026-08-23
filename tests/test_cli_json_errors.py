@@ -80,9 +80,11 @@ def test_end_of_options_marker_keeps_literal_json_query_in_human_mode(
     assert not captured.err.lstrip().startswith("{")
 
 
+@pytest.mark.parametrize("rejected", ["0", "-1", "nan", "inf", "-inf"])
 def test_doctor_invalid_timeout_is_an_argument_error(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    rejected: str,
 ) -> None:
     with pytest.raises(SystemExit) as error:
         main(
@@ -91,7 +93,7 @@ def test_doctor_invalid_timeout_is_an_argument_error(
                 "--db",
                 str(tmp_path / "unused.sqlite"),
                 "--timeout-seconds",
-                "0",
+                rejected,
                 "--json",
             ]
         )
