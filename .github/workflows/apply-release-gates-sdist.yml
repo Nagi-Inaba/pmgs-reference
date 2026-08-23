@@ -31,14 +31,14 @@ jobs:
           cat .github/step1-chunks/part-*.txt | base64 --decode > "$RUNNER_TEMP/step1-changes.tar.gz"
           tar -tzf "$RUNNER_TEMP/step1-changes.tar.gz" >/dev/null
           tar -xzf "$RUNNER_TEMP/step1-changes.tar.gz" -C .
-      - name: Normalize staged test source
+      - name: Normalize staged sources
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("tests/test_release_scripts.py")
-          text = path.read_text(encoding="utf-8")
+          test_path = Path("tests/test_release_scripts.py")
+          text = test_path.read_text(encoding="utf-8")
           replacements = (
               (
                   '''    metadata = (\n        "Metadata-Version: 2.4\\n"\n        "Name: pmgs-reference\\n"\n        "Version: 0.4.0\\n"\n        "Requires-Python: >=3.12\\n\\n"\n    ).encode()\n''',
@@ -53,13 +53,44 @@ jobs:
               if old not in text:
                   raise SystemExit("staged test normalization anchor not found")
               text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
+          test_path.write_text(text, encoding="utf-8")
+
+          release_path = Path(".github/workflows/release.yml")
+          release = release_path.read_text(encoding="utf-8")
+          release_replacements = (
+              ("  build-distributions:\n", "  build:\n"),
+              ("    needs: build-distributions\n", "    needs: build\n"),
+              ("      - build-distributions\n", "      - build\n"),
+          )
+          for old, new in release_replacements:
+              if old not in release:
+                  raise SystemExit(f"release workflow compatibility anchor not found: {old!r}")
+              release = release.replace(old, new)
+          release_path.write_text(release, encoding="utf-8")
+
+          contract_path = Path("tests/test_release_gate_contract.py")
+          contract = contract_path.read_text(encoding="utf-8")
+          if '"build-distributions"' not in contract:
+              raise SystemExit("release gate test compatibility anchor not found")
+          contract_path.write_text(
+              contract.replace('"build-distributions"', '"build"'),
+              encoding="utf-8",
+          )
+
+          runbook_path = Path("docs/release-runbook.md")
+          runbook = runbook_path.read_text(encoding="utf-8")
+          if "`build-distributions`" not in runbook:
+              raise SystemExit("release runbook compatibility anchor not found")
+          runbook_path.write_text(
+              runbook.replace("`build-distributions`", "`build`"),
+              encoding="utf-8",
+          )
           PY
       - name: Verify Python contracts and distributions
         shell: bash
         run: |
           uv sync --frozen --all-groups
-          uv run --frozen ruff format scripts/verify_distribution_set.py tests/test_release_scripts.py
+          uv run --frozen ruff format scripts/verify_distribution_set.py tests/test_release_scripts.py tests/test_release_gate_contract.py
           uv run --frozen python scripts/verify_repository_boundary.py
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
