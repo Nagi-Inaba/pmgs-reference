@@ -18,4 +18,8 @@ The initial RED commit demonstrated that the previous validator accepted missing
 
 The implementation introduces one shared parser and contract module, adds two stable validation checks, and makes Store startup reject a mismatch in either table before serving queries. Existing read-only FTS5 posting-integrity checks remain separate and continue to run after the schema gate.
 
-A fresh hosted CI matrix is required before merge.
+## First synced CI review
+
+The first normal CI run on a branch synchronized with `main` was run #529 (`32613213914`). Installed-wheel checks, Worker verification, and three-platform determinism completed successfully. Python matrix jobs stopped at one Ruff import-order finding in `store.py`; no test failure had been reached. Ruff's prescribed import ordering was applied without changing behavior, and the temporary one-shot workflow removed itself.
+
+A fresh full hosted CI matrix on the corrected five-file diff is required before merge.
