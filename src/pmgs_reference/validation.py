@@ -8,6 +8,11 @@ from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 
+from pmgs_reference.fts_schema import (
+    CANONICAL_FTS5_SCHEMAS,
+    inspect_fts5_schemas,
+    virtual_table_module,
+)
 from pmgs_reference.validation_core import (
     ValidationResult,
     logical_digest,
@@ -22,7 +27,8 @@ __all__ = [
     "write_validation_report",
 ]
 
-_FTS_TABLES = ("concept_text_fts", "document_text_fts")
+_FTS_TABLES = tuple(CANONICAL_FTS5_SCHEMAS)
+_CANONICAL_FTS5_SCHEMA = "canonical_fts5_schema"
 _SQLITE_READ_ONLY_XINTEGRITY_VERSION = (3, 45, 1)
 
 
@@ -39,139 +45,60 @@ def _sqlite_integrity_covers_fts5() -> bool:
     return sqlite3.sqlite_version_info >= _SQLITE_READ_ONLY_XINTEGRITY_VERSION
 
 
-def _sql_tokens(sql: str) -> list[tuple[str, str]]:
-    """Tokenize enough SQLite DDL to identify a virtual-table module safely."""
-    tokens: list[tuple[str, str]] = []
-    index = 0
-    length = len(sql)
-    while index < length:
-        character = sql[index]
-        if character.isspace():
-            index += 1
-            continue
-        if sql.startswith("--", index):
-            newline = sql.find("\n", index + 2)
-            index = length if newline < 0 else newline + 1
-            continue
-        if sql.startswith("/*", index):
-            end = sql.find("*/", index + 2)
-            if end < 0:
-                return []
-            index = end + 2
-            continue
-        if character == "'":
-            index += 1
-            while index < length:
-                if sql[index] == "'":
-                    if index + 1 < length and sql[index + 1] == "'":
-                        index += 2
-                        continue
-                    index += 1
-                    break
-                index += 1
-            tokens.append(("string", ""))
-            continue
-        if character in {'"', "`", "["}:
-            closing = "]" if character == "[" else character
-            index += 1
-            value: list[str] = []
-            while index < length:
-                if sql[index] == closing:
-                    if index + 1 < length and sql[index + 1] == closing:
-                        value.append(closing)
-                        index += 2
-                        continue
-                    index += 1
-                    break
-                value.append(sql[index])
-                index += 1
-            tokens.append(("identifier", "".join(value).casefold()))
-            continue
-        if character.isalpha() or character == "_":
-            end = index + 1
-            while end < length and (sql[end].isalnum() or sql[end] in {"_", "$"}):
-                end += 1
-            tokens.append(("word", sql[index:end].casefold()))
-            index = end
-            continue
-        tokens.append(("symbol", character))
-        index += 1
-    return tokens
-
-
 def _virtual_table_module(sql: str) -> str | None:
-    """Return the actual module token from CREATE VIRTUAL TABLE DDL."""
-    tokens = _sql_tokens(sql)
-    position = 0
-
-    def take_word(value: str) -> bool:
-        nonlocal position
-        if position >= len(tokens) or tokens[position] != ("word", value):
-            return False
-        position += 1
-        return True
-
-    if not take_word("create"):
-        return None
-    if position < len(tokens) and tokens[position] in {
-        ("word", "temp"),
-        ("word", "temporary"),
-    }:
-        position += 1
-    if not take_word("virtual") or not take_word("table"):
-        return None
-    if position + 2 < len(tokens) and tokens[position : position + 3] == [
-        ("word", "if"),
-        ("word", "not"),
-        ("word", "exists"),
-    ]:
-        position += 3
-    if position >= len(tokens) or tokens[position][0] not in {"word", "identifier"}:
-        return None
-    position += 1
-    if position + 1 < len(tokens) and tokens[position] == ("symbol", "."):
-        if tokens[position + 1][0] not in {"word", "identifier"}:
-            return None
-        position += 2
-    if not take_word("using"):
-        return None
-    if position >= len(tokens) or tokens[position][0] not in {"word", "identifier"}:
-        return None
-    module = tokens[position][1]
-    position += 1
-    if position >= len(tokens) or tokens[position] != ("symbol", "("):
-        return None
-    return module
+    """Compatibility wrapper for the comment-safe shared DDL parser."""
+    return virtual_table_module(sql)
 
 
 def _fts5_table_statuses(connection: sqlite3.Connection) -> dict[str, str]:
-    rows = {
-        str(row[0]): str(row[1]) if row[1] is not None else ""
-        for row in connection.execute(
-            "SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name IN (?, ?)",
-            _FTS_TABLES,
+    return inspect_fts5_schemas(connection)
+
+
+def _fts5_schema_checks_from_statuses(
+    statuses: dict[str, str],
+) -> dict[str, dict[str, object]]:
+    return {
+        f"{table}_schema": _check(
+            _CANONICAL_FTS5_SCHEMA,
+            status,
+            status == _CANONICAL_FTS5_SCHEMA,
         )
+        for table, status in statuses.items()
     }
-    statuses: dict[str, str] = {}
-    for table in _FTS_TABLES:
-        if table not in rows:
-            statuses[table] = "missing"
-        elif _virtual_table_module(rows[table]) != "fts5":
-            statuses[table] = "not_fts5"
-        else:
-            statuses[table] = "fts5"
-    return statuses
 
 
 def _schema_failure_results(statuses: dict[str, str]) -> dict[str, dict[str, object]]:
     return {
         f"{table}_integrity": (
             _check("consistent", "not_checked", False)
-            if status == "fts5"
+            if status == _CANONICAL_FTS5_SCHEMA
             else _check("consistent", status, False)
         )
         for table, status in statuses.items()
     }
+
+
+def _fts5_schema_checks(database_path: Path) -> dict[str, dict[str, object]]:
+    path = database_path.resolve()
+    try:
+        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+    except sqlite3.DatabaseError as exc:
+        actual = f"database_error:{type(exc).__name__}"
+        return {
+            f"{table}_schema": _check(_CANONICAL_FTS5_SCHEMA, actual, False)
+            for table in _FTS_TABLES
+        }
+    try:
+        statuses = _fts5_table_statuses(connection)
+    except sqlite3.DatabaseError as exc:
+        actual = f"database_error:{type(exc).__name__}"
+        return {
+            f"{table}_schema": _check(_CANONICAL_FTS5_SCHEMA, actual, False)
+            for table in _FTS_TABLES
+        }
+    finally:
+        connection.close()
+    return _fts5_schema_checks_from_statuses(statuses)
 
 
 def _source_schema_failures(
@@ -188,7 +115,7 @@ def _source_schema_failures(
         return _database_failure(exc)
     finally:
         connection.close()
-    if all(status == "fts5" for status in statuses.values()):
+    if all(status == _CANONICAL_FTS5_SCHEMA for status in statuses.values()):
         return None
     return _schema_failure_results(statuses)
 
@@ -248,7 +175,7 @@ def _copy_fts5_checks(database_path: Path) -> dict[str, dict[str, object]]:
             connection = sqlite3.connect(copy_path)
             try:
                 statuses = _fts5_table_statuses(connection)
-                if not all(status == "fts5" for status in statuses.values()):
+                if not all(status == _CANONICAL_FTS5_SCHEMA for status in statuses.values()):
                     return _schema_failure_results(statuses)
                 return {
                     f"{table}_integrity": _fts5_special_integrity_check(connection, table)
@@ -271,10 +198,13 @@ def _fts5_checks(database_path: Path, core_integrity: str) -> dict[str, dict[str
 
 
 def validate_database(database_path: Path) -> ValidationResult:
-    """Run the existing validator and add a read-only FTS5 inverted-index gate."""
+    """Run the existing validator and add canonical FTS5 schema and integrity gates."""
     result = _validate_core_database(database_path)
-    fts_checks = _fts5_checks(database_path, result.integrity_check)
+    schema_checks = _fts5_schema_checks(database_path)
+    integrity_checks = _fts5_checks(database_path, result.integrity_check)
     checks = dict(result.checks)
-    checks.update(fts_checks)
+    checks.update(schema_checks)
+    checks.update(integrity_checks)
+    fts_checks = {**schema_checks, **integrity_checks}
     fts_valid = all(bool(check.get("match")) for check in fts_checks.values())
     return replace(result, valid=result.valid and fts_valid, checks=checks)

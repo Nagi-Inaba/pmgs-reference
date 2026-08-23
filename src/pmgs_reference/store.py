@@ -18,6 +18,7 @@ from pmgs_reference.errors import (
     PMGSQueryError,
     ReleaseNotFoundError,
 )
+from pmgs_reference.fts_schema import CANONICAL_FTS5_SCHEMAS, inspect_fts5_schemas
 from pmgs_reference.normalization import SUPPORTED_SCHEMES, normalize_code
 from pmgs_reference.schema import APPLICATION_ID, DATABASE_USER_VERSION, SCHEMA_VERSION
 from pmgs_reference.store_types import JSONDict as JSONDict
@@ -186,9 +187,7 @@ class PMGSStore:
             row = connection.execute(
                 "SELECT schema_version, release_id, source_manifest_sha256 FROM release LIMIT 1"
             ).fetchone()
-            fts_row = connection.execute(
-                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'concept_text_fts'"
-            ).fetchone()
+            fts_statuses = inspect_fts5_schemas(connection)
         if row is None or row[0] != SCHEMA_VERSION:
             raise ValueError("not a supported PMGS Reference database")
         if target.pointer is not None and (
@@ -197,11 +196,15 @@ class PMGSStore:
             or user_version != target.pointer.database_schema_version
         ):
             raise ValueError("managed current.json identity does not match its database")
-        if fts_row is None:
-            raise ValueError("PMGS Reference search index is missing")
-        fts_sql = str(fts_row[0]).lower()
-        tokenizer = "trigram" if "tokenize = 'trigram'" in fts_sql else "legacy"
-        return cls(resolved, tokenizer)
+        for table, status in fts_statuses.items():
+            if status != "canonical_fts5_schema":
+                raise ValueError(
+                    f"PMGS Reference search index schema is invalid: {table} ({status})"
+                )
+        tokenizers = {contract.tokenizer for contract in CANONICAL_FTS5_SCHEMAS.values()}
+        if len(tokenizers) != 1:
+            raise RuntimeError("canonical FTS5 tokenizer contract is inconsistent")
+        return cls(resolved, tokenizers.pop())
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
