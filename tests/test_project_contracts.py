@@ -267,7 +267,21 @@ def test_release_workflow_keeps_publish_authority_narrow() -> None:
     assert jobs["publish-github"]["steps"][-1]["env"]["GH_REPO"] == "${{ github.repository }}"
     assert "id-token" not in jobs["publish-github"]["permissions"]
     assert "id-token" not in jobs["build"]
-    assert raw.count("name: python-distributions") == 3
+    distribution_uploads = [
+        step
+        for step in jobs["build"]["steps"]
+        if "upload-artifact@" in str(step.get("uses", ""))
+        and step.get("with", {}).get("name") == "python-distributions"
+    ]
+    assert len(distribution_uploads) == 1
+    for job_name in ("verify-distributions", "publish-pypi", "publish-github"):
+        distribution_downloads = [
+            step
+            for step in jobs[job_name]["steps"]
+            if "download-artifact@" in str(step.get("uses", ""))
+            and step.get("with", {}).get("name") == "python-distributions"
+        ]
+        assert len(distribution_downloads) == 1
     assert "uv lock --check" in raw
     assert "npm --prefix worker ci" in raw
     assert "npm --prefix worker run verify" in raw

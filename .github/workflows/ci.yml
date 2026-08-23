@@ -63,7 +63,7 @@ jobs:
   wheel-e2e:
     name: Installed wheel on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -85,12 +85,18 @@ jobs:
       - name: Sync locked dependencies
         run: uv sync --frozen --all-groups
 
-      - name: Build wheel
-        run: uv build --wheel
+      - name: Build wheel and source distribution
+        run: uv build
 
       - name: Verify installed setup and doctor
         run: >-
           uv run --frozen python scripts/verify_wheel_install.py
+          --dist-dir dist
+          --source tests/fixtures/synthetic_pmgs
+
+      - name: Verify sdist-derived installed setup and doctor
+        run: >-
+          uv run --frozen python scripts/verify_sdist_install.py
           --dist-dir dist
           --source tests/fixtures/synthetic_pmgs
 

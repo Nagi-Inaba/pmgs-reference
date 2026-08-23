@@ -53,7 +53,7 @@
 | RELEASE-01 | 合成fixtureでrepository全検査を通す | verified | pytest 221件、Ruff、mypy、boundary、合成A/B決定性、sdist、wheelに合格。Windowsで権限上skipしたsymlink 7件はhosted CIでも検証する |
 | RELEASE-02 | 実データのA/B buildと全件監査を通す | verified | 最終コードでNTFSとexFATへ独立再構築したSQLite A/Bのdatabase・build report・validation reportがbytesとSHA-256まで一致。公開tree A/Bも最終validatorと25条件release auditに合格 |
 | RELEASE-03 | build、test、typecheck、lint、Worker bundleを再現する | verified | 最終コードでPython標準検査、二重package build、隔離wheel、Worker 31件とWebMCP 3件に合格 |
-| RELEASE-04 | wheelを3 OSで隔離導入し、setup、再実行、doctorを検証する | verified | commit `4ec6738`の[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)でUbuntu、Windows、macOSのwheel E2Eと3 OS合成決定性比較を含む14 jobが成功 |
+| RELEASE-04 | wheelとsdistを3 OSで隔離導入し、setup、再実行、doctorを検証する | implemented | 通常CIとtag releaseの双方へ、同一artifactのwheelとsdist由来wheelをLinux、Windows、macOSで検証するgateを追加。hosted PR CIの成功後にverifiedへ更新する |
 | RELEASE-05 | tag、承認環境、Trusted Publishing、attestationでPyPIとGitHub Releaseへ同じ成果物を配布する | verified | [Release run 31677401736](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677401736)で`v0.4.0`を承認付き`pypi`環境からTrusted Publishingし、同じwheelとsdistを[GitHub Release](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)へ配布。PyPI provenance、両配布面のSHA-256一致、空環境からのsetupを外部確認 |
 | GH-01 | 追跡対象と公開履歴に実データ、生成DB、秘密情報、端末固有pathがない | verified | 公開境界guardと単一rootの公開用履歴を検査 |
 | GH-02 | CIを最小権限、SHA固定、credential非保持、timeout付きで定義する | verified | commit `4ec6738`の[Push CI run 31634401819](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634401819)と[Pull Request CI run 31634407211](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31634407211)で各14 jobが成功。既存10 checkはbranch protectionで必須、追加の決定性4 jobもPR統合ゲートとして確認 |

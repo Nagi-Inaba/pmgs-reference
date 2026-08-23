@@ -273,3 +273,189 @@ def test_compare_determinism_reports_requires_three_platforms_and_equal_contract
     paths[-1].write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(RuntimeError, match="differs"):
         module.compare_reports(paths)
+
+
+def _write_tar(path: Path, members: list[tuple[str, bytes, str]]) -> None:
+    import io
+    import tarfile
+
+    with tarfile.open(path, "w:gz") as archive:
+        for name, content, kind in members:
+            info = tarfile.TarInfo(name)
+            if kind == "file":
+                info.size = len(content)
+                archive.addfile(info, io.BytesIO(content))
+            elif kind == "dir":
+                info.type = tarfile.DIRTYPE
+                archive.addfile(info)
+            elif kind == "symlink":
+                info.type = tarfile.SYMTYPE
+                info.linkname = "target"
+                archive.addfile(info)
+            else:  # pragma: no cover - test helper guard
+                raise AssertionError(kind)
+
+
+def test_select_sdist_ignores_other_project_versions(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+    (tmp_path / "pmgs_reference-0.3.0.tar.gz").touch()
+    expected = tmp_path / "pmgs_reference-0.4.0.tar.gz"
+    expected.touch()
+
+    assert module._select_sdist(tmp_path, "0.4.0") == expected.resolve()
+
+
+def test_select_sdist_rejects_zero_or_multiple_current_version_archives(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+
+    with pytest.raises(RuntimeError, match=r"version 0\.4\.0, found 0"):
+        module._select_sdist(tmp_path, "0.4.0")
+
+    (tmp_path / "pmgs_reference-0.4.0.tar.gz").touch()
+    (tmp_path / "pmgs-reference-0.4.0.tar.gz").touch()
+    with pytest.raises(RuntimeError, match=r"version 0\.4\.0, found 2"):
+        module._select_sdist(tmp_path, "0.4.0")
+
+
+def test_sdist_extraction_rejects_traversal_absolute_and_links(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+    cases = {
+        "traversal": [("pmgs_reference-0.4.0/../escape", b"x", "file")],
+        "absolute": [("/absolute", b"x", "file")],
+        "symlink": [("pmgs_reference-0.4.0/link", b"", "symlink")],
+    }
+
+    for name, members in cases.items():
+        archive = tmp_path / f"{name}.tar.gz"
+        _write_tar(archive, members)
+        with pytest.raises(RuntimeError):
+            module._extract_sdist(archive, tmp_path / name)
+
+
+def test_sdist_extraction_requires_one_expected_top_level_directory(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+    archive = tmp_path / "pmgs_reference-0.4.0.tar.gz"
+    _write_tar(
+        archive,
+        [
+            ("pmgs_reference-0.4.0/pyproject.toml", b"[project]\n", "file"),
+            ("unexpected/file.txt", b"x", "file"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="top-level"):
+        module._extract_sdist(archive, tmp_path / "extract")
+
+
+def test_distribution_set_requires_exact_current_wheel_and_sdist(tmp_path: Path) -> None:
+    import io
+    import tarfile
+    import zipfile
+
+    module = _load_named_script("verify_distribution_set.py")
+    wheel = tmp_path / "pmgs_reference-0.4.0-py3-none-any.whl"
+    sdist = tmp_path / "pmgs_reference-0.4.0.tar.gz"
+    metadata = (
+        b"Metadata-Version: 2.4\nName: pmgs-reference\nVersion: 0.4.0\nRequires-Python: >=3.12\n\n"
+    )
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("pmgs_reference-0.4.0.dist-info/METADATA", metadata)
+    with tarfile.open(sdist, "w:gz") as archive:
+        info = tarfile.TarInfo("pmgs_reference-0.4.0/PKG-INFO")
+        info.size = len(metadata)
+        archive.addfile(info, io.BytesIO(metadata))
+
+    (tmp_path / ".gitignore").write_text("*\n", encoding="utf-8")
+    result = module.verify_distribution_set(tmp_path, "0.4.0")
+
+    assert result["files"] == [wheel.name, sdist.name]
+    assert set(result["sha256"]) == {wheel.name, sdist.name}
+
+    (tmp_path / ".gitignore").unlink()
+    (tmp_path / ".gitignore").mkdir()
+    with pytest.raises(RuntimeError, match="non-file uv build marker"):
+        module.verify_distribution_set(tmp_path, "0.4.0")
+    (tmp_path / ".gitignore").rmdir()
+
+    (tmp_path / "unexpected.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unexpected distribution artifact"):
+        module.verify_distribution_set(tmp_path, "0.4.0")
+
+
+def _write_test_wheel(
+    path: Path,
+    *,
+    payload: bytes,
+    wheel_metadata: bytes = b"Wheel-Version: 1.0\n",
+) -> None:
+    import zipfile
+
+    metadata = b"Metadata-Version: 2.4\nName: pmgs-reference\nVersion: 0.4.0\n\n"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("pmgs_reference/__init__.py", payload)
+        archive.writestr("pmgs_reference-0.4.0.dist-info/METADATA", metadata)
+        archive.writestr("pmgs_reference-0.4.0.dist-info/WHEEL", wheel_metadata)
+        archive.writestr(
+            "pmgs_reference-0.4.0.dist-info/entry_points.txt",
+            b"[console_scripts]\npmgs=pmgs_reference.cli:main\n",
+        )
+        archive.writestr("pmgs_reference-0.4.0.dist-info/RECORD", b"")
+
+
+def test_sdist_wheel_comparison_rejects_runtime_payload_drift(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+    reference = tmp_path / "reference.whl"
+    rebuilt = tmp_path / "rebuilt.whl"
+    _write_test_wheel(reference, payload=b"VERSION = 'reference'\n")
+    _write_test_wheel(rebuilt, payload=b"VERSION = 'rebuilt'\n")
+
+    with pytest.raises(RuntimeError, match="runtime files"):
+        module._compare_wheels(reference, rebuilt)
+
+
+def test_distribution_set_rejects_symlinked_artifacts(tmp_path: Path) -> None:
+    module = _load_named_script("verify_distribution_set.py")
+    real_wheel = tmp_path.with_name(tmp_path.name + "-real-wheel")
+    real_wheel.write_bytes(b"wheel")
+    wheel = tmp_path / "pmgs_reference-0.4.0-py3-none-any.whl"
+    try:
+        wheel.symlink_to(real_wheel)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    (tmp_path / "pmgs_reference-0.4.0.tar.gz").write_bytes(b"sdist")
+
+    with pytest.raises(RuntimeError, match="symbolic link"):
+        module.verify_distribution_set(tmp_path, "0.4.0")
+
+
+def test_sdist_wheel_comparison_rejects_wheel_metadata_drift(tmp_path: Path) -> None:
+    module = _load_named_script("verify_sdist_install.py")
+    reference = tmp_path / "reference.whl"
+    rebuilt = tmp_path / "rebuilt.whl"
+    _write_test_wheel(reference, payload=b"VERSION = 'same'\n")
+    _write_test_wheel(
+        rebuilt,
+        payload=b"VERSION = 'same'\n",
+        wheel_metadata=b"Wheel-Version: 1.0\nGenerator: altered\n",
+    )
+
+    with pytest.raises(RuntimeError, match="metadata"):
+        module._compare_wheels(reference, rebuilt)
+
+
+def test_sdist_wheel_comparison_rejects_duplicate_members(tmp_path: Path) -> None:
+    import zipfile
+
+    module = _load_named_script("verify_sdist_install.py")
+    reference = tmp_path / "reference.whl"
+    rebuilt = tmp_path / "rebuilt.whl"
+    _write_test_wheel(reference, payload=b"VERSION = 'same'\n")
+    _write_test_wheel(rebuilt, payload=b"VERSION = 'same'\n")
+    with (
+        pytest.warns(UserWarning, match="Duplicate name"),
+        zipfile.ZipFile(rebuilt, "a") as archive,
+    ):
+        archive.writestr("pmgs_reference/__init__.py", b"VERSION = 'duplicate'\n")
+
+    with pytest.raises(RuntimeError, match="duplicate"):
+        module._compare_wheels(reference, rebuilt)
