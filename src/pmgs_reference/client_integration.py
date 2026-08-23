@@ -48,8 +48,28 @@ class CommandRunner(Protocol):
     def run(self, executable: Path, arguments: Sequence[str]) -> CommandResult: ...
 
 
+def _absolute_path_entries(path: str | None) -> tuple[str, ...]:
+    """Return PATH entries that were explicitly absolute before any expansion."""
+    if not path:
+        return ()
+    return tuple(
+        raw_directory
+        for raw_directory in path.split(os.pathsep)
+        if raw_directory and Path(raw_directory).is_absolute()
+    )
+
+
+def _trusted_subprocess_environment() -> dict[str, str]:
+    """Remove relative executable-search roots from client subprocesses."""
+    environment = os.environ.copy()
+    environment["PATH"] = os.pathsep.join(_absolute_path_entries(environment.get("PATH")))
+    if os.name == "nt":
+        environment["NoDefaultCurrentDirectoryInExePath"] = "1"
+    return environment
+
+
 class SubprocessCommandRunner:
-    """Execute resolved executables, including Windows cmd/bat launchers."""
+    """Execute resolved clients without inheriting relative executable-search roots."""
 
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
         self.timeout_seconds = timeout_seconds
@@ -61,7 +81,7 @@ class SubprocessCommandRunner:
             try:
                 command = windows_batch_command(executable, arguments)
             except ValueError:
-                return CommandResult(1, "", "unsafe characters in Windows batch arguments")
+                return CommandResult(1, "", "unsafe Windows batch execution environment")
         elif os.name == "nt" and suffix == ".ps1":
             return CommandResult(1, "", "PowerShell-only client launchers are unsupported")
         else:
@@ -75,6 +95,7 @@ class SubprocessCommandRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=self.timeout_seconds,
+                env=_trusted_subprocess_environment(),
             )
         except (OSError, subprocess.SubprocessError):
             return CommandResult(1, "", "client command could not be executed")
@@ -89,26 +110,22 @@ def windows_batch_command(executable: Path, arguments: Sequence[str]) -> str:
     tokens = [str(executable), *arguments]
     if any(_WINDOWS_BATCH_META.search(token) for token in tokens):
         raise ValueError("Windows batch arguments contain shell metacharacters")
-    command_processor = Path(os.environ.get("COMSPEC", "cmd.exe")).absolute()
+    raw_command_processor = os.environ.get("COMSPEC", "cmd.exe")
+    command_processor = Path(raw_command_processor)
+    if os.name == "nt" and not command_processor.is_absolute():
+        raise ValueError("Windows command processor must be absolute")
+    if not command_processor.is_absolute():
+        command_processor = command_processor.absolute()
     command_line = subprocess.list2cmdline(tokens)
     command_prefix = subprocess.list2cmdline([str(command_processor), "/d", "/v:off", "/s", "/c"])
     return f'{command_prefix} "{command_line}"'
 
 
 def _which_client(command: str) -> str | None:
-    """Search PATH without Windows' implicit current-directory lookup."""
-    if os.name != "nt":
-        return shutil.which(command)
-    path = os.environ.get("PATH")
-    if not path:
-        return None
-    for raw_directory in path.split(os.pathsep):
-        if not raw_directory:
-            continue
-        directory = Path(raw_directory).expanduser()
-        if not directory.is_absolute():
-            continue
-        resolved = shutil.which(str(directory / command), path=str(directory))
+    """Search only PATH entries that are explicitly absolute on every platform."""
+    for raw_directory in _absolute_path_entries(os.environ.get("PATH")):
+        directory = Path(raw_directory)
+        resolved = shutil.which(str(directory / command), path=raw_directory)
         if resolved is not None:
             return resolved
     return None
@@ -132,7 +149,10 @@ def detect_client_targets(
     targets: list[ClientTarget] = []
     for client in requested:
         raw = which(client)
-        executable = Path(raw).expanduser().absolute() if raw else None
+        candidate = Path(raw) if raw else None
+        executable = None
+        if candidate is not None and candidate.is_absolute():
+            executable = candidate.absolute()
         if executable is not None and os.name == "nt" and executable.suffix.lower() == ".ps1":
             executable = None
         if selection == "auto" and executable is None:
