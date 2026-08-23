@@ -1,0 +1,85 @@
+name: apply-pr65-clean-v2
+
+on:
+  push:
+    branches:
+      - chore/export-pr65-bundle-20260823
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'chore/export-pr65-bundle-20260823' || github.ref_name == 'chore/export-pr65-bundle-20260823'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_PR_HEAD: 16e43f243cf8aaceb87fad6b0241081af0b19a26
+    steps:
+      - name: Check out helper branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Load verified reconstruction steps
+        shell: bash
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path('.github/workflows/apply-pr65-clean.yml').read_text(encoding='utf-8')
+          )
+          steps = {
+              step.get('name'): step.get('run')
+              for step in workflow['jobs']['apply']['steps']
+              if isinstance(step, dict)
+          }
+          for name, destination in (
+              ('Reconstruct PR 65 on current main', '/tmp/pr65-reconstruct.sh'),
+              ('Format and verify complete change', '/tmp/pr65-verify.sh'),
+              ('Squash and update PR branch', '/tmp/pr65-push.sh'),
+          ):
+              script = steps.get(name)
+              if not isinstance(script, str) or not script.strip():
+                  raise SystemExit(f'missing helper step: {name}')
+              Path(destination).write_text(script, encoding='utf-8', newline='\n')
+          PY
+      - name: Reconstruct clean feature branch
+        shell: bash
+        run: bash /tmp/pr65-reconstruct.sh
+      - name: Normalize existing boundary fixture
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_document_pagination_boundaries.py')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              '                "SELECT concept_id, kind, version_indicator FROM document_link WHERE document_id = ? "\n'
+          )
+          new = (
+              '                "SELECT concept_id, kind, version_indicator "\n'
+              '                "FROM document_link WHERE document_id = ? "\n'
+          )
+          if old not in text:
+              raise SystemExit('boundary fixture normalization anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+          PY
+      - name: Verify complete feature
+        shell: bash
+        run: bash /tmp/pr65-verify.sh
+      - name: Squash and update PR branch
+        shell: bash
+        run: bash /tmp/pr65-push.sh
