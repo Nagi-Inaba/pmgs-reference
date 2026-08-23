@@ -22,11 +22,11 @@ jobs:
           persist-credentials: false
       - name: Create source archive
         shell: bash
-        run: tar --exclude=.git -czf pmgs-reference-source.tgz .
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/pmgs-reference-source.tgz" .
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
           name: pmgs-reference-source
-          path: pmgs-reference-source.tgz
+          path: ${{ runner.temp }}/pmgs-reference-source.tgz
           if-no-files-found: error
           retention-days: 1
