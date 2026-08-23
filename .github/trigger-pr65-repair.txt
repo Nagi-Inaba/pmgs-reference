@@ -1,0 +1,1 @@
+Trigger the temporary PR #65 repair workflow after the workflow definition is present in the diagnostic pull request.
