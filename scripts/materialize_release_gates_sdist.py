@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Materialize the reviewed release-gate patch for temporary CI handoff."""
 
 from __future__ import annotations
