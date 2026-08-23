@@ -1,0 +1,214 @@
+name: apply-pr65-clean
+
+on:
+  push:
+    branches:
+      - chore/export-pr65-bundle-20260823
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'chore/export-pr65-bundle-20260823' || github.ref_name == 'chore/export-pr65-bundle-20260823'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out helper branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Reconstruct PR 65 on current main
+        shell: bash
+        env:
+          EXPECTED_PR_HEAD: 16e43f243cf8aaceb87fad6b0241081af0b19a26
+        run: |
+          set -euo pipefail
+          actual_head="$(git ls-remote origin refs/heads/fix/document-selector-pagination | awk '{print $1}')"
+          test "$actual_head" = "$EXPECTED_PR_HEAD"
+          git fetch origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/fix/document-selector-pagination:refs/remotes/origin/fix/document-selector-pagination
+          git checkout -B pr65-clean origin/main
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+
+          set +e
+          git cherry-pick --no-commit 004c4b6b94299b5c25b1acac7eaf01687975f1a8
+          cherry_pick_status=$?
+          set -e
+          if [ "$cherry_pick_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U | sort)"
+            expected=$'docs/local-interfaces.en.md\ndocs/local-interfaces.md'
+            test "$conflicts" = "$expected"
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          replacements = {
+              "docs/local-interfaces.en.md": {
+                  "method_old": "- `get_document(document_id, page=None, section=None)`",
+                  "method_new": "- `get_document(document_id, page=None, section=None, *, locator=None, segment_limit=200, segment_offset=0, related_classification_limit=200, related_classification_offset=0)`",
+                  "section_old": """## Document response limits
+
+          When neither `page` nor `section` is passed to `get_document`, a response is limited to 200 sections. If the entire document exceeds that limit, the response includes `segments_truncated: true` and the total count.
+
+          Related classifications are also limited to 200 per response, with the total count and `related_classifications_truncated`. PDFs can be retrieved one page at a time, such as with `page=1`.
+          """,
+                  "section_new": """## Document selectors and pagination
+
+          For the local Python API, CLI, and stdio MCP, `page`, `section`, and `locator` are mutually exclusive. `page` is a one-based page number for PDFs and similar documents. `section` is a one-based segment number corresponding to `document_text.sequence_number`. Use `locator` only for an exact string match against a locator, heading, or source locator. The public API exposes `page` and integer `section` with the same meanings, but it does not expose the local-only `locator` or offset parameters; public clients continue through `chunk.previous` and `chunk.next`.
+
+          Local segment responses are paginated with `segment_limit` and `segment_offset`. They return `segment_count`, `segment_limit`, `segment_offset`, `segments_truncated`, and `next_segment_offset`. Related classifications use independent `related_classification_limit` and `related_classification_offset` values and return `related_classification_count`, `related_classification_limit`, `related_classification_offset`, `related_classifications_truncated`, and `next_related_classification_offset`. Each limit has a maximum of 200.
+
+          When either truncated field is true, pass the corresponding `next_*_offset` to the next local call. A selector that does not exist fails closed with `DOCUMENT_SELECTOR_NOT_FOUND`; combining selectors produces `INVALID_DOCUMENT_SELECTOR`. Python callers migrating from v0.4.0 must move a former string `section` value to `locator`; `section` now accepts only a positive sequence number.
+          """,
+                  "cli_old": """pmgs search "改正" --content-type document --document-offset 20 --json
+          pmgs document DOCUMENT_ID --page 1 --json
+          pmgs doctor --timeout-seconds 30 --json
+          """,
+                  "cli_new": """pmgs search "改正" --content-type document --document-offset 20 --json
+          pmgs document DOCUMENT_ID --page 1 --json
+          pmgs document DOCUMENT_ID --section 201 --segment-limit 50 --segment-offset 0 --json
+          pmgs document DOCUMENT_ID --locator "page:1" --related-classification-limit 50 --json
+          pmgs doctor --timeout-seconds 30 --json
+          """,
+              },
+              "docs/local-interfaces.md": {
+                  "method_old": "- `get_document(document_id, page=None, section=None)`",
+                  "method_new": "- `get_document(document_id, page=None, section=None, *, locator=None, segment_limit=200, segment_offset=0, related_classification_limit=200, related_classification_offset=0)`",
+                  "section_old": """## 文書応答の上限
+
+          `get_document`へ`page`も`section`も指定しない場合、1応答を200節までに制限する。文書全体がそれを超える場合は`segments_truncated: true`と総数を返す。
+
+          関連分類も1応答200件までとし、総数と`related_classifications_truncated`を返す。PDFは`page=1`のようにページ単位で取得できる。
+          """,
+                  "section_new": """## 文書selectorとページング
+
+          ローカルのPython API、CLI、stdio MCPでは、`page`、`section`、`locator`は相互排他である。`page`はPDF等の1始まりページ番号、`section`は`document_text.sequence_number`に対応する1始まりのsegment番号を表す。locator、heading、source locatorを文字列で完全一致させる場合だけ`locator`を使う。公開APIは同じ意味の`page`と整数`section`だけを公開し、ローカル専用の`locator`やoffset引数は公開しない。公開側の続きは`chunk.previous`と`chunk.next`で取得する。
+
+          ローカルのsegment応答は`segment_limit`と`segment_offset`でページングする。応答は`segment_count`、`segment_limit`、`segment_offset`、`segments_truncated`、`next_segment_offset`を返す。関連分類は独立した`related_classification_limit`と`related_classification_offset`を使い、`related_classification_count`、`related_classification_limit`、`related_classification_offset`、`related_classifications_truncated`、`next_related_classification_offset`を返す。各limitの上限は200件である。
+
+          いずれかのtruncated fieldが真なら、対応する`next_*_offset`を次のローカル呼出しへ渡す。存在しないselectorは`DOCUMENT_SELECTOR_NOT_FOUND`、selectorの同時指定は`INVALID_DOCUMENT_SELECTOR`としてfail closedにする。v0.4.0で文字列を`section`へ渡していたPython呼出し側は、その値を`locator`へ移す。`section`は正のsequence番号だけを受け付ける。
+          """,
+                  "cli_old": """pmgs search "改正" --content-type document --document-offset 20 --json
+          pmgs document DOCUMENT_ID --page 1 --json
+          pmgs doctor --timeout-seconds 30 --json
+          """,
+                  "cli_new": """pmgs search "改正" --content-type document --document-offset 20 --json
+          pmgs document DOCUMENT_ID --page 1 --json
+          pmgs document DOCUMENT_ID --section 201 --segment-limit 50 --segment-offset 0 --json
+          pmgs document DOCUMENT_ID --locator "page:1" --related-classification-limit 50 --json
+          pmgs doctor --timeout-seconds 30 --json
+          """,
+              },
+          }
+
+          for path_string, values in replacements.items():
+              text = subprocess.check_output(
+                  ["git", "show", f"origin/main:{path_string}"], text=True
+              )
+              for old_name, new_name in (
+                  ("method_old", "method_new"),
+                  ("section_old", "section_new"),
+                  ("cli_old", "cli_new"),
+              ):
+                  old = values[old_name]
+                  if old not in text:
+                      raise SystemExit(f"missing documentation anchor: {path_string}:{old_name}")
+                  text = text.replace(old, values[new_name], 1)
+              Path(path_string).write_text(text, encoding="utf-8", newline="\n")
+          PY
+          git add -A
+          git commit -m "feat: unify and paginate document selectors"
+          git cherry-pick 16e43f243cf8aaceb87fad6b0241081af0b19a26
+
+          python - <<'PY'
+          from pathlib import Path
+
+          store_path = Path("src/pmgs_reference/store.py")
+          text = store_path.read_text(encoding="utf-8")
+          text = text.replace(
+              "_MAX_RELATED_CONCEPTS: Final = 200\n_MAX_STRUCTURED_RESPONSE_BYTES: Final = 4 * 1024 * 1024\n",
+              "_MAX_RELATED_CONCEPTS: Final = 200\n_SQLITE_INTEGER_MAX: Final = 2**63 - 1\n_MAX_STRUCTURED_RESPONSE_BYTES: Final = 4 * 1024 * 1024\n",
+              1,
+          )
+          text = text.replace(
+              "if not 0 <= offset <= 2**63 - 1:\n",
+              "if not 0 <= offset <= _SQLITE_INTEGER_MAX:\n",
+              1,
+          )
+          text = text.replace(
+              '        if page is not None and page < 1:\n            raise PMGSQueryError("INVALID_PAGE", "page must be at least 1")\n        if section is not None and section < 1:\n            raise PMGSQueryError("INVALID_SECTION", "section must be at least 1")\n',
+              '        if page is not None and (\n            isinstance(page, bool) or not isinstance(page, int) or page < 1\n        ):\n            raise PMGSQueryError("INVALID_PAGE", "page must be a positive integer")\n        if section is not None and (\n            isinstance(section, bool)\n            or not isinstance(section, int)\n            or not 1 <= section <= _SQLITE_INTEGER_MAX\n        ):\n            raise PMGSQueryError(\n                "INVALID_SECTION",\n                "section must fit in a positive SQLite signed 64-bit integer",\n            )\n',
+              1,
+          )
+          text = text.replace(
+              '        if segment_offset < 0:\n            raise PMGSQueryError("INVALID_SEGMENT_OFFSET", "segment_offset must be at least 0")\n',
+              '        if not 0 <= segment_offset <= _SQLITE_INTEGER_MAX:\n            raise PMGSQueryError(\n                "INVALID_SEGMENT_OFFSET",\n                "segment_offset must fit in a SQLite signed 64-bit integer",\n            )\n',
+              1,
+          )
+          text = text.replace(
+              '        if related_classification_offset < 0:\n            raise PMGSQueryError(\n                "INVALID_RELATED_CLASSIFICATION_OFFSET",\n                "related_classification_offset must be at least 0",\n            )\n',
+              '        if not 0 <= related_classification_offset <= _SQLITE_INTEGER_MAX:\n            raise PMGSQueryError(\n                "INVALID_RELATED_CLASSIFICATION_OFFSET",\n                "related_classification_offset must fit in a SQLite signed 64-bit integer",\n            )\n',
+              1,
+          )
+          store_path.write_text(text, encoding="utf-8", newline="\n")
+
+          mcp_path = Path("src/pmgs_reference/mcp_server.py")
+          text = mcp_path.read_text(encoding="utf-8")
+          text = text.replace("_EVIDENCE_BOUNDARY = (\n", "_SQLITE_INTEGER_MAX = 2**63 - 1\n_EVIDENCE_BOUNDARY = (\n", 1)
+          text = text.replace("Section = Annotated[int, Field(ge=1)]\n", "Section = Annotated[int, Field(ge=1, le=_SQLITE_INTEGER_MAX)]\n", 1)
+          text = text.replace("Offset = Annotated[int, Field(ge=0)]\n", "Offset = Annotated[int, Field(ge=0, le=_SQLITE_INTEGER_MAX)]\n", 1)
+          mcp_path.write_text(text, encoding="utf-8", newline="\n")
+
+          test_path = Path("tests/test_document_pagination.py")
+          with test_path.open("a", encoding="utf-8", newline="\n") as stream:
+              stream.write('''\n\n_SQLITE_INTEGER_MAX = 2**63 - 1\n\n\n@pytest.mark.parametrize(\n    ("arguments", "error_code"),\n    [\n        ({"section": _SQLITE_INTEGER_MAX + 1}, "INVALID_SECTION"),\n        ({"segment_offset": _SQLITE_INTEGER_MAX + 1}, "INVALID_SEGMENT_OFFSET"),\n        (\n            {"related_classification_offset": _SQLITE_INTEGER_MAX + 1},\n            "INVALID_RELATED_CLASSIFICATION_OFFSET",\n        ),\n    ],\n)\ndef test_document_sqlite_integer_inputs_fail_closed(\n    synthetic_database: Path,\n    arguments: dict[str, int],\n    error_code: str,\n) -> None:\n    with sqlite3.connect(synthetic_database) as connection:\n        document_id = str(\n            connection.execute("SELECT document_id FROM document LIMIT 1").fetchone()[0]\n        )\n    store = PMGSStore.open(synthetic_database)\n\n    with pytest.raises(PMGSQueryError) as failure:\n        store.get_document(document_id, **arguments)\n\n    assert failure.value.code == error_code\n\n\ndef test_legacy_string_section_fails_closed_with_migration_error(\n    synthetic_database: Path,\n) -> None:\n    with sqlite3.connect(synthetic_database) as connection:\n        document_id = str(\n            connection.execute("SELECT document_id FROM document LIMIT 1").fetchone()[0]\n        )\n    store = PMGSStore.open(synthetic_database)\n\n    with pytest.raises(PMGSQueryError) as failure:\n        store.get_document(document_id, section="legacy-heading")  # type: ignore[arg-type]\n\n    assert failure.value.code == "INVALID_SECTION"\n\n\ndef test_cli_document_rejects_offset_above_sqlite_integer_range(\n    synthetic_database: Path,\n    capsys: pytest.CaptureFixture[str],\n) -> None:\n    with sqlite3.connect(synthetic_database) as connection:\n        document_id = str(\n            connection.execute("SELECT document_id FROM document LIMIT 1").fetchone()[0]\n        )\n\n    exit_code = main(\n        [\n            "document",\n            document_id,\n            "--db",\n            str(synthetic_database),\n            "--segment-offset",\n            str(_SQLITE_INTEGER_MAX + 1),\n            "--json",\n        ]\n    )\n    payload = json.loads(capsys.readouterr().out)\n\n    assert exit_code == 1\n    assert payload["error"]["code"] == "INVALID_SEGMENT_OFFSET"\n\n\n@pytest.mark.anyio\nasync def test_mcp_document_schema_caps_sqlite_integer_inputs(\n    synthetic_database: Path,\n) -> None:\n    server = create_server(synthetic_database)\n    tools = await server.list_tools()\n    document_schema = next(tool for tool in tools if tool.name == "get_pmgs_document").input_schema\n    properties = document_schema["properties"]\n\n    assert properties["section"]["anyOf"][0]["maximum"] == _SQLITE_INTEGER_MAX\n    assert properties["segment_offset"]["maximum"] == _SQLITE_INTEGER_MAX\n    assert properties["related_classification_offset"]["maximum"] == _SQLITE_INTEGER_MAX\n''')
+          PY
+      - name: Format and verify complete change
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --all-groups
+          uv run --frozen ruff format \
+            src/pmgs_reference/store.py \
+            src/pmgs_reference/mcp_server.py \
+            tests/test_document_pagination.py \
+            tests/test_document_pagination_boundaries.py
+          git add -A
+          git commit -m "fix: reject document selectors outside SQLite integer range"
+          uv run --frozen python scripts/verify_repository_boundary.py
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen mypy src
+          uv run --frozen pytest -q
+          uv build --clear
+          uv run --frozen python scripts/verify_distribution_set.py --dist-dir dist
+          uv run --frozen python scripts/verify_wheel_install.py --dist-dir dist --source tests/fixtures/synthetic_pmgs
+          uv run --frozen python scripts/verify_sdist_install.py --dist-dir dist --source tests/fixtures/synthetic_pmgs
+          npm --prefix worker ci
+          npm --prefix worker run verify
+          git diff --check origin/main...HEAD
+      - name: Squash and update PR branch
+        shell: bash
+        env:
+          EXPECTED_PR_HEAD: 16e43f243cf8aaceb87fad6b0241081af0b19a26
+        run: |
+          set -euo pipefail
+          git reset --soft origin/main
+          git commit -m "feat: unify and paginate document retrieval"
+          git push \
+            --force-with-lease=refs/heads/fix/document-selector-pagination:$EXPECTED_PR_HEAD \
+            origin HEAD:refs/heads/fix/document-selector-pagination
