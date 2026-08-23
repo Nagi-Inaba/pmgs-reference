@@ -25,7 +25,7 @@ Issue #19 / PR #60
 - doctor current-pointer races
 - unexpected runtime errors in JSON mode
 - literal `--json` queries after the `--` end-of-options marker
-- invalid doctor timeout values at parse time
+- zero, negative, NaN, and infinite doctor timeout values at parse time
 
 ## TDD evidence
 
@@ -64,13 +64,13 @@ All jobs passed:
 
 ## Review corrections
 
-Codex review identified two valid edge cases and one already-covered condition.
+Codex review identified three edge cases that are covered by the final implementation and regression tests.
 
-- JSON option detection must stop at `--`; otherwise a literal query named `--json` changes failure output to JSON.
-- `sqlite3.DatabaseError` must be mapped before the generic exception handler so corrupt SQLite input is classified as `UNSUPPORTED_DATABASE` or `VALIDATION_FAILED`.
-- doctor timeout values are already validated by argparse's `_positive_finite_float`; a regression test now fixes the expected `ARGUMENT_ERROR` behavior.
+- JSON option detection stops at `--`; a literal query named `--json` therefore remains in human mode.
+- `sqlite3.DatabaseError` is mapped before the generic exception handler so corrupt SQLite input is classified as `UNSUPPORTED_DATABASE` or `VALIDATION_FAILED`.
+- doctor timeout parsing uses `_positive_finite_float`, rejecting `0`, negative values, `NaN`, and positive or negative infinity as a sanitized `ARGUMENT_ERROR`.
 
-The review-fix commit is required to rerun the full hosted CI matrix before merge.
+The final review-fix branch contains no temporary workflow or patch script. A fresh hosted CI matrix on the final three-file diff is required before merge.
 
 ## Remaining scope
 
