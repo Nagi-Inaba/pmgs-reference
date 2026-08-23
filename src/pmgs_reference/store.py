@@ -12,13 +12,13 @@ from pathlib import Path, PurePosixPath
 from typing import Final, Literal, cast
 
 from pmgs_reference.data_paths import resolve_database
-from pmgs_reference.fts_schema import CANONICAL_FTS5_SCHEMAS, inspect_fts5_schemas
 from pmgs_reference.errors import (
     DocumentNotFoundError,
     EditionNotFoundError,
     PMGSQueryError,
     ReleaseNotFoundError,
 )
+from pmgs_reference.fts_schema import CANONICAL_FTS5_SCHEMAS, inspect_fts5_schemas
 from pmgs_reference.normalization import SUPPORTED_SCHEMES, normalize_code
 from pmgs_reference.schema import APPLICATION_ID, DATABASE_USER_VERSION, SCHEMA_VERSION
 from pmgs_reference.store_types import JSONDict as JSONDict
