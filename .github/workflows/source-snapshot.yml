@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - chore/source-snapshot-20260823
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
