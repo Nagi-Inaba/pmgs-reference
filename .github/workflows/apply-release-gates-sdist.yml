@@ -31,6 +31,30 @@ jobs:
           cat .github/step1-chunks/part-*.txt | base64 --decode > "$RUNNER_TEMP/step1-changes.tar.gz"
           tar -tzf "$RUNNER_TEMP/step1-changes.tar.gz" >/dev/null
           tar -xzf "$RUNNER_TEMP/step1-changes.tar.gz" -C .
+      - name: Normalize staged test source
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_release_scripts.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  '''    metadata = (\n        "Metadata-Version: 2.4\\n"\n        "Name: pmgs-reference\\n"\n        "Version: 0.4.0\\n"\n        "Requires-Python: >=3.12\\n\\n"\n    ).encode()\n''',
+                  '''    metadata = (\n        b"Metadata-Version: 2.4\\n"\n        b"Name: pmgs-reference\\n"\n        b"Version: 0.4.0\\n"\n        b"Requires-Python: >=3.12\\n\\n"\n    )\n''',
+              ),
+              (
+                  '''    with pytest.warns(UserWarning, match="Duplicate name"):\n        with zipfile.ZipFile(rebuilt, "a") as archive:\n            archive.writestr("pmgs_reference/__init__.py", b"VERSION = 'duplicate'\\n")\n''',
+                  '''    with (\n        pytest.warns(UserWarning, match="Duplicate name"),\n        zipfile.ZipFile(rebuilt, "a") as archive,\n    ):\n        archive.writestr("pmgs_reference/__init__.py", b"VERSION = 'duplicate'\\n")\n''',
+              ),
+          )
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit("staged test normalization anchor not found")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
       - name: Verify Python contracts and distributions
         shell: bash
         run: |
@@ -54,7 +78,6 @@ jobs:
         run: |
           git rm .github/workflows/apply-release-gates-sdist.yml
           git rm -r .github/step1-chunks
-          git rm .github/step1-changes.tar.gz
           git config user.name "NAGI"
           git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
           git add .github/workflows/ci.yml .github/workflows/release.yml docs/release-runbook.md docs/requirements-traceability.md docs/verification/2026-08-23-release-gates-sdist.md scripts/verify_distribution_set.py scripts/verify_sdist_install.py tests/test_release_gate_contract.py tests/test_release_scripts.py
