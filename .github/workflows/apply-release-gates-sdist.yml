@@ -85,12 +85,42 @@ jobs:
               runbook.replace("`build-distributions`", "`build`"),
               encoding="utf-8",
           )
+
+          project_contract_path = Path("tests/test_project_contracts.py")
+          project_contract = project_contract_path.read_text(encoding="utf-8")
+          old_artifact_assertion = '    assert raw.count("name: python-distributions") == 3\n'
+          new_artifact_assertion = '''    distribution_uploads = [
+              step
+              for step in jobs["build"]["steps"]
+              if "upload-artifact@" in str(step.get("uses", ""))
+              and step.get("with", {}).get("name") == "python-distributions"
+          ]
+          assert len(distribution_uploads) == 1
+          for job_name in ("distribution-e2e", "publish-pypi", "publish-github"):
+              distribution_downloads = [
+                  step
+                  for step in jobs[job_name]["steps"]
+                  if "download-artifact@" in str(step.get("uses", ""))
+                  and step.get("with", {}).get("name") == "python-distributions"
+              ]
+              assert len(distribution_downloads) == 1
+          '''
+          if old_artifact_assertion not in project_contract:
+              raise SystemExit("project artifact contract anchor not found")
+          project_contract_path.write_text(
+              project_contract.replace(
+                  old_artifact_assertion,
+                  new_artifact_assertion,
+                  1,
+              ),
+              encoding="utf-8",
+          )
           PY
       - name: Verify Python contracts and distributions
         shell: bash
         run: |
           uv sync --frozen --all-groups
-          uv run --frozen ruff format scripts/verify_distribution_set.py tests/test_release_scripts.py tests/test_release_gate_contract.py
+          uv run --frozen ruff format scripts/verify_distribution_set.py tests/test_release_scripts.py tests/test_release_gate_contract.py tests/test_project_contracts.py
           uv run --frozen python scripts/verify_repository_boundary.py
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
@@ -112,6 +142,6 @@ jobs:
           git rm -r .github/step1-chunks
           git config user.name "NAGI"
           git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
-          git add .github/workflows/ci.yml .github/workflows/release.yml docs/release-runbook.md docs/requirements-traceability.md docs/verification/2026-08-23-release-gates-sdist.md scripts/verify_distribution_set.py scripts/verify_sdist_install.py tests/test_release_gate_contract.py tests/test_release_scripts.py
+          git add .github/workflows/ci.yml .github/workflows/release.yml docs/release-runbook.md docs/requirements-traceability.md docs/verification/2026-08-23-release-gates-sdist.md scripts/verify_distribution_set.py scripts/verify_sdist_install.py tests/test_project_contracts.py tests/test_release_gate_contract.py tests/test_release_scripts.py
           git commit -m "ci: gate releases on three-OS sdist verification"
           git push origin HEAD:ci/release-gates-sdist
