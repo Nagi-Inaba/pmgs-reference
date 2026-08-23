@@ -113,6 +113,7 @@ def _run(command: list[str], *, cwd: Path | None = None) -> subprocess.Completed
         {
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
+            "UV_OFFLINE": "1",
             "UV_PYTHON_DOWNLOADS": "never",
             "UV_PYTHON_PREFERENCE": "only-system",
         }
