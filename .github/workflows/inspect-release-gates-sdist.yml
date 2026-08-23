@@ -31,5 +31,6 @@ jobs:
         with:
           name: reconstructed-release-gates-sdist
           path: ${{ runner.temp }}/reconstructed
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
