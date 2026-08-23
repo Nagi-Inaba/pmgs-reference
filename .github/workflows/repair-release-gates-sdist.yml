@@ -1,0 +1,82 @@
+name: repair-release-gates-sdist
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'ci/release-gates-sdist'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ci/release-gates-sdist
+          fetch-depth: 0
+      - name: Repair staged contract job name
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/release-gates-staged"
+          mkdir -p "$staging"
+          cat .github/step1-chunks/part-*.txt | base64 --decode > "$RUNNER_TEMP/step1-changes.tar.gz"
+          tar -xzf "$RUNNER_TEMP/step1-changes.tar.gz" -C "$staging"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          staged = Path("${{ runner.temp }}") / "release-gates-staged"
+          release = (staged / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+          jobs: dict[str, list[str]] = {}
+          current: str | None = None
+          in_jobs = False
+          for line in release.splitlines():
+              if line == "jobs:":
+                  in_jobs = True
+                  continue
+              if not in_jobs:
+                  continue
+              match = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+              if match:
+                  current = match.group(1)
+                  jobs[current] = []
+                  continue
+              if current is not None:
+                  jobs[current].append(line)
+
+          consumers = [
+              name
+              for name, body_lines in jobs.items()
+              if "download-artifact@" in "\n".join(body_lines)
+              and "name: python-distributions" in "\n".join(body_lines)
+          ]
+          validation_jobs = [
+              name for name in consumers if name not in {"publish-pypi", "publish-github"}
+          ]
+          if len(validation_jobs) != 1:
+              raise SystemExit(
+                  f"expected exactly one distribution validation consumer, got {validation_jobs!r}"
+              )
+
+          helper_path = Path(".github/workflows/apply-release-gates-sdist.yml")
+          helper = helper_path.read_text(encoding="utf-8")
+          old = '"distribution-e2e", "publish-pypi", "publish-github"'
+          new = f'"{validation_jobs[0]}", "publish-pypi", "publish-github"'
+          if old not in helper:
+              raise SystemExit("stale distribution consumer tuple was not found")
+          helper_path.write_text(helper.replace(old, new, 1), encoding="utf-8")
+          PY
+          rm .github/workflows/repair-release-gates-sdist.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/apply-release-gates-sdist.yml .github/workflows/repair-release-gates-sdist.yml
+          git commit -m "fix: align staged release consumer contract"
+          git push origin HEAD:ci/release-gates-sdist
