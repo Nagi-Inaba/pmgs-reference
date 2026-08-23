@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - chore/export-pr65-bundle-20260823
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   bundle:
+    if: github.head_ref == 'chore/export-pr65-bundle-20260823' || github.ref_name == 'chore/export-pr65-bundle-20260823'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
