@@ -1,0 +1,71 @@
+name: diagnose-pr65-rebase
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out feature branch with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/document-selector-pagination
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reapply the feature diff onto current main
+        id: apply
+        shell: bash
+        run: |
+          set -u
+          git fetch origin main
+          git diff --binary \
+            1f5c58504c9f4f869e52ed1cb9efe97e25d2f636 \
+            004c4b6b94299b5c25b1acac7eaf01687975f1a8 \
+            -- \
+            docs/local-interfaces.en.md \
+            docs/local-interfaces.md \
+            src/pmgs_reference/cli.py \
+            src/pmgs_reference/mcp_server.py \
+            src/pmgs_reference/resources/skills/pmgs-reference/SKILL.md \
+            src/pmgs_reference/store.py \
+            tests/test_document_pagination.py \
+            worker/src/api.ts \
+            > "$RUNNER_TEMP/pr65.patch"
+          git checkout -B diagnose origin/main
+          set +e
+          git apply --3way --index "$RUNNER_TEMP/pr65.patch"
+          status=$?
+          set -e
+          echo "apply_status=$status" >> "$GITHUB_OUTPUT"
+          echo "=== git status ==="
+          git status --short
+          echo "=== unresolved paths ==="
+          git diff --name-only --diff-filter=U
+          mkdir -p "$RUNNER_TEMP/diagnostic/conflicts"
+          git diff --cc > "$RUNNER_TEMP/diagnostic/conflict.diff" || true
+          git diff --name-only --diff-filter=U > "$RUNNER_TEMP/diagnostic/conflict-files.txt"
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            mkdir -p "$RUNNER_TEMP/diagnostic/conflicts/$(dirname "$path")"
+            cp "$path" "$RUNNER_TEMP/diagnostic/conflicts/$path"
+          done < "$RUNNER_TEMP/diagnostic/conflict-files.txt"
+          cp "$RUNNER_TEMP/pr65.patch" "$RUNNER_TEMP/diagnostic/pr65.patch"
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr65-rebase-diagnostic
+          path: ${{ runner.temp }}/diagnostic
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+      - name: Fail when conflicts remain
+        if: steps.apply.outputs.apply_status != '0'
+        run: exit 1
