@@ -222,7 +222,11 @@ uv run --frozen python scripts/verify_release_tag.py --tag v0.4.0
 
 ### 4. workflow結果を確認する
 
-`build` jobがboundary、Ruff、format、mypy、pytest、wheel、sdistを再検証した後、`publish-pypi` jobは`pypi` environmentで承認待ちになる。
+`release.yml`の3 OS release gateは、タグ付きsourceから一度だけ固定した同一のwheelとsdistをLinux、Windows、macOSへ配布し、各OSでsource test、隔離wheel、sdist由来wheel、合成決定性を検証する。`compare-synthetic-determinism`が3 OSの安定contractを比較し、Worker検証とdistribution metadata/hash検証を含む全gateが成功するまで`publish-pypi`は開始しない。
+
+sdistは`verify_sdist_install.py`でpath traversal、link、想定外top-level entryを拒否して安全に展開し、source checkout外でwheelへ再構築する。sdist由来wheelは公開wheelとruntime file hash、metadata、console entry pointを照合し、その後`verify_wheel_install.py`と同じsetup、再実行、doctor、lookup、MCP 3 tool、version smokeを通す。
+
+`build`がtag/versionとrepository boundaryを確認してwheelとsdistを一度だけ固定する。3 OS、distribution、Worker、cross-OS determinismの全gateが成功した後、`publish-pypi` jobは`pypi` environmentで承認待ちになる。
 
 承認後、PyPI Trusted Publishingとattestation付きで配布する。PyPI成功後だけ`publish-github` jobが同じwheelとsdistからGitHub Releaseを作る。
 
