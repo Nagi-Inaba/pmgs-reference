@@ -1,0 +1,108 @@
+name: apply-pr65-clean-v3
+
+on:
+  push:
+    branches:
+      - chore/export-pr65-bundle-20260823
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'chore/export-pr65-bundle-20260823' || github.ref_name == 'chore/export-pr65-bundle-20260823'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_PR_HEAD: 16e43f243cf8aaceb87fad6b0241081af0b19a26
+    steps:
+      - name: Check out helper branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Load verified reconstruction steps
+        shell: bash
+        run: |
+          uv sync --frozen --all-groups
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path('.github/workflows/apply-pr65-clean.yml').read_text(encoding='utf-8')
+          )
+          steps = {
+              step.get('name'): step.get('run')
+              for step in workflow['jobs']['apply']['steps']
+              if isinstance(step, dict)
+          }
+          for name, destination in (
+              ('Reconstruct PR 65 on current main', '/tmp/pr65-reconstruct.sh'),
+              ('Format and verify complete change', '/tmp/pr65-verify.sh'),
+              ('Squash and update PR branch', '/tmp/pr65-push.sh'),
+          ):
+              script = steps.get(name)
+              if not isinstance(script, str) or not script.strip():
+                  raise SystemExit(f'missing helper step: {name}')
+              Path(destination).write_text(script, encoding='utf-8', newline='\n')
+          PY
+      - name: Reconstruct clean feature branch
+        shell: bash
+        run: bash /tmp/pr65-reconstruct.sh
+      - name: Normalize existing boundary fixture
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_document_pagination_boundaries.py')
+          text = path.read_text(encoding='utf-8')
+          long_line = (
+              '                "SELECT concept_id, kind, version_indicator FROM document_link WHERE document_id = ? "\n'
+          )
+          split_line = (
+              '                "SELECT concept_id, kind, version_indicator "\n'
+              '                "FROM document_link WHERE document_id = ? "\n'
+          )
+          if long_line not in text:
+              raise SystemExit('boundary fixture formatting anchor not found')
+          text = text.replace(long_line, split_line, 1)
+
+          invalid_count = '''            connection.execute(
+                "SELECT COUNT(*) FROM ("
+                "SELECT concept_id, kind, version_indicator "
+                "FROM document_link WHERE document_id = ? "
+                "UNION "
+                "SELECT concept_id, kind, version_indicator FROM document_revision_link "
+                "WHERE document_id = ?"
+                ")",
+                (document_id, document_id),
+            ).fetchone()[0]
+'''
+          valid_count = '''            connection.execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM document_link WHERE document_id = ?) + "
+                "(SELECT COUNT(*) FROM document_revision_link WHERE document_id = ?)",
+                (document_id, document_id),
+            ).fetchone()[0]
+'''
+          if invalid_count not in text:
+              raise SystemExit('boundary fixture schema anchor not found')
+          text = text.replace(invalid_count, valid_count, 1)
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify complete feature
+        shell: bash
+        run: bash /tmp/pr65-verify.sh
+      - name: Squash and update PR branch
+        shell: bash
+        run: bash /tmp/pr65-push.sh
