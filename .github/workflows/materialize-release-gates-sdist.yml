@@ -32,7 +32,6 @@ jobs:
           tar -tzf "$RUNNER_TEMP/step1-changes.tar.gz" >/dev/null
           tar -xzf "$RUNNER_TEMP/step1-changes.tar.gz" -C .
           python scripts/materialize_release_gates_sdist.py
-          rm scripts/materialize_release_gates_sdist.py
       - name: Verify complete implementation
         shell: bash
         run: |
