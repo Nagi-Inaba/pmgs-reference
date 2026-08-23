@@ -150,7 +150,11 @@ def detect_client_targets(
     for client in requested:
         raw = which(client)
         candidate = Path(raw) if raw else None
-        executable = candidate.absolute() if candidate is not None and candidate.is_absolute() else None
+        executable = (
+            candidate.absolute()
+            if candidate is not None and candidate.is_absolute()
+            else None
+        )
         if executable is not None and os.name == "nt" and executable.suffix.lower() == ".ps1":
             executable = None
         if selection == "auto" and executable is None:
