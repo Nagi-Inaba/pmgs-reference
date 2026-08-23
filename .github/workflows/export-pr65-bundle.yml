@@ -1,0 +1,40 @@
+name: export-pr65-bundle
+
+on:
+  push:
+    branches:
+      - chore/export-pr65-bundle-20260823
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch exact comparison refs
+        shell: bash
+        run: |
+          git fetch origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            +refs/heads/fix/document-selector-pagination:refs/remotes/origin/fix/document-selector-pagination
+      - name: Create Git bundle
+        shell: bash
+        run: |
+          git bundle create "$RUNNER_TEMP/pmgs-pr65.bundle" \
+            refs/remotes/origin/main \
+            refs/remotes/origin/fix/document-selector-pagination
+          git bundle verify "$RUNNER_TEMP/pmgs-pr65.bundle"
+      - name: Upload Git bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmgs-pr65-bundle
+          path: ${{ runner.temp }}/pmgs-pr65.bundle
+          if-no-files-found: error
+          retention-days: 1
