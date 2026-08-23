@@ -48,12 +48,31 @@ jobs:
                   '''    with pytest.warns(UserWarning, match="Duplicate name"):\n        with zipfile.ZipFile(rebuilt, "a") as archive:\n            archive.writestr("pmgs_reference/__init__.py", b"VERSION = 'duplicate'\\n")\n''',
                   '''    with (\n        pytest.warns(UserWarning, match="Duplicate name"),\n        zipfile.ZipFile(rebuilt, "a") as archive,\n    ):\n        archive.writestr("pmgs_reference/__init__.py", b"VERSION = 'duplicate'\\n")\n''',
               ),
+              (
+                  '''    result = module.verify_distribution_set(tmp_path, "0.4.0")\n''',
+                  '''    (tmp_path / ".gitignore").write_text("*\\n", encoding="utf-8")\n    result = module.verify_distribution_set(tmp_path, "0.4.0")\n''',
+              ),
+              (
+                  '''    assert set(result["sha256"]) == {wheel.name, sdist.name}\n\n    (tmp_path / "unexpected.txt").write_text("x", encoding="utf-8")\n''',
+                  '''    assert set(result["sha256"]) == {wheel.name, sdist.name}\n\n    (tmp_path / ".gitignore").unlink()\n    (tmp_path / ".gitignore").mkdir()\n    with pytest.raises(RuntimeError, match="non-file uv build marker"):\n        module.verify_distribution_set(tmp_path, "0.4.0")\n    (tmp_path / ".gitignore").rmdir()\n\n    (tmp_path / "unexpected.txt").write_text("x", encoding="utf-8")\n''',
+              ),
           )
           for old, new in replacements:
               if old not in text:
                   raise SystemExit("staged test normalization anchor not found")
               text = text.replace(old, new, 1)
           test_path.write_text(text, encoding="utf-8")
+
+          verifier_path = Path("scripts/verify_distribution_set.py")
+          verifier = verifier_path.read_text(encoding="utf-8")
+          old_marker_boundary = '''    if symbolic_links:\n        raise RuntimeError(\n            f"symbolic link distribution entry: {', '.join(symbolic_links)}"\n        )\n    expected_names = {\n'''
+          new_marker_boundary = '''    if symbolic_links:\n        raise RuntimeError(\n            f"symbolic link distribution entry: {', '.join(symbolic_links)}"\n        )\n    uv_marker = root / ".gitignore"\n    if uv_marker.exists() and not uv_marker.is_file():\n        raise RuntimeError("non-file uv build marker: .gitignore")\n    entries = [path for path in entries if path.name != ".gitignore"]\n    expected_names = {\n'''
+          if old_marker_boundary not in verifier:
+              raise SystemExit("distribution verifier marker anchor not found")
+          verifier_path.write_text(
+              verifier.replace(old_marker_boundary, new_marker_boundary, 1),
+              encoding="utf-8",
+          )
 
           release_path = Path(".github/workflows/release.yml")
           release = release_path.read_text(encoding="utf-8")
@@ -143,6 +162,7 @@ jobs:
         shell: bash
         run: |
           git rm .github/workflows/apply-release-gates-sdist.yml
+          git rm .github/workflows/inspect-release-gates-sdist.yml
           git rm -r .github/step1-chunks
           git config user.name "NAGI"
           git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
