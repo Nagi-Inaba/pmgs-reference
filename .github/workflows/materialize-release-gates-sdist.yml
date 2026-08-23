@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           uv sync --frozen --all-groups
-          uv run --frozen ruff format scripts/verify_distribution_set.py tests/test_release_scripts.py tests/test_release_gate_contract.py tests/test_project_contracts.py
+          uv run --frozen ruff format scripts/materialize_release_gates_sdist.py scripts/verify_distribution_set.py tests/test_release_scripts.py tests/test_release_gate_contract.py tests/test_project_contracts.py
           uv run --frozen python scripts/verify_repository_boundary.py
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
