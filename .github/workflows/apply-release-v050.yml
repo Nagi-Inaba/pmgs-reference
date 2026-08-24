@@ -58,6 +58,57 @@ jobs:
           git checkout -B release-v050 origin/main
           git apply --check "$RUNNER_TEMP/v050-release.patch"
           git apply "$RUNNER_TEMP/v050-release.patch"
+          python - <<'PY'
+          from pathlib import Path
+
+          plan = Path("PLAN.md")
+          text = plan.read_text(encoding="utf-8")
+          old = (
+              "GitHub source repository、PyPI v0.4.0、GitHub Release v0.4.0を現在の配布面とする。"
+              "Web deploy、domain公開、R2 upload、外部検索エンジンへの登録は停止中の別外部状態であり、"
+              "第三者向けセルフホスト手順だけを提供する。"
+          )
+          new = (
+              "GitHub source repository、PyPI v0.5.0、GitHub Release v0.5.0を現在の配布面とする。"
+              "Web deploy、domain公開、R2 upload、外部検索エンジンへの登録は停止中の別外部状態であり、"
+              "第三者向けセルフホスト手順だけを提供する。"
+          )
+          if old not in text:
+              raise SystemExit("PLAN.md release-surface anchor not found")
+          plan.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          notes = Path("docs/releases/v0.5.0.md")
+          notes.parent.mkdir(parents=True, exist_ok=True)
+          notes.write_text(
+              """# PMGS Reference v0.5.0\n\n"
+              "公開日: 2026-08-24\n\n"
+              "## 概要\n\n"
+              "v0.5.0は、v0.4.0以降にmainへ統合した検索、診断、検証、安全性、文書取得の改善を一般利用者へ届けるリリースです。\n\n"
+              "## 主な改善\n\n"
+              "- 分類・文書検索で重複をまとめてから件数制限し、独立したoffsetとnext_offsetで欠落なく続行できるようにしました。\n"
+              "- 分類階層の取得をページングし、lookupのN+1照会を除去しました。\n"
+              "- doctorへタイムアウト、子プロセス回収、3つのMCP toolの実呼出し、SQLite不変性確認を追加しました。\n"
+              "- CLIのJSON失敗応答を安定したschemaとerror codeへ統一しました。\n"
+              "- FTS5の索引整合性、virtual table module、列順、UNINDEXED、tokenizerをfail closedで検証します。\n"
+              "- Codex・Claude Codeの実行ファイル探索から相対PATHと作業ディレクトリ経由の解決を除外しました。\n"
+              "- release workflowを3 OS、installed wheel、sdist由来wheel、Worker、決定性比較でゲートします。\n"
+              "- 文書取得のsectionを正のsegment sequence番号へ統一し、locatorを分離しました。\n"
+              "- 200件を超える文書segmentと関連分類を独立してページングできるようにしました。\n\n"
+              "## 互換性上の注意\n\n"
+              "Python APIやMCPで文字列をsectionへ渡していた呼出しは、その値をlocatorへ移してください。sectionは1始まりの整数sequence番号です。\n\n"
+              "## インストール\n\n"
+              "```powershell\n"
+              "uv tool install --force --reinstall \"pmgs-reference==0.5.0\"\n"
+              "pmgs --version\n"
+              "```\n\n"
+              "## 既知の未観測項目\n\n"
+              "- Claude Codeの設定と登録は自動検証済みですが、実モデルによるlive MCP評価はnot_observedです。\n"
+              "- 旧SQLite向けFTS5 fallbackは合成fixtureで検証済みですが、全量JPPMでの時間と一時disk使用量は別Issueで追跡します。\n"
+              """,
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
           actual_files="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)"
           expected_files=$'PLAN.md\nREADME.en.md\nREADME.md\ndocs/current-status.md\ndocs/local-agent-kit.en.md\ndocs/local-agent-kit.md\ndocs/release-runbook.md\ndocs/releases/v0.5.0.md\ndocs/requirements-traceability.md\npyproject.toml\ntests/test_project_contracts.py\nuv.lock'
           printf '%s\n' '=== actual release files ===' "$actual_files"
