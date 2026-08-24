@@ -54,7 +54,7 @@ The public methods are:
 - `parents(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
 - `children(scheme, code, release="current", edition=None, language="ja", *, limit=None, offset=0)`
 - `related_documents(scheme, code, release="current", edition=None)`
-- `get_document(document_id, page=None, section=None)`
+- `get_document(document_id, page=None, section=None, *, locator=None, segment_limit=200, segment_offset=0, related_classification_limit=200, related_classification_offset=0)`
 - `search_documents(query, release="current", language="ja", limit=20, *, offset=0)`
 - `release_info(release="current")`
 
@@ -80,11 +80,13 @@ The response's `search_mode` identifies the path used as one of the following:
 
 For compatibility, `search()` searches classifications only. `search_pmgs()` separates classifications and documents into `results_by_type.classification` and `results_by_type.document`, applying `limit` independently to each type. Each page returns `limit`, `offset`, `has_more`, and `next_offset`. Composite searches accept separate `classification_offset` and `document_offset` values so one result type can advance without replaying the other. Duplicate matching text rows are collapsed by classification or document before the page limit is applied. Both are text searches, not semantic searches. They do not use AI to supplement synonyms, spelling variants, or classification candidates.
 
-## Document response limits
+## Document selectors and pagination
 
-When neither `page` nor `section` is passed to `get_document`, a response is limited to 200 sections. If the entire document exceeds that limit, the response includes `segments_truncated: true` and the total count.
+For the local Python API, CLI, and stdio MCP, `page`, `section`, and `locator` are mutually exclusive. `page` is a one-based page number for PDFs and similar documents. `section` is a one-based segment number corresponding to `document_text.sequence_number`. Use `locator` only for an exact string match against a locator, heading, or source locator. The public API exposes `page` and integer `section` with the same meanings, but it does not expose the local-only `locator` or offset parameters; public clients continue through `chunk.previous` and `chunk.next`.
 
-Related classifications are also limited to 200 per response, with the total count and `related_classifications_truncated`. PDFs can be retrieved one page at a time, such as with `page=1`.
+Local segment responses are paginated with `segment_limit` and `segment_offset`. They return `segment_count`, `segment_limit`, `segment_offset`, `segments_truncated`, and `next_segment_offset`. Related classifications use independent `related_classification_limit` and `related_classification_offset` values and return `related_classification_count`, `related_classification_limit`, `related_classification_offset`, `related_classifications_truncated`, and `next_related_classification_offset`. Each limit has a maximum of 200.
+
+When either truncated field is true, pass the corresponding `next_*_offset` to the next local call. A selector that does not exist fails closed with `DOCUMENT_SELECTOR_NOT_FOUND`; combining selectors produces `INVALID_DOCUMENT_SELECTOR`. Python callers migrating from v0.4.0 must move a former string `section` value to `locator`; `section` now accepts only a positive sequence number.
 
 ## CLI
 
@@ -94,6 +96,8 @@ pmgs lookup ipc "G06F3/048" --ipc-version 2006.01 --relation-limit 50 --json
 pmgs search "相互作用技術" --scheme fi --scheme ipc --json
 pmgs search "改正" --content-type document --document-offset 20 --json
 pmgs document DOCUMENT_ID --page 1 --json
+pmgs document DOCUMENT_ID --section 201 --segment-limit 50 --segment-offset 0 --json
+pmgs document DOCUMENT_ID --locator "page:1" --related-classification-limit 50 --json
 pmgs doctor --timeout-seconds 30 --json
 ```
 
