@@ -58,9 +58,14 @@ jobs:
           git checkout -B release-v050 origin/main
           git apply --check "$RUNNER_TEMP/v050-release.patch"
           git apply "$RUNNER_TEMP/v050-release.patch"
-          actual_files="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort)"
+          actual_files="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)"
           expected_files=$'PLAN.md\nREADME.en.md\nREADME.md\ndocs/current-status.md\ndocs/local-agent-kit.en.md\ndocs/local-agent-kit.md\ndocs/release-runbook.md\ndocs/releases/v0.5.0.md\ndocs/requirements-traceability.md\npyproject.toml\ntests/test_project_contracts.py\nuv.lock'
-          test "$actual_files" = "$expected_files"
+          printf '%s\n' '=== actual release files ===' "$actual_files"
+          printf '%s\n' '=== expected release files ===' "$expected_files"
+          unexpected="$(comm -23 <(printf '%s\n' "$actual_files") <(printf '%s\n' "$expected_files"))"
+          missing="$(comm -13 <(printf '%s\n' "$actual_files") <(printf '%s\n' "$expected_files"))"
+          test -z "$unexpected"
+          test -z "$missing"
       - name: Verify release candidate
         shell: bash
         run: |
