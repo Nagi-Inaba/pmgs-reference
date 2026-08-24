@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - chore/workbench-remaining-issues-20260824
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   bundle:
+    if: github.head_ref == 'chore/workbench-remaining-issues-20260824' || github.ref_name == 'chore/workbench-remaining-issues-20260824'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
