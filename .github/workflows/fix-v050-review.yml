@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 60
     env:
       EXPECTED_MAIN: 9712ac2becf6b422344a0cbb0570bae52dcecf45
-      EXPECTED_RELEASE_HEAD: 6e45f84dca144fa661c02529358a1eef710e546f
+      EXPECTED_RELEASE_HEAD: fda7a585de681c0287d2b284af5d0899b2eb4bf4
     steps:
       - name: Check out helper branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,7 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
           package-manager-cache: false
-      - name: Write failing release-state contracts
+      - name: Check out fixed release candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -45,232 +45,20 @@ jobs:
             +refs/heads/main:refs/remotes/origin/main \
             +refs/heads/release/v0.5.0:refs/remotes/origin/release/v0.5.0
           git checkout -B release-v050-review origin/release/v0.5.0
-          git config user.name "NAGI"
-          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("tests/test_project_contracts.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              "archive/refs/tags/v0.5.0.zip",
-              "archive/refs/tags/v0.4.0.zip",
-          )
-          text = text.replace(
-              "pmgs-reference==0.5.0",
-              "pmgs-reference==0.4.0",
-          )
-          anchor = "\ndef test_package_version_has_one_public_value() -> None:\n"
-          addition = r'''
-
-          def test_release_candidate_keeps_external_links_on_the_published_v040() -> None:
-              surfaces = (
-                  "README.md",
-                  "README.en.md",
-                  "docs/current-status.md",
-                  "PLAN.md",
-                  "docs/requirements-traceability.md",
-              )
-              for relative in surfaces:
-                  content = (ROOT / relative).read_text(encoding="utf-8")
-                  assert "https://pypi.org/project/pmgs-reference/0.5.0/" not in content
-                  assert "releases/tag/v0.5.0" not in content
-
-              japanese = (ROOT / "README.md").read_text(encoding="utf-8")
-              english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-              assert "## 現行版とv0.5.0公開準備" in japanese
-              assert "[PyPI v0.4.0]" in japanese
-              assert "## Current release and v0.5.0 release candidate" in english
-              assert "[PyPI v0.4.0]" in english
-
-
-          def test_v050_release_notes_cover_both_breaking_migrations() -> None:
-              notes = (ROOT / "docs/releases/v0.5.0.md").read_text(encoding="utf-8")
-              assert all(token in notes for token in ("`section`", "`locator`"))
-              assert all(
-                  token in notes
-                  for token in ("`parents()`", "`children()`", "summary", "`lookup()`")
-              )
-          '''
-          if anchor not in text:
-              raise SystemExit("project contract insertion anchor missing")
-          text = text.replace(anchor, addition + anchor, 1)
-          path.write_text(text, encoding="utf-8", newline="\n")
-          PY
+      - name: Apply candidate publication-state fixes
+        shell: bash
+        run: python "$GITHUB_WORKSPACE/.github/apply-v050-candidate-docs.py"
+      - name: Verify release candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
           uv sync --frozen --all-groups
-          set +e
-          uv run --frozen pytest -q \
-            tests/test_project_contracts.py::test_release_candidate_keeps_external_links_on_the_published_v040 \
-            tests/test_project_contracts.py::test_v050_release_notes_cover_both_breaking_migrations
-          red_status=$?
-          set -e
-          test "$red_status" -ne 0
-      - name: Update candidate documentation truthfully
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: Path, old: str, new: str) -> None:
-              text = path.read_text(encoding="utf-8")
-              if old not in text:
-                  raise SystemExit(f"{path}: replacement anchor not found")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
-
-          ja = Path("README.md")
-          ja_old = '''## v0.5.0の公開状況
-
-          - [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)：`uv tool install pmgs-reference`で導入できます。
-          - [GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)：PyPIと同じworkflow artifactから作成したwheelとsdistを配布しています。
-          - [ソースコード](https://github.com/Nagi-Inaba/pmgs-reference)：Apache License 2.0で公開しています。
-
-          配布物に含まれるのは、SQLiteを構築・検索するPythonコード、CLI、読み取り専用MCP、AI向けスキルです。
-          PMGS原本、生成したSQLite、全量export、認証情報は配布物に含めず、GitHubやPyPIにもアップロードしていません。
-          v0.5.0は、検索と階層の欠落防止・ページング、文書selectorと長文取得、doctorの実MCP診断、構造化JSONエラー、FTS5完全性検査、client実行ファイル検出、3 OSのrelease gateを強化しています。
-          文字列の`section`を使っていたPython呼出しは`locator`へ移行してください。詳細は[v0.5.0リリースノート](docs/releases/v0.5.0.md)に記載しています。
-          Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。実PMGSのA/B構築・Codex実MCP評価等の基礎証拠は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)を参照してください。
-          '''
-          ja_new = '''## 現行版とv0.5.0公開準備
-
-          - [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)：現在の公開版です。
-          - [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)：現在の固定Releaseです。
-          - [v0.5.0リリースノート](docs/releases/v0.5.0.md)：公開候補の変更点と移行方法です。
-          - [ソースコード](https://github.com/Nagi-Inaba/pmgs-reference)：Apache License 2.0で公開しています。
-
-          v0.5.0はrelease candidateです。検索と階層の欠落防止・ページング、文書selectorと長文取得、doctorの実MCP診断、構造化JSONエラー、FTS5完全性検査、client実行ファイル検出、3 OSのrelease gateを強化しています。`v0.5.0`タグのrelease workflowがPyPIとGitHub Releaseの公開を完了するまでは、通常のインストール先はv0.4.0です。
-
-          v0.4.0で文字列の`section`を使っていたPython呼出しは`locator`へ移行してください。また、`parents()`と`children()`は軽量なsummary recordを返すため、本文・properties・relations・documents・sourcesが必要な場合は返された識別子で`lookup()`を追加実行します。詳細は[v0.5.0リリースノート](docs/releases/v0.5.0.md)に記載しています。
-
-          配布物に含まれるのは、SQLiteを構築・検索するPythonコード、CLI、読み取り専用MCP、AI向けスキルです。PMGS原本、生成したSQLite、全量export、認証情報は配布物に含めず、GitHubやPyPIにもアップロードしていません。Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。実PMGSのA/B構築・Codex実MCP評価等の基礎証拠は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)を参照してください。
-          '''
-          replace_once(ja, ja_old, ja_new)
-          ja_text = ja.read_text(encoding="utf-8")
-          ja_text = ja_text.replace("v0.5.0の第一選択はPyPI版です。", "現在公開中のv0.4.0ではPyPI版を第一選択にします。")
-          ja_text = ja_text.replace("検証済みのv0.5.0へ固定", "現在公開中のv0.4.0へ固定")
-          ja_text = ja_text.replace('pmgs-reference==0.5.0', 'pmgs-reference==0.4.0')
-          ja_text = ja_text.replace('archive/refs/tags/v0.5.0.zip', 'archive/refs/tags/v0.4.0.zip')
-          ja.write_text(ja_text, encoding="utf-8", newline="\n")
-
-          en = Path("README.en.md")
-          en_old = '''## v0.5.0 release status
-
-          - [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/): install with `uv tool install pmgs-reference`.
-          - [GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0): distributes the wheel and sdist produced from the same workflow artifact as PyPI.
-          - [Source code](https://github.com/Nagi-Inaba/pmgs-reference): published under the Apache License 2.0.
-
-          The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill.
-          PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI.
-          v0.5.0 strengthens lossless search and hierarchy pagination, document selectors and long-document retrieval, live MCP doctor checks, structured JSON errors, FTS5 integrity validation, client executable discovery, and three-OS release gates.
-          Python callers that previously supplied a string `section` must migrate that value to `locator`. See the [v0.5.0 release notes](docs/releases/v0.5.0.md).
-          Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`. The real-PMGS A/B build and live Codex evidence remain documented in the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md).
-          '''
-          en_new = '''## Current release and v0.5.0 release candidate
-
-          - [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/): the currently published package.
-          - [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0): the current fixed release.
-          - [v0.5.0 release notes](docs/releases/v0.5.0.md): candidate changes and migration guidance.
-          - [Source code](https://github.com/Nagi-Inaba/pmgs-reference): published under the Apache License 2.0.
-
-          v0.5.0 is a release candidate. It strengthens lossless search and hierarchy pagination, document selectors and long-document retrieval, live MCP doctor checks, structured JSON errors, FTS5 integrity validation, client executable discovery, and three-OS release gates. Until the `v0.5.0` tag workflow completes both PyPI and GitHub Release publication, normal installation still resolves to v0.4.0.
-
-          Python callers that previously supplied a string `section` must migrate that value to `locator`. In addition, `parents()` and `children()` now return lightweight summary records; call `lookup()` with the returned identifiers when texts, properties, relations, documents, or sources are needed. See the [v0.5.0 release notes](docs/releases/v0.5.0.md).
-
-          The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill. PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI. Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`. The real-PMGS A/B build and live Codex evidence remain documented in the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md).
-          '''
-          replace_once(en, en_old, en_new)
-          en_text = en.read_text(encoding="utf-8")
-          en_text = en_text.replace("For v0.5.0, the PyPI package is the primary installation route.", "For the currently published v0.4.0 release, PyPI is the primary installation route.")
-          en_text = en_text.replace("To pin the verified v0.5.0 release", "To pin the currently published v0.4.0 release")
-          en_text = en_text.replace('pmgs-reference==0.5.0', 'pmgs-reference==0.4.0')
-          en_text = en_text.replace('archive/refs/tags/v0.5.0.zip', 'archive/refs/tags/v0.4.0.zip')
-          en.write_text(en_text, encoding="utf-8", newline="\n")
-
-          for relative in ("docs/local-agent-kit.md", "docs/local-agent-kit.en.md"):
-              path = Path(relative)
-              text = path.read_text(encoding="utf-8")
-              path.write_text(text.replace("0.5.0", "0.4.0"), encoding="utf-8", newline="\n")
-
-          status = Path("docs/current-status.md")
-          text = status.read_text(encoding="utf-8")
-          text = text.replace(
-              "- 公開状態: v0.5.0をPyPIとGitHub Releaseへ同一artifactで公開する。R2、Worker、独自domain、外部検索indexは未公開のままHold",
-              "- 公開状態: 現在の公開版はPyPI／GitHub Release v0.4.0。v0.5.0はtag release前の候補で、R2、Worker、独自domain、外部検索indexは未公開のままHold",
-          )
-          text = text.replace(
-              "Python packageの最新版はPyPIとGitHub Releaseで公開するv0.5.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。",
-              "Python packageの現在の公開最新版はPyPIとGitHub Releaseのv0.4.0である。v0.5.0はrelease candidateであり、tag workflowが成功するまで公開済みとは扱わない。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。",
-          )
-          status.write_text(text, encoding="utf-8", newline="\n")
-
-          plan = Path("PLAN.md")
-          text = plan.read_text(encoding="utf-8")
-          text = text.replace(
-              "GitHub source repository、PyPI v0.5.0、GitHub Release v0.5.0を現在の配布面とする。",
-              "GitHub source repository、PyPI v0.4.0、GitHub Release v0.4.0を現在の配布面とする。v0.5.0はtag release前の候補として扱う。",
-          )
-          plan.write_text(text, encoding="utf-8", newline="\n")
-
-          trace = Path("docs/requirements-traceability.md")
-          text = trace.read_text(encoding="utf-8")
-          text = text.replace(
-              "GitHub source repository、[PyPIのv0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)、[GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)を現在の配布面とする。",
-              "GitHub source repository、[PyPIのv0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)を現在の配布面とする。v0.5.0はtag release前の候補として扱う。",
-          )
-          trace.write_text(text, encoding="utf-8", newline="\n")
-
-          notes = Path("docs/releases/v0.5.0.md")
-          text = notes.read_text(encoding="utf-8")
-          anchor = '''store.get_document(document_id, locator="page:1")
-          store.get_document(document_id, section=201)
-          ```
-          '''
-          addition = '''store.get_document(document_id, locator="page:1")
-          store.get_document(document_id, section=201)
-          ```
-
-          ### 分類階層API
-
-          v0.4.0の`PMGSStore.parents()`と`children()`は完全なlookup recordを返していましたが、v0.5.0ではページング可能な軽量summary recordを返します。本文、properties、relations、documents、sourcesが必要な場合は、summaryに含まれるscheme、code、edition、version等を使って`lookup()`を追加実行してください。
-
-          ```python
-          page = store.parents("fi", "G06F3/048", limit=50, offset=0)
-          full_record = store.lookup("fi", page["results"][0]["code"])
-          ```
-          '''
-          if anchor not in text:
-              raise SystemExit("release note migration anchor missing")
-          notes.write_text(text.replace(anchor, addition, 1), encoding="utf-8", newline="\n")
-
-          forbidden = (
-              "https://pypi.org/project/pmgs-reference/0.5.0/",
-              "releases/tag/v0.5.0",
-          )
-          for relative in (
-              "README.md",
-              "README.en.md",
-              "docs/current-status.md",
-              "PLAN.md",
-              "docs/requirements-traceability.md",
-          ):
-              content = Path(relative).read_text(encoding="utf-8")
-              if any(item in content for item in forbidden):
-                  raise SystemExit(f"{relative}: premature v0.5.0 publication claim remains")
-          PY
-      - name: Verify review fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run --frozen pytest -q \
-            tests/test_project_contracts.py::test_release_candidate_keeps_external_links_on_the_published_v040 \
-            tests/test_project_contracts.py::test_v050_release_notes_cover_both_breaking_migrations \
-            tests/test_project_contracts.py::test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts \
-            tests/test_project_contracts.py::test_package_version_has_one_public_value \
-            tests/test_project_contracts.py::test_release_tag_guard_accepts_only_the_package_version
           uv run --frozen python scripts/verify_repository_boundary.py
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
           uv run --frozen mypy src
+          uv run --frozen pytest -q tests/test_project_contracts.py
           uv run --frozen pytest -q
           uv build --clear
           uv run --frozen python scripts/verify_distribution_set.py --dist-dir dist
@@ -283,12 +71,17 @@ jobs:
             --source tests/fixtures/synthetic_pmgs
           npm --prefix worker ci
           npm --prefix worker run verify
-      - name: Push reviewed release candidate
+      - name: Push verified release candidate
         shell: bash
         run: |
           set -euo pipefail
-          git add -A
-          git commit -m "docs: keep v0.5.0 candidate claims truthful"
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+          git add PLAN.md README.md README.en.md \
+            docs/current-status.md docs/local-agent-kit.md docs/local-agent-kit.en.md \
+            docs/releases/v0.5.0.md docs/requirements-traceability.md \
+            tests/test_project_contracts.py
+          git commit -m "docs: keep v0.5.0 links pending until publication"
           git push \
             --force-with-lease=refs/heads/release/v0.5.0:$EXPECTED_RELEASE_HEAD \
             origin HEAD:refs/heads/release/v0.5.0
