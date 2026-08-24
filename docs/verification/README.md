@@ -6,6 +6,8 @@
 
 ## 現在の境界
 
+[v0.5.0のPython package公開検証](v0.5-release-2026-08-24.md)は、tag release workflow、PyPI Trusted Publishing、GitHub Release、artifact hash、公開packageの隔離導入を記録する。この検証はPython packageの配布面を対象とし、R2、Worker、独自domainのWeb公開を意味しない。
+
 [v0.4.0の正確性検証](v0.4-correctness-2026-08-12.md)は、schema v2の全量A/B再構築、
 公開export、AI client評価、release gateを一つの記録へまとめる。
 

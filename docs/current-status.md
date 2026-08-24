@@ -1,23 +1,27 @@
 # 現在の状態
 
 - 更新日: 2026-08-24
-- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをrelease candidateとして準備済み
-- 検証状態: **v0.5.0 release candidate**。hosted PR CIで検証し、merge後の`v0.5.0` tag release gateで再検証する。Claude Codeのlive MCP評価だけは`not_observed`を維持する
-- 公開状態: PyPIとGitHub Releaseの現行版はv0.4.0。v0.5.0はtag release workflowの成功後に同一artifactで公開する。R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをmainへ統合済み
+- 検証状態: **v0.5.0 published**。tag release workflow、PyPI provenance、GitHub Release、両配布面のartifact hash、公開wheelの隔離導入を検証済み。Claude Codeのlive MCP評価だけは`not_observed`を維持する
+- 公開状態: [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)と[GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)を公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 
-2026年8月24日にv0.5.0 release candidateを作成した。v0.4.0以降に、検索結果の重複排除前ページング、階層N+1、文書selectorの型衝突、長文・関連分類の取得不能、doctorのhang、非構造化CLI error、FTS5索引・schemaの見逃し、作業directory経由のclient実行ファイル探索を修正した。詳細と互換性変更は[リリースノート](releases/v0.5.0.md)に記録する。
+2026年8月24日にv0.5.0を公開した。[Release run 32723564389](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/32723564389)は、Linux、Windows、macOSのwheel・sdist導入、Worker、artifact hash、3 OS決定性比較に合格した。required reviewer付き`pypi` environmentの承認後、Trusted Publishingとdigital attestationを使ってPyPIへ公開し、同じartifactからGitHub Releaseを作成した。両配布面のwheelとsdistはbytesとSHA-256が一致し、公開wheelの隔離導入ではversion=`pmgs 0.5.0`、初回setup=`ready`、再実行=`already_ready`、doctor=`true`、lookup=`exact`を確認した。詳細は[公開検証記録](verification/v0.5-release-2026-08-24.md)に記録する。
+
+v0.5.0では、v0.4.0以降に、検索結果の重複排除前ページング、階層N+1、文書selectorの型衝突、長文・関連分類の取得不能、doctorのhang、非構造化CLI error、FTS5索引・schemaの見逃し、作業directory経由のclient実行ファイル探索を修正した。詳細と互換性変更は[リリースノート](releases/v0.5.0.md)に記録する。
 PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
 
-2026年8月22日に、Windowsのclient自動検出からOS既定の暗黙の作業ディレクトリ探索と空・相対`PATH`要素を除外した。対話登録には解決済み実行ファイルを表示し、絶対`PATH`上のnpm形式`.cmd` launcherは維持する。setup・client・agent kitの回帰61件が合格し、Windows権限を要する既存symlink試験1件だけをskipした。全体pytestは236件合格、同じ権限理由のsymlink試験7件skipだった。lock、repository boundary 177候補、Ruff、mypy、wheel・sdist build、Worker 31件、WebMCP 3件、npm auditも合格した。公開済みv0.4.0 wheelにはこの変更を含めず、ローカルsource変更として扱う。
+2026年8月22日に、Windowsのclient自動検出からOS既定の暗黙の作業ディレクトリ探索と空・相対`PATH`要素を除外した。対話登録には解決済み実行ファイルを表示し、絶対`PATH`上のnpm形式`.cmd` launcherは維持する。setup・client・agent kitの回帰61件が合格し、Windows権限を要する既存symlink試験1件だけをskipした。全体pytestは236件合格、同じ権限理由のsymlink試験7件skipだった。lock、repository boundary 177候補、Ruff、mypy、wheel・sdist build、Worker 31件、WebMCP 3件、npm auditも合格した。この変更は公開済みv0.5.0 wheelへ含まれる。
 
-2026年8月14日に、別のPMGS releaseを使う手順を日英READMEと導入ガイドへ追加した。実際の`JPPM`版directoryを直接指定する方法、任意名directoryだけで`--release`を使う方法、名前だけでは版を確認できない境界、複数版の安全な切替、未知形式のfail-closed、固定v0.4.0導入、独自`--data-dir`でのlookup、Codex・Claude Code CLIの前提、macOS・Linuxの一行例を同じオンボーディング契約として記録した。
+2026年8月14日に、別のPMGS releaseを使う手順を日英READMEと導入ガイドへ追加した。実際の`JPPM`版directoryを直接指定する方法、任意名directoryだけで`--release`を使う方法、名前だけでは版を確認できない境界、複数版の安全な切替、未知形式のfail-closed、固定package版の導入、独自`--data-dir`でのlookup、Codex・Claude Code CLIの前提、macOS・Linuxの一行例を同じオンボーディング契約として記録した。
 
 ユーザーは2026年8月13日にv0.4.0のPyPI公開、tag、GitHub Releaseを承認した。[Release run 31677401736](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/31677401736)は、required reviewer付き`pypi`環境、`v*` tag制限、Trusted Publishing、digital attestationを通過し、同じwheelとsdistをPyPIとGitHub Releaseへ公開した。両配布面のSHA-256、PyPI provenance、空環境からの`uv tool install`、setup、doctor、lookup、MCP tool 3件を外部確認した。
 
 ## 結論
 
-v0.4.0は監査で確認したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足を修正し、ローカル検証、実データA/B監査、Codex実MCP評価、hosted CI、CodeQLに合格した。sourceはmainへ統合済みである。
+v0.5.0は検索・階層・文書取得、doctor、CLI error、FTS5検査、client探索、release gateの改善をmainへ統合し、tag付きrelease workflowと外部配布検証に合格した。PyPIとGitHub Releaseの公開artifactは一致し、公開wheelからのsetup、doctor、lookupも成功した。
+
+v0.4.0で修正したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足に対する実データA/B監査とCodex実MCP評価は、v0.5.0の基礎証拠として保持する。
 Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認し、同日にv0.4.0のtag、PyPI、GitHub ReleaseのHoldも解除した。R2、Worker、独自domain、外部検索indexのHoldは維持する。
 
 2026年8月13日の最終候補A/Bは、JPPM2026002のsource 6,870件とsource record 4,430,638件を
@@ -66,7 +70,7 @@ data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpa
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
 [GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`をsourceの配布面とする。
-Python packageの公開最新版はPyPIとGitHub Releaseのv0.4.0であり、v0.5.0はrelease candidateである。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
+Python packageの公開最新版はPyPIとGitHub Releaseのv0.5.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
 
 ## 現在の公開契約
 
@@ -240,10 +244,10 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 完了したPythonリリースと残るWebゲート
 
-1. GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を適用し、`v0.4.0`のdeploymentを承認した。PyPI Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで公開に成功した。
-2. PyPI project、両fileのprovenance、GitHub Release、asset hash、空環境からの導入を外部確認した。公開fileのhashと導入結果は[v0.4.0の正確性検証](verification/v0.4-correctness-2026-08-12.md#v040-pythonパッケージの外部公開)へ記録した。
+1. GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を適用し、`v0.5.0`のdeploymentを承認した。PyPI Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで公開に成功した。
+2. PyPI project、両fileのprovenance、GitHub Release、asset hash、空の専用tool環境からの導入を外部確認した。公開fileのhashと導入結果は[v0.5.0のPython package公開検証](verification/v0.5-release-2026-08-24.md)へ記録した。
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.4.0 wheel・sdistは公開済みである。
+GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.5.0 wheel・sdistは公開済みである。
 全量成果物、Web deploy、独自domain、index登録は完了扱いにしない。

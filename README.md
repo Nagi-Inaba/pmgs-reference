@@ -6,18 +6,18 @@
 
 PMGS Referenceは、取得済みのPMGSパッケージを検索用SQLiteへ変換し、FI、Fターム、IPCの定義・階層・版・関連資料をAIから参照できるようにします。CodexとClaude Codeは読み取り専用MCPを通じて同じデータを検索するため、一般的なWeb検索やモデルの記憶だけに頼らず、PMGSの文言と出典を確認できます。
 
-## 現行版とv0.5.0公開準備
+## v0.5.0の公開状況
 
-- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)：現在の公開版です。`uv tool install pmgs-reference`で導入できます。
-- [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)：現在の固定Releaseです。
-- [v0.5.0リリースノート](docs/releases/v0.5.0.md)：公開候補の変更点と移行方法です。
+- [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)：現在の公開版です。`uv tool install pmgs-reference`で導入できます。
+- [GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)：PyPIと同じwheelとsdistを配布しています。
+- [v0.5.0リリースノート](docs/releases/v0.5.0.md)：変更点と移行方法です。
 - [ソースコード](https://github.com/Nagi-Inaba/pmgs-reference)：Apache License 2.0で公開しています。
 
-v0.5.0はrelease candidateです。検索と階層の欠落防止・ページング、文書selectorと長文取得、doctorの実MCP診断、構造化JSONエラー、FTS5完全性検査、client実行ファイル検出、3 OSのrelease gateを強化しています。`v0.5.0`タグのrelease workflowがPyPIとGitHub Releaseの公開を完了するまでは、通常のインストール先はv0.4.0です。
+v0.5.0は、検索と階層の欠落防止・ページング、文書selectorと長文取得、doctorの実MCP診断、構造化JSONエラー、FTS5完全性検査、client実行ファイル検出を改善しています。タグ付きrelease workflowはLinux、Windows、macOSのwheel・sdist導入、Worker、決定性比較に合格し、Trusted Publishingとattestation付きで公開されました。
 
 v0.4.0で文字列の`section`を使っていたPython呼出しは`locator`へ移行してください。また、`parents()`と`children()`は軽量なsummary recordを返すため、本文・properties・relations・documents・sourcesが必要な場合は返された識別子で`lookup()`を追加実行します。詳細は[v0.5.0リリースノート](docs/releases/v0.5.0.md)に記載しています。
 
-配布物に含まれるのは、SQLiteを構築・検索するPythonコード、CLI、読み取り専用MCP、AI向けスキルです。PMGS原本、生成したSQLite、全量export、認証情報は配布物に含めず、GitHubやPyPIにもアップロードしていません。Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。実PMGSのA/B構築・Codex実MCP評価等の基礎証拠は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)を参照してください。
+配布物に含まれるのは、SQLiteを構築・検索するPythonコード、CLI、読み取り専用MCP、AI向けスキルです。PMGS原本、生成したSQLite、全量export、認証情報は配布物に含めず、GitHubやPyPIにもアップロードしていません。Claude Code用の設定と登録は自動試験済みですが、live MCP評価は`not_observed`です。公開artifactと導入確認は[v0.5.0のPython package公開検証](docs/verification/v0.5-release-2026-08-24.md)、実PMGSのA/B構築・Codex実MCP評価等の基礎証拠は[v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)を参照してください。
 
 ## PMGSをまだ持っていない場合
 
@@ -35,7 +35,7 @@ pmgs setup C:\path\to\JPPM2026002 --client none --no-register --dry-run --json
 
 ## PMGSを持っている人が今すぐ使う
 
-現在公開中のv0.4.0ではPyPI版を第一選択にします。
+現在公開中のv0.5.0ではPyPI版を第一選択にします。
 `uvx`の一時キャッシュではなく、`uv tool`の専用環境へインストールします。
 
 必要なものは次のとおりです。
@@ -56,16 +56,16 @@ uv tool install pmgs-reference
 ```
 
 このコマンドは、実行時点でPyPIに公開されている最新版を導入します。
-現在公開中のv0.4.0へ固定する場合は、代わりに次を実行します。
+現在公開中のv0.5.0へ固定する場合は、代わりに次を実行します。
 
 ```powershell
-uv tool install "pmgs-reference==0.4.0"
+uv tool install "pmgs-reference==0.5.0"
 ```
 
 PyPIを利用しない場合は、GitHubの固定タグから同じようにインストールできます。
 
 ```powershell
-uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.4.0.zip"
+uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.0.zip"
 ```
 
 次に、書き込みを行わない事前確認で入力と空き容量を検査します。
@@ -161,8 +161,8 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
-    verified_pin: "uv tool install pmgs-reference==0.4.0"
-    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.4.0.zip"
+    verified_pin: "uv tool install pmgs-reference==0.5.0"
+    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.0.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false
@@ -287,6 +287,7 @@ PMGSデータ自体はリポジトリやPythonパッケージに含まれませ�
 - [システム構成](docs/architecture.md)
 - [現在の実装状況](docs/current-status.md)
 - [v0.5.0リリースノート](docs/releases/v0.5.0.md)
+- [v0.5.0のPython package公開検証](docs/verification/v0.5-release-2026-08-24.md)
 - [v0.4.0の正確性検証](docs/verification/v0.4-correctness-2026-08-12.md)
 - [開発への参加](CONTRIBUTING.md)
 

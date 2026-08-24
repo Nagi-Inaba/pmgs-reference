@@ -1,7 +1,7 @@
 # PMGS Reference v1 設計計画
 
 - 初版作成日: 2026-08-08
-- 最終更新日: 2026-08-13
+- 最終更新日: 2026-08-24
 - 対象: JPOの登録制一括ダウンロードサービスから取得したPMGSパッケージ
 - 利用者: Codex・Claude Code利用者、ローカル開発者、任意Web公開者、検索エンジン、GPTs、Gem、Copilot Studio、MCPクライアント
 
@@ -37,7 +37,9 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 
 2026-08-13に、分類概念と版ごとのrevisionを分離するschema v2、IPCの基準日版選択、FI改正の`reference_only`概念、出典lineage、関係ページング、分類・文書の複合検索をv0.4.0として実装・検証し、Pull Request #6からmainへ統合した。PMGS保有者向けのPyPI-first導線、dry-run、AI向け機械可読説明はPull Request #8からmainへ統合した。実データA/B、Codex実MCP評価、hosted CI、CodeQLに合格している。Claude Code用設定、skill、登録、分離環境、tool制限は自動検証済みだが、現在利用できる無料アカウントではlive MCP評価に必要なClaudeモデル呼出しを実行できないため、live MCP評価は`not_observed`として残す。現在の検証状態と外部公開Holdは[現在の状態](docs/current-status.md)を正本とする。
 
-GitHub source repository、PyPI v0.4.0、GitHub Release v0.4.0を現在の配布面とし、v0.5.0はrelease candidateとしてtag公開を待つ。Web deploy、domain公開、R2 upload、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
+2026-08-24に、検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをv0.5.0として公開した。tag付きworkflowはLinux、Windows、macOSのwheel・sdist導入、Worker、決定性比較に合格し、同じartifactをPyPIとGitHub Releaseへ配布した。
+
+GitHub source repository、PyPI v0.5.0、GitHub Release v0.5.0を現在の配布面とする。Web deploy、domain公開、R2 upload、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
 
 ## v1の設計原則
 
