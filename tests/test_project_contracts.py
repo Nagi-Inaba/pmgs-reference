@@ -117,9 +117,9 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
     stable_install = "uv tool install pmgs-reference"
     tagged_install = (
         'uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/'
-        'archive/refs/tags/v0.5.0.zip"'
+        'archive/refs/tags/v0.4.0.zip"'
     )
-    pinned_install = 'uv tool install "pmgs-reference==0.5.0"'
+    pinned_install = 'uv tool install "pmgs-reference==0.4.0"'
 
     for relative in surfaces:
         text = (ROOT / relative).read_text(encoding="utf-8")
@@ -163,10 +163,10 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["purpose"] == "build_read_only_sqlite_and_mcp_from_local_pmgs"
         assert contract["install"] == {
             "primary": "uv tool install pmgs-reference",
-            "verified_pin": "uv tool install pmgs-reference==0.5.0",
+            "verified_pin": "uv tool install pmgs-reference==0.4.0",
             "fallback": (
                 "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/"
-                "archive/refs/tags/v0.5.0.zip"
+                "archive/refs/tags/v0.4.0.zip"
             ),
         }
         assert contract["source_input"] == {
@@ -217,6 +217,36 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
             "ipc_version_parameter": "version",
         }
         assert contract["unsupported_ai"] == "use_cli_json_or_python_api"
+
+
+def test_release_candidate_keeps_external_links_on_the_published_v040() -> None:
+    surfaces = (
+        "README.md",
+        "README.en.md",
+        "docs/current-status.md",
+        "PLAN.md",
+        "docs/requirements-traceability.md",
+    )
+    for relative in surfaces:
+        content = (ROOT / relative).read_text(encoding="utf-8")
+        assert "https://pypi.org/project/pmgs-reference/0.5.0/" not in content
+        assert "releases/tag/v0.5.0" not in content
+
+    japanese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    assert "## 現行版とv0.5.0公開準備" in japanese
+    assert "[PyPI v0.4.0]" in japanese
+    assert "## Current release and v0.5.0 release candidate" in english
+    assert "[PyPI v0.4.0]" in english
+
+
+def test_v050_release_notes_cover_both_breaking_migrations() -> None:
+    notes = (ROOT / "docs/releases/v0.5.0.md").read_text(encoding="utf-8")
+    assert all(token in notes for token in ("`section`", "`locator`"))
+    assert all(
+        token in notes
+        for token in ("`PMGSStore.parents()`", "`children()`", "summary", "`lookup()`")
+    )
 
 
 def test_package_version_has_one_public_value() -> None:

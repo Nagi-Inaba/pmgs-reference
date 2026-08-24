@@ -1,9 +1,9 @@
 # 現在の状態
 
 - 更新日: 2026-08-24
-- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをmainへ統合済み
-- 検証状態: **v0.5.0 release candidate**。hosted PR CIとtag release gateで再検証し、Claude Codeのlive MCP評価だけは`not_observed`を維持する
-- 公開状態: v0.5.0をPyPIとGitHub Releaseへ同一artifactで公開する。R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをrelease candidateとして準備済み
+- 検証状態: **v0.5.0 release candidate**。hosted PR CIで検証し、merge後の`v0.5.0` tag release gateで再検証する。Claude Codeのlive MCP評価だけは`not_observed`を維持する
+- 公開状態: PyPIとGitHub Releaseの現行版はv0.4.0。v0.5.0はtag release workflowの成功後に同一artifactで公開する。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
 
 2026年8月24日にv0.5.0 release candidateを作成した。v0.4.0以降に、検索結果の重複排除前ページング、階層N+1、文書selectorの型衝突、長文・関連分類の取得不能、doctorのhang、非構造化CLI error、FTS5索引・schemaの見逃し、作業directory経由のclient実行ファイル探索を修正した。詳細と互換性変更は[リリースノート](releases/v0.5.0.md)に記録する。
@@ -66,7 +66,7 @@ data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpa
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
 [GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`をsourceの配布面とする。
-Python packageの最新版はPyPIとGitHub Releaseで公開するv0.5.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
+Python packageの公開最新版はPyPIとGitHub Releaseのv0.4.0であり、v0.5.0はrelease candidateである。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
 
 ## 現在の公開契約
 
