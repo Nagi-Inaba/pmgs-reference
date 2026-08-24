@@ -1,0 +1,46 @@
+name: inspect-v050-release
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    if: github.head_ref == 'chore/fix-v050-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      EXPECTED_SHA: 65a33f5628e380fdbeb78d26570b3b9d5ccfbb35
+    steps:
+      - name: Locate release workflow run
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            payload="$(gh run list --workflow release.yml --limit 20 --json databaseId,headSha,status,conclusion,event,displayTitle,createdAt,url)"
+            match="$(jq -c --arg sha "$EXPECTED_SHA" '[.[] | select(.headSha == $sha and .event == "push")][0] // empty' <<<"$payload")"
+            if [[ -n "$match" ]]; then
+              echo "$match" | jq .
+              run_id="$(jq -r '.databaseId' <<<"$match")"
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              gh run view "$run_id" --json databaseId,headSha,status,conclusion,event,jobs,url | jq .
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "release workflow run not found" >&2
+          exit 1
+        id: release
+      - name: Record pending deployment state
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="${{ steps.release.outputs.run_id }}"
+          gh api "repos/$GH_REPO/actions/runs/$run_id/pending_deployments" | jq .
