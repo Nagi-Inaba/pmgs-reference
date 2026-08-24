@@ -219,17 +219,47 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["unsupported_ai"] == "use_cli_json_or_python_api"
 
 
+def test_release_candidate_keeps_external_links_on_the_published_v040() -> None:
+    surfaces = (
+        "README.md",
+        "README.en.md",
+        "docs/current-status.md",
+        "PLAN.md",
+        "docs/requirements-traceability.md",
+    )
+    for relative in surfaces:
+        content = (ROOT / relative).read_text(encoding="utf-8")
+        assert "https://pypi.org/project/pmgs-reference/0.5.0/" not in content
+        assert "releases/tag/v0.5.0" not in content
+
+    japanese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    assert "## 現行版とv0.5.0公開準備" in japanese
+    assert "[PyPI v0.4.0]" in japanese
+    assert "## Current release and v0.5.0 release candidate" in english
+    assert "[PyPI v0.4.0]" in english
+
+
+def test_v050_release_notes_cover_both_breaking_migrations() -> None:
+    notes = (ROOT / "docs/releases/v0.5.0.md").read_text(encoding="utf-8")
+    assert all(token in notes for token in ("`section`", "`locator`"))
+    assert all(
+        token in notes
+        for token in ("`PMGSStore.parents()`", "`children()`", "summary", "`lookup()`")
+    )
+
+
 def test_package_version_has_one_public_value() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["version"] == "0.4.0"
+    assert project["project"]["version"] == "0.5.0"
     assert __version__ == project["project"]["version"]
 
 
 def test_release_tag_guard_accepts_only_the_package_version() -> None:
     script = ROOT / "scripts" / "verify_release_tag.py"
     accepted = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.4.0"],
+        [sys.executable, str(script), "--tag", "v0.5.0"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -237,7 +267,7 @@ def test_release_tag_guard_accepts_only_the_package_version() -> None:
         encoding="utf-8",
     )
     rejected = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.4.1"],
+        [sys.executable, str(script), "--tag", "v0.5.1"],
         cwd=ROOT,
         check=False,
         capture_output=True,

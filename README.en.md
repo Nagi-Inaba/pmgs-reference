@@ -6,17 +6,18 @@
 
 PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex and Claude Code can then retrieve FI, F-term, and IPC definitions, hierarchy, editions, related documents, and source metadata through a read-only MCP server. This gives the agent a direct PMGS reference instead of relying only on general web search or model memory.
 
-## v0.4.0 release status
+## Current release and v0.5.0 release candidate
 
-- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/): install with `uv tool install pmgs-reference`.
-- [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0): distributes the wheel and sdist produced from the same workflow artifact as PyPI.
+- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/): the currently published package; install it with `uv tool install pmgs-reference`.
+- [GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0): the current fixed release.
+- [v0.5.0 release notes](docs/releases/v0.5.0.md): candidate changes and migration guidance.
 - [Source code](https://github.com/Nagi-Inaba/pmgs-reference): published under the Apache License 2.0.
 
-The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill.
-PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI.
-The v0.4.0 release has passed isolated wheel tests on three operating systems, A/B builds from a real PMGS package, a live Codex MCP evaluation, and Trusted Publishing provenance checks.
-Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`.
-See the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md) for measured evidence and unobserved items.
+v0.5.0 is a release candidate. It strengthens lossless search and hierarchy pagination, document selectors and long-document retrieval, live MCP doctor checks, structured JSON errors, FTS5 integrity validation, client executable discovery, and three-OS release gates. Until the `v0.5.0` tag workflow completes both PyPI and GitHub Release publication, normal installation still resolves to v0.4.0.
+
+Python callers that previously supplied a string `section` must migrate that value to `locator`. In addition, `parents()` and `children()` now return lightweight summary records; call `lookup()` with the returned identifiers when texts, properties, relations, documents, or sources are needed. See the [v0.5.0 release notes](docs/releases/v0.5.0.md).
+
+The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill. PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI. Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`. The real-PMGS A/B build and live Codex evidence remain documented in the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md).
 
 ## If you do not have a PMGS package yet
 
@@ -34,7 +35,7 @@ See [Registration conditions and publication forms](docs/registered-use-terms.md
 
 ## Start now with a local PMGS package
 
-For v0.4.0, the PyPI package is the primary installation route.
+For the currently published v0.4.0 release, PyPI is the primary installation route.
 It installs a persistent `uv tool` environment instead of using the temporary `uvx` cache.
 
 You need:
@@ -55,7 +56,7 @@ uv tool install pmgs-reference
 ```
 
 This command installs the latest release available from PyPI when you run it.
-To pin the verified v0.4.0 release, run this command instead:
+To pin the currently published v0.4.0 release, run this command instead:
 
 ```powershell
 uv tool install "pmgs-reference==0.4.0"
@@ -285,6 +286,7 @@ PMGS data is not included in the repository or Python package. Complete the JPO 
 - [Web self-hosting](docs/self-hosting.en.md)
 - [Architecture](docs/architecture.md)
 - [Current implementation status](docs/current-status.md)
+- [v0.5.0 release notes](docs/releases/v0.5.0.md)
 - [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md)
 - [Contributing](CONTRIBUTING.md)
 
