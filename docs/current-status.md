@@ -1,10 +1,12 @@
 # 現在の状態
 
-- 更新日: 2026-08-22
-- 実装状態: v0.4.0の分類revision、出典、validation、AI参照契約、PMGS保有者向け導線をPull Request #6と#8からmainへ統合済み
-- 検証状態: **source統合済み**。Claude Codeのlive MCP評価だけは、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`
-- 公開状態: GitHub source repository、[PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)は公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 更新日: 2026-08-24
+- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをmainへ統合済み
+- 検証状態: **v0.5.0 release candidate**。hosted PR CIとtag release gateで再検証し、Claude Codeのlive MCP評価だけは`not_observed`を維持する
+- 公開状態: v0.5.0をPyPIとGitHub Releaseへ同一artifactで公開する。R2、Worker、独自domain、外部検索indexは未公開のままHold
 
+
+2026年8月24日にv0.5.0 release candidateを作成した。v0.4.0以降に、検索結果の重複排除前ページング、階層N+1、文書selectorの型衝突、長文・関連分類の取得不能、doctorのhang、非構造化CLI error、FTS5索引・schemaの見逃し、作業directory経由のclient実行ファイル探索を修正した。詳細と互換性変更は[リリースノート](releases/v0.5.0.md)に記録する。
 PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展開済みdirectory、書き込みなしdry-run、容量確認、setup、doctor、lookupの順へ統一した。AI向けには同じ手順を機械可読YAMLで示し、原archive・展開後の原資料・SQLite・一括exportをアップロードせず、ローカルMCPの上限付き結果だけを証拠として使う境界をskillとMCP tool descriptionにも追加した。
 
 2026年8月22日に、Windowsのclient自動検出からOS既定の暗黙の作業ディレクトリ探索と空・相対`PATH`要素を除外した。対話登録には解決済み実行ファイルを表示し、絶対`PATH`上のnpm形式`.cmd` launcherは維持する。setup・client・agent kitの回帰61件が合格し、Windows権限を要する既存symlink試験1件だけをskipした。全体pytestは236件合格、同じ権限理由のsymlink試験7件skipだった。lock、repository boundary 177候補、Ruff、mypy、wheel・sdist build、Worker 31件、WebMCP 3件、npm auditも合格した。公開済みv0.4.0 wheelにはこの変更を含めず、ローカルsource変更として扱う。
@@ -64,7 +66,7 @@ data非同梱のwheelとsdistを作るrelease workflowも実装した。tagとpa
 Web公開は停止したままである。第三者が費用と運用責任を引き受ける場合のR2・Worker手順と、GPTs、Gem、Copilot Studioの互換性境界は引き続き日英で提供する。
 
 [GitHubのpublic repository](https://github.com/Nagi-Inaba/pmgs-reference)の`main`をsourceの配布面とする。
-Python packageの最新版はPyPIとGitHub Releaseで公開したv0.4.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
+Python packageの最新版はPyPIとGitHub Releaseで公開するv0.5.0である。R2への全量成果物upload、Worker deploy、独自domain接続は行っていない。
 
 ## 現在の公開契約
 

@@ -117,9 +117,9 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
     stable_install = "uv tool install pmgs-reference"
     tagged_install = (
         'uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/'
-        'archive/refs/tags/v0.4.0.zip"'
+        'archive/refs/tags/v0.5.0.zip"'
     )
-    pinned_install = 'uv tool install "pmgs-reference==0.4.0"'
+    pinned_install = 'uv tool install "pmgs-reference==0.5.0"'
 
     for relative in surfaces:
         text = (ROOT / relative).read_text(encoding="utf-8")
@@ -163,10 +163,10 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["purpose"] == "build_read_only_sqlite_and_mcp_from_local_pmgs"
         assert contract["install"] == {
             "primary": "uv tool install pmgs-reference",
-            "verified_pin": "uv tool install pmgs-reference==0.4.0",
+            "verified_pin": "uv tool install pmgs-reference==0.5.0",
             "fallback": (
                 "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/"
-                "archive/refs/tags/v0.4.0.zip"
+                "archive/refs/tags/v0.5.0.zip"
             ),
         }
         assert contract["source_input"] == {
@@ -222,14 +222,14 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
 def test_package_version_has_one_public_value() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["version"] == "0.4.0"
+    assert project["project"]["version"] == "0.5.0"
     assert __version__ == project["project"]["version"]
 
 
 def test_release_tag_guard_accepts_only_the_package_version() -> None:
     script = ROOT / "scripts" / "verify_release_tag.py"
     accepted = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.4.0"],
+        [sys.executable, str(script), "--tag", "v0.5.0"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -237,7 +237,7 @@ def test_release_tag_guard_accepts_only_the_package_version() -> None:
         encoding="utf-8",
     )
     rejected = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.4.1"],
+        [sys.executable, str(script), "--tag", "v0.5.1"],
         cwd=ROOT,
         check=False,
         capture_output=True,

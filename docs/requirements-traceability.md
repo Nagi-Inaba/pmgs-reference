@@ -66,4 +66,4 @@
 
 AI要約、機械翻訳、意味検索、D1、Vectorize、Workers AI、Remote MCP、SPARQL、自動Web公開はv1要件に含めない。
 
-GitHub source repository、[PyPIのv0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)、[GitHub Release v0.4.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.4.0)を現在の配布面とする。R2 upload、Worker deploy、domain設定、外部indexは別の外部releaseとして記録する。
+GitHub source repository、[PyPIのv0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)、[GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)を現在の配布面とする。R2 upload、Worker deploy、domain設定、外部indexは別の外部releaseとして記録する。
