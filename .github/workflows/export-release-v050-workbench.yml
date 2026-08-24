@@ -1,0 +1,34 @@
+name: export-release-v050-workbench
+
+on:
+  push:
+    branches:
+      - chore/release-v050-workbench
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.head_ref == 'chore/release-v050-workbench' || github.ref_name == 'chore/release-v050-workbench'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create source archive
+        shell: bash
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/pmgs-reference-v050-workbench.tgz" .
+      - name: Upload source archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pmgs-reference-v050-workbench
+          path: ${{ runner.temp }}/pmgs-reference-v050-workbench.tgz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
