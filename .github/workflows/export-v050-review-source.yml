@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - chore/fix-v050-review
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   export:
+    if: github.head_ref == 'chore/fix-v050-review' || github.ref_name == 'chore/fix-v050-review'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
