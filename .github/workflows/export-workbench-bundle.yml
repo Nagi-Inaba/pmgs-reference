@@ -1,0 +1,38 @@
+name: export-workbench-bundle
+
+on:
+  push:
+    branches:
+      - chore/workbench-remaining-issues-20260824
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch all branches and tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+      - name: Create verified Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git bundle create "$RUNNER_TEMP/pmgs-reference-workbench.bundle" --all
+          git bundle verify "$RUNNER_TEMP/pmgs-reference-workbench.bundle"
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmgs-reference-workbench
+          path: ${{ runner.temp }}/pmgs-reference-workbench.bundle
+          if-no-files-found: error
+          retention-days: 1
