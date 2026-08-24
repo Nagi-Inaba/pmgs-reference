@@ -58,6 +58,7 @@ jobs:
           uv sync --frozen --all-groups
           uv run --frozen python scripts/verify_repository_boundary.py
           uv run --frozen ruff check .
+          uv run --frozen ruff format tests/test_project_contracts.py
           uv run --frozen ruff format --check .
           uv run --frozen mypy src
           uv run --frozen pytest -q tests/test_project_contracts.py
