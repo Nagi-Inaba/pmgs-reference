@@ -59,7 +59,7 @@ jobs:
           git apply --check "$RUNNER_TEMP/v050-release.patch"
           git apply "$RUNNER_TEMP/v050-release.patch"
           actual_files="$(git diff --name-only | sort)"
-          expected_files=$'README.en.md\nREADME.md\ndocs/current-status.md\ndocs/local-agent-kit.en.md\ndocs/local-agent-kit.md\ndocs/release-runbook.md\ndocs/releases/v0.5.0.md\ndocs/requirements-traceability.md\npyproject.toml\ntests/test_project_contracts.py\nuv.lock'
+          expected_files=$'PLAN.md\nREADME.en.md\nREADME.md\ndocs/current-status.md\ndocs/local-agent-kit.en.md\ndocs/local-agent-kit.md\ndocs/release-runbook.md\ndocs/releases/v0.5.0.md\ndocs/requirements-traceability.md\npyproject.toml\ntests/test_project_contracts.py\nuv.lock'
           test "$actual_files" = "$expected_files"
       - name: Verify release candidate
         shell: bash
