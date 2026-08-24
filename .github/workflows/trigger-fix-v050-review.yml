@@ -1,0 +1,76 @@
+name: trigger-fix-v050-review
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'chore/fix-v050-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPECTED_MAIN: 9712ac2becf6b422344a0cbb0570bae52dcecf45
+      EXPECTED_RELEASE_HEAD: 6e45f84dca144fa661c02529358a1eef710e546f
+    steps:
+      - name: Check out helper branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: "0.10.12"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+          package-manager-cache: false
+      - name: Load fix scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --all-groups
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path('.github/workflows/fix-v050-review.yml').read_text(encoding='utf-8')
+          )
+          steps = {
+              step.get('name'): step.get('run')
+              for step in workflow['jobs']['fix']['steps']
+              if isinstance(step, dict)
+          }
+          for name, destination in (
+              ('Write failing release-state contracts', '/tmp/v050-red.sh'),
+              ('Update candidate documentation truthfully', '/tmp/v050-docs.sh'),
+              ('Verify review fixes', '/tmp/v050-verify.sh'),
+              ('Push reviewed release candidate', '/tmp/v050-push.sh'),
+          ):
+              script = steps.get(name)
+              if not isinstance(script, str) or not script.strip():
+                  raise SystemExit(f'missing workflow step: {name}')
+              Path(destination).write_text(script, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify RED contracts
+        shell: bash
+        run: bash /tmp/v050-red.sh
+      - name: Apply truthful candidate documentation
+        shell: bash
+        run: bash /tmp/v050-docs.sh
+      - name: Verify release review fixes
+        shell: bash
+        run: bash /tmp/v050-verify.sh
+      - name: Push reviewed release candidate
+        shell: bash
+        run: bash /tmp/v050-push.sh
