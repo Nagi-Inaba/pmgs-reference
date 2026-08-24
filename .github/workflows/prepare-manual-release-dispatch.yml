@@ -1,0 +1,123 @@
+name: prepare-manual-release-dispatch
+
+on:
+  push:
+    branches:
+      - chore/fix-v050-review
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.event.head_commit.message == 'chore: prepare manual release dispatch branch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_MAIN: 65a33f5628e380fdbeb78d26570b3b9d5ccfbb35
+      TARGET_BRANCH: chore/manual-release-dispatch
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify and create clean branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_main="$(git rev-parse HEAD)"
+          test "$actual_main" = "$EXPECTED_MAIN"
+          git checkout -B "$TARGET_BRANCH" "$EXPECTED_MAIN"
+          git config user.name "NAGI"
+          git config user.email "221035391+Nagi-Inaba@users.noreply.github.com"
+      - name: Add safe workflow-dispatch support
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path('.github/workflows/release.yml')
+          text = workflow_path.read_text(encoding='utf-8')
+
+          old_trigger = '''on:
+            push:
+              tags:
+                - "v*"
+          '''
+          new_trigger = '''on:
+            push:
+              tags:
+                - "v*"
+            workflow_dispatch:
+              inputs:
+                release_tag:
+                  description: Existing v* tag to verify and publish
+                  required: true
+                  type: string
+          '''
+          if text.count(old_trigger) != 1:
+              raise SystemExit('release trigger anchor mismatch')
+          text = text.replace(old_trigger, new_trigger, 1)
+
+          checkout_old = '''        with:
+                    persist-credentials: false
+          '''
+          manual_ref = '$' + "{{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}"
+          checkout_new = (
+              '        with:\n'
+              f'          ref: {manual_ref}\n'
+              '          persist-credentials: false\n'
+          )
+          checkout_count = text.count(checkout_old)
+          if checkout_count != 7:
+              raise SystemExit(f'expected 7 tagged-source checkouts, found {checkout_count}')
+          text = text.replace(checkout_old, checkout_new)
+
+          old_tag = '$' + '{{ github.ref_name }}'
+          manual_tag = '$' + "{{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+          tag_count = text.count(old_tag)
+          if tag_count != 2:
+              raise SystemExit(f'expected 2 release tag expressions, found {tag_count}')
+          text = text.replace(old_tag, manual_tag)
+          workflow_path.write_text(text, encoding='utf-8', newline='\n')
+
+          test_path = Path('tests/test_release_manual_dispatch_contract.py')
+          test_path.write_text(
+              '''from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_release_workflow_can_publish_an_existing_tag_by_dispatch() -> None:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    manual_ref = "$" + "{{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}"
+    manual_tag = "$" + "{{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+
+    assert "workflow_dispatch:" in workflow
+    assert "release_tag:" in workflow
+    assert workflow.count(manual_ref) == 7
+    assert workflow.count(manual_tag) == 2
+    assert "environment:\n      name: pypi" in workflow
+''',
+              encoding='utf-8',
+              newline='\n',
+          )
+          PY
+      - name: Verify focused contract and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --all-groups
+          uv run --frozen ruff check tests/test_release_manual_dispatch_contract.py
+          uv run --frozen ruff format --check tests/test_release_manual_dispatch_contract.py
+          uv run --frozen pytest -q tests/test_release_manual_dispatch_contract.py
+      - name: Commit and push branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add .github/workflows/release.yml tests/test_release_manual_dispatch_contract.py
+          git commit -m "ci: allow verified manual release dispatch"
+          git push --force-with-lease origin "HEAD:refs/heads/$TARGET_BRANCH"
