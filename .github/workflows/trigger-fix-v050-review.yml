@@ -49,7 +49,20 @@ jobs:
           git checkout -B release-v050-review origin/release/v0.5.0
       - name: Apply candidate publication-state fixes
         shell: bash
-        run: python "$RUNNER_TEMP/apply-v050-candidate-docs.py"
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/apply-v050-candidate-docs.py"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_project_contracts.py")
+          text = path.read_text(encoding="utf-8")
+          old = '("`parents()`", "`children()`", "summary", "`lookup()`")'
+          new = '("`PMGSStore.parents()`", "`children()`", "summary", "`lookup()`")'
+          if old not in text:
+              raise SystemExit("hierarchy migration contract anchor missing")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+          PY
       - name: Verify release candidate
         shell: bash
         run: |
