@@ -55,13 +55,30 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("tests/test_project_contracts.py")
-          text = path.read_text(encoding="utf-8")
+          tests = Path("tests/test_project_contracts.py")
+          text = tests.read_text(encoding="utf-8")
           old = '("`parents()`", "`children()`", "summary", "`lookup()`")'
           new = '("`PMGSStore.parents()`", "`children()`", "summary", "`lookup()`")'
           if old not in text:
               raise SystemExit("hierarchy migration contract anchor missing")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+          tests.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          replacements = {
+              "README.md": (
+                  "- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)：現在の公開版です。",
+                  "- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/)：現在の公開版です。`uv tool install pmgs-reference`で導入できます。",
+              ),
+              "README.en.md": (
+                  "- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/): the currently published package.",
+                  "- [PyPI v0.4.0](https://pypi.org/project/pmgs-reference/0.4.0/): the currently published package; install it with `uv tool install pmgs-reference`.",
+              ),
+          }
+          for relative, (before, after) in replacements.items():
+              path = Path(relative)
+              content = path.read_text(encoding="utf-8")
+              if before not in content:
+                  raise SystemExit(f"{relative}: install-order anchor missing")
+              path.write_text(content.replace(before, after, 1), encoding="utf-8", newline="\n")
           PY
       - name: Verify release candidate
         shell: bash
