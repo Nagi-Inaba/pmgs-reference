@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - chore/release-v050-workbench
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   export:
+    if: github.head_ref == 'chore/release-v050-workbench' || github.ref_name == 'chore/release-v050-workbench'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
