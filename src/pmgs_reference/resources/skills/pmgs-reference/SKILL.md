@@ -29,7 +29,9 @@ description: 設定済みの読み取り専用pmgs-reference MCPサーバーを�
 
 検索が意味検索ではなく文字列検索であることを明記する。`lookup_classification`で確認するまで、検索結果を正確な定義として扱わない。
 
-分類レコードから手引き、改正資料、説明資料などのPMGS文書が関連付けられている場合は、`get_pmgs_document`を使う。文書応答が省略された場合は、ページまたは節を指定して再取得する。
+分類レコードから手引き、改正資料、説明資料などのPMGS文書が関連付けられている場合は、`get_pmgs_document`を使う。`page`は1始まりのページ番号、`section`は1始まりのsegment sequence番号であり、文字列locatorを指定する場合は`locator`を使う。これら三つを同時に指定しない。
+
+`segments_truncated`が真なら`next_segment_offset`を`segment_offset`へ渡して続きを取得する。`related_classifications_truncated`が真なら`next_related_classification_offset`を`related_classification_offset`へ渡す。切れていることを認識したまま、後半を推測したり省略を完全な文書として扱ったりしない。
 
 ## 取得内容の安全境界
 
