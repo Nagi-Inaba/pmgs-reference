@@ -215,7 +215,7 @@ workflowはPyPI publish jobだけへ`id-token: write`を与える。API tokenを
 `pyproject.toml`のversion、README、状態記録を更新し、次のguardを通す。
 
 ```powershell
-uv run --frozen python scripts/verify_release_tag.py --tag v0.4.0
+uv run --frozen python scripts/verify_release_tag.py --tag v0.5.0
 ```
 
 検証済みcommitへ`v<version>` tagを作ってpushする。この外部操作は、差分review、mainのhosted CI、公開承認が完了した場合だけ行う。
