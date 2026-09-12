@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import os
 import sqlite3
@@ -11,6 +12,7 @@ from lxml import etree
 
 import pmgs_reference.ingest.build as build_module
 import pmgs_reference.ingest.inventory as inventory_module
+from pmgs_reference import PMGSStore
 from pmgs_reference.cli import main
 from pmgs_reference.ingest.build import BuildError, build_database
 from pmgs_reference.ingest.database import normalize_version_indicator
@@ -191,6 +193,7 @@ def test_validate_database_checks_integrity_and_expected_counts(
     database_path = tmp_path / "pmgs-reference.sqlite"
     build_database(synthetic_pmgs, "JPPM2099001", database_path)
 
+    before = hashlib.sha256(database_path.read_bytes()).hexdigest()
     validation = validate_database(database_path)
 
     assert validation.valid is True
@@ -201,6 +204,20 @@ def test_validate_database_checks_integrity_and_expected_counts(
     assert validation.regression_checks == {}
     assert validation.database_file == "pmgs-reference.sqlite"
     assert len(validation.database_sha256) == 64
+    for table in ("concept_text_fts", "document_text_fts"):
+        assert validation.checks[f"{table}_schema"] == {
+            "expected": "canonical_fts5_schema",
+            "actual": "canonical_fts5_schema",
+            "match": True,
+        }
+        assert validation.checks[f"{table}_integrity"] == {
+            "expected": "consistent",
+            "actual": "consistent",
+            "match": True,
+        }
+        assert validation.checks[f"{table}_parity"]["match"] is True
+    assert PMGSStore.open(database_path).search_tokenizer == "trigram"
+    assert hashlib.sha256(database_path.read_bytes()).hexdigest() == before
 
 
 def test_build_and_validate_cli_emit_machine_readable_results(
@@ -968,6 +985,22 @@ def test_build_falls_back_when_hard_links_are_unavailable(
     assert validate_database(database_path).valid is True
     assert result.database_sha256 == validate_database(database_path).database_sha256
     assert not list(tmp_path.glob(f".{database_path.name}-*.tmp"))
+
+
+def test_database_promotion_remains_successful_when_staging_cleanup_is_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temporary = tmp_path / "staging.sqlite"
+    output = tmp_path / "installed.sqlite"
+    temporary.write_bytes(b"complete synthetic database")
+
+    def locked_cleanup(*args: object, **kwargs: object) -> None:
+        raise PermissionError("staging file is locked")
+
+    monkeypatch.setattr(build_module, "_retry_permission_error", locked_cleanup)
+    build_module.promote_database_exclusive(temporary, output)
+
+    assert output.read_bytes() == temporary.read_bytes() == b"complete synthetic database"
 
 
 def test_build_cleans_temporary_files_when_fallback_promotion_fails(

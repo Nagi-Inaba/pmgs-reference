@@ -2,7 +2,7 @@
 
 ## まず使い始める
 
-v0.5.0の第一選択はPyPI版です。
+第一選択はPyPI版です。
 `uv tool`の専用環境へインストールするため、リポジトリのクローンや`uvx`の一時キャッシュは必要ありません。
 
 ### 事前条件
@@ -26,16 +26,16 @@ uv tool install pmgs-reference
 ```
 
 このコマンドは、実行時点でPyPIに公開されている最新版を導入します。
-検証済みのv0.5.0へ固定する場合は、代わりに次を実行します。
+v0.5.1へ固定する場合は、代わりに次を実行します。
 
 ```powershell
-uv tool install "pmgs-reference==0.5.0"
+uv tool install "pmgs-reference==0.5.1"
 ```
 
 PyPIを利用しない場合は、GitHubの固定タグから同じようにインストールできます。
 
 ```powershell
-uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.0.zip"
+uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
 ```
 
 ソースを手元へ置いて開発する場合は、Gitでクローンして同じ専用環境へインストールできます。
@@ -138,8 +138,8 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
-    verified_pin: "uv tool install pmgs-reference==0.5.0"
-    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.0.zip"
+    verified_pin: "uv tool install pmgs-reference==0.5.1"
+    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false

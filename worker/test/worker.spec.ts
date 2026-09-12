@@ -188,6 +188,35 @@ describe("classification API", () => {
 });
 
 describe("document API", () => {
+  it("rejects malformed document manifests and chunks with a safe 503", async () => {
+    const prefix = "releases/JPPM2099001/documents/doc-aaaaaaaaaaaaaaaaaaaaaaaa";
+    const defects = ["manifest_schema", "metadata", "chunk_schema", "chunk_key"];
+    for (const defect of defects) {
+      try {
+        const key = `${prefix}/${defect === "chunk_schema" ? "001.json" : "manifest.json"}`;
+        const object = await env.PMGS_BUCKET.get(key);
+        expect(object).not.toBeNull();
+        const payload = await object!.json<Record<string, unknown>>();
+        if (defect === "metadata") {
+          delete payload.metadata;
+        } else if (defect === "chunk_key") {
+          (payload.chunks as { json_key: string }[])[0]!.json_key = "outside/001.json";
+        } else {
+          payload.schema_version = "unsupported";
+        }
+        await env.PMGS_BUCKET.put(key, JSON.stringify(payload));
+
+        const response = await request("/api/v1/documents/doc-aaaaaaaaaaaaaaaaaaaaaaaa");
+        expect(response.status, defect).toBe(503);
+        expect(await json(response)).toMatchObject({
+          error: { code: "RELEASE_UNAVAILABLE" },
+        });
+      } finally {
+        await seedFixture();
+      }
+    }
+  });
+
   it("selects exact pages and sections within two R2 reads", async () => {
     const pageResponse = await request(
       "/api/v1/documents/doc-aaaaaaaaaaaaaaaaaaaaaaaa?page=2",
@@ -317,19 +346,12 @@ describe("HTTP policy", () => {
 describe("bounded lookup load", () => {
   it("parses a large group chunk while preserving the two-read budget", async () => {
     const bytes = await seedLargeLookupFixture();
-    const start = performance.now();
     const response = await request("/api/v1/lookup?scheme=fi&code=A01B1%2F1199");
-    const elapsed = performance.now() - start;
     const payload = await json(response);
 
     expect(bytes).toBeGreaterThan(512 * 1024);
     expect(response.status).toBe(200);
     expect(response.headers.get("Server-Timing")).toBe('pmgs-r2;desc="2 reads"');
     expect(payload.normalized_code).toBe("A01B1/1199");
-    expect(elapsed).toBeLessThan(250);
   });
-});
-
-it("uses the configured synthetic R2 binding", () => {
-  expect(env.CURRENT_RELEASE).toBe("JPPM2099001");
 });

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
@@ -94,6 +95,11 @@ def _localized_notice(source: dict[str, Any], field: str, source_index: int) -> 
 def load_publication_policy(path: Path) -> PublicationPolicy:
     """Load public, non-secret policy metadata and require all v1 delivery gates."""
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return parse_publication_policy(raw)
+
+
+def parse_publication_policy(raw: object) -> PublicationPolicy:
+    """Validate the same policy contract for YAML input and prebuilt public JSON."""
     root = _mapping(raw, "root")
     if root.get("schema_version") != "1.0":
         raise ValueError("unsupported publication policy schema_version")
@@ -135,6 +141,10 @@ def load_publication_policy(path: Path) -> PublicationPolicy:
         checked_at = _string(source.get("checked_at"), f"sources[{index}].checked_at")
         if not _DATE.fullmatch(checked_at):
             raise ValueError("publication policy checked_at must be YYYY-MM-DD")
+        try:
+            date.fromisoformat(checked_at)
+        except ValueError as exc:
+            raise ValueError("publication policy checked_at must be a valid calendar date") from exc
         checked_dates.append(checked_at)
 
         clean_sources.append(

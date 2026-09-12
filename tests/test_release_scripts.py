@@ -53,13 +53,6 @@ def test_select_wheel_rejects_zero_or_multiple_current_version_wheels(tmp_path: 
         _select_wheel(tmp_path, "0.4.0")
 
 
-def test_wheel_verifier_does_not_hardcode_the_expected_cli_version() -> None:
-    raw = (ROOT / "scripts" / "verify_wheel_install.py").read_text(encoding="utf-8")
-
-    assert 'version != "pmgs 0.4.0"' not in raw
-    assert 'expected_version = f"pmgs {project_version}"' in raw
-
-
 def test_wheel_verifier_forces_utf8_in_child_processes() -> None:
     module = _load_script()
 

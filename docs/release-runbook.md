@@ -100,6 +100,8 @@ pmgs audit-public `
 
 `ready=true`、`failures=[]`、全checkが`true`であることを確認する。
 
+`validate-public`はJSONの構文とhashに加えて、分類・文書の保存形式とmanifest参照の整合性を検査する。`audit-public`はA/B両treeの全件validationを再実行するため、その読込時間も見込む。保存済みreportから成果物が変わっていれば不合格になる。監査後も成果物を変更せず、upload後の全件照合を行う。
+
 両validation reportの`notice_errors`が空であることを確認する。
 
 chunk超過が1件でもある場合、同じrootを2回指定した場合、A/Bやhashが一致しない場合は合格にしない。
@@ -215,7 +217,7 @@ workflowはPyPI publish jobだけへ`id-token: write`を与える。API tokenを
 `pyproject.toml`のversion、README、状態記録を更新し、次のguardを通す。
 
 ```powershell
-uv run --frozen python scripts/verify_release_tag.py --tag v0.5.0
+uv run --frozen python scripts/verify_release_tag.py --tag v0.5.1
 ```
 
 検証済みcommitへ`v<version>` tagを作ってpushする。この外部操作は、差分review、mainのhosted CI、公開承認が完了した場合だけ行う。

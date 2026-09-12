@@ -87,6 +87,8 @@ exportは成功扱いにせず拒否する。
 
 WorkerはAPI応答時に指定言語の出典由来値だけを`classification-record.schema.json`へ射影する。
 
+文書APIはmanifestとchunkの`schema_version=2.0`、必須metadata、同一文書内の格納先を検証する。破損した公開成果物は`503 RELEASE_UNAVAILABLE`を返す。存在しないページ・節を指定した場合の404とは区別する。
+
 各source objectは`source_id`、`title`、`relative_id`、`owner`、`original_url`、`sha256`、`attribution`を必須とする。
 
 `original_url`はJPOの原典案内ページを指し、PMGS package内の個別file download URLを推測しない。

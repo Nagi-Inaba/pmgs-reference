@@ -792,6 +792,75 @@ def test_public_validator_detects_tampering(public_pair: tuple[Path, Path], tmp_
     assert "api/v1/coverage.json: SHA-256 mismatch" in validation.metadata_errors
 
 
+def test_public_validator_rejects_invalid_contracts_even_with_matching_hashes(
+    public_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    source, _ = public_pair
+    release_prefix = f"releases/{RELEASE}"
+    group_prefix = f"{release_prefix}/groups/classification/G"
+    document_prefix = (
+        next((source / release_prefix / "documents").iterdir()).relative_to(source).as_posix()
+    )
+    cases = [
+        (f"{group_prefix}/001.json", ("records", 0, "match_status"), "invalid"),
+        (f"{group_prefix}/001.json", ("records", 0, "revision_records", 0, "relations"), [{}]),
+        (f"{group_prefix}/001.json", ("schema_version",), "unsupported"),
+        (f"{group_prefix}/001.json", ("records", 0, "valid_from"), "not-a-date"),
+        (f"{group_prefix}/001.json", ("records", 0, "normalized_code"), "H"),
+        (f"{group_prefix}/manifest.json", ("chunks", 0, "json_key"), "outside/001.json"),
+        (f"{group_prefix}/manifest.json", ("chunks", 0, "record_count"), 999999),
+        (f"{document_prefix}/manifest.json", ("metadata",), None),
+        (f"{document_prefix}/001.json", ("schema_version",), "unsupported"),
+        (f"{document_prefix}/manifest.json", ("chunks", 0, "last_sequence"), 999999),
+        (f"{release_prefix}/manifest.json", ("schema_version",), "unsupported"),
+    ]
+    for index, (key, selector, invalid) in enumerate(cases):
+        candidate = tmp_path / str(index)
+        shutil.copytree(source, candidate)
+        path = candidate / key
+        payload = _json(path)
+        selected = payload
+        for part in selector[:-1]:
+            selected = selected[part]
+        if selector == ("metadata",):
+            del selected[selector[-1]]
+        else:
+            selected[selector[-1]] = invalid
+        if selector[-1] == "normalized_code":
+            selected["code"] = invalid
+            selected["lookup_key"] = (
+                f"{selected['scheme']}\x1f{selected['edition'] or ''}\x1f{invalid}"
+            )
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        # Keep both levels of hashes current: rejection must depend on the data
+        # contract or cross-file identity/count checks, not stale checksums.
+        for manifest_path in (candidate / release_prefix).rglob("manifest.json"):
+            manifest = _json(manifest_path)
+            for chunk in manifest.get("chunks", []):
+                chunk_path = candidate / chunk["json_key"]
+                if chunk_path.is_file():
+                    chunk["json_bytes"] = chunk_path.stat().st_size
+                    chunk["json_sha256"] = _sha256(chunk_path)
+                    if selector[-1] == "normalized_code" and chunk_path == path:
+                        identities = [record["lookup_key"] for record in payload["records"]]
+                        chunk["first_lookup_key"] = identities[0]
+                        chunk["last_lookup_key"] = identities[-1]
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+        release_path = candidate / release_prefix / "manifest.json"
+        release_manifest = _json(release_path)
+        for metadata in release_manifest["objects"]:
+            object_path = candidate / metadata["key"]
+            metadata["bytes"] = object_path.stat().st_size
+            metadata["sha256"] = _sha256(object_path)
+        release_path.write_text(json.dumps(release_manifest, ensure_ascii=False), encoding="utf-8")
+
+        validation = validate_public_export(candidate)
+        assert validation.valid is False, (key, selector)
+        assert validation.metadata_errors == (), (key, selector)
+        assert validation.parse_errors or validation.coverage_errors, (key, selector)
+
+
 def test_publication_policy_fails_closed_for_download_delivery(tmp_path: Path) -> None:
     payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
     payload["sources"][0]["delivery"]["source_archive_download"] = True
@@ -812,6 +881,19 @@ def test_publication_policy_v1_fails_closed_for_ambiguous_multiple_sources(
 
     with pytest.raises(ValueError, match="exactly one source"):
         load_publication_policy(ambiguous_policy)
+
+
+def test_publication_policy_requires_a_real_calendar_date(tmp_path: Path) -> None:
+    payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    policy_path = tmp_path / "dated-policy.yaml"
+    for checked_at in ("2099-02-30", "2099-13-01", "0000-01-01"):
+        payload["sources"][0]["checked_at"] = checked_at
+        policy_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        with pytest.raises(ValueError, match="valid calendar date"):
+            load_publication_policy(policy_path)
+    payload["sources"][0]["checked_at"] = "2096-02-29"
+    policy_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    assert load_publication_policy(policy_path).generated_at == "2096-02-29T00:00:00Z"
 
 
 def test_public_export_rejects_attribution_that_does_not_match_source(
@@ -1003,6 +1085,15 @@ def test_audit_public_cli_requires_two_equal_validated_exports(
     assert all(result["checks"].values())
     assert result["largest_chunk_bytes"] <= result["max_json_chunk_bytes"]
     assert _json(audit_report) == result
+
+    stale_object = second / "api" / "v1" / "coverage.json"
+    original = stale_object.read_bytes()
+    stale_object.write_bytes(b"{}")
+    assert main(arguments[:-2]) == 1
+    stale_result = json.loads(capsys.readouterr().out)
+    assert stale_result["ready"] is False
+    assert "validations.second_ready" in stale_result["failures"]
+    stale_object.write_bytes(original)
 
     invalid_validation = _json(second_validation_report)
     invalid_validation["valid"] = False

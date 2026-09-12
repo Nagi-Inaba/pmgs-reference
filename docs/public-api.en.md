@@ -106,6 +106,8 @@ Public artifacts do not contain source CSV, XML, PDF files, the canonical SQLite
 
 ## HTML and WebMCP
 
+The document API validates schema version `2.0` for manifests and chunks, required metadata, and chunk storage within the same document. Malformed published artifacts return `503 RELEASE_UNAVAILABLE`; missing page or section selectors return 404.
+
 Classification pages remain readable as ordinary HTML without JavaScript.
 
 `Accept: text/markdown` returns prebuilt Markdown with the same release and source attribution.

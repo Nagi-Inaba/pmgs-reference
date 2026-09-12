@@ -57,6 +57,8 @@ Workerは利用者入力を検証し、版付きR2 keyを選び、content negoti
 
 WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
 
+公開validatorは、分類・文書の保存形式、版とobject keyの一致、chunkの件数・範囲・ページ・bytes・SHA-256を検査する。内容を保持せずchunk要約だけを集約し、manifestの参照と照合する。`audit-public`はA/B両treeをその場で再検証し、保存済み検証reportとの一致を要求する。過去のreportだけでは現在の公開候補を合格にしない。
+
 公開可能な版はWorkerへ埋め込むrelease catalogでallowlistし、`CURRENT_RELEASE`を`current`の解決先とする。R2内の一覧やpointerから暗黙に現在版を変更しない。
 
 分類照会はgroup manifestと対象JSON chunk、文書照会はdocument manifestと対象JSON chunkの最大2回のR2読み取りで完了する。同じcodeの全revisionを一つの分類bundleへ入れ、基準日応答と明示version応答を事前生成する。分類bundleはJSON chunkをまたがせず、単一bundleが256 KiBを超えた場合は、文書を含むJSON chunkの設定上限に余裕があっても公開exportを拒否する。直接配信するHTML、Markdown、JSON、CSSはR2 bodyをストリーミングする。詳細は[ADR 0004](decisions/0004-worker-release-resolution.md)と[ADR 0009](decisions/0009-revision-aware-classification-schema.md)に定める。

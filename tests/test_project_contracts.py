@@ -117,9 +117,9 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
     stable_install = "uv tool install pmgs-reference"
     tagged_install = (
         'uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/'
-        'archive/refs/tags/v0.5.0.zip"'
+        f'archive/refs/tags/v{__version__}.zip"'
     )
-    pinned_install = 'uv tool install "pmgs-reference==0.5.0"'
+    pinned_install = f'uv tool install "pmgs-reference=={__version__}"'
 
     for relative in surfaces:
         text = (ROOT / relative).read_text(encoding="utf-8")
@@ -163,10 +163,10 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["purpose"] == "build_read_only_sqlite_and_mcp_from_local_pmgs"
         assert contract["install"] == {
             "primary": "uv tool install pmgs-reference",
-            "verified_pin": "uv tool install pmgs-reference==0.5.0",
+            "verified_pin": f"uv tool install pmgs-reference=={__version__}",
             "fallback": (
                 "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/"
-                "archive/refs/tags/v0.5.0.zip"
+                f"archive/refs/tags/v{__version__}.zip"
             ),
         }
         assert contract["source_input"] == {
@@ -219,53 +219,16 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["unsupported_ai"] == "use_cli_json_or_python_api"
 
 
-def test_published_v050_is_the_current_external_distribution() -> None:
-    linked_surfaces = (
-        "README.md",
-        "README.en.md",
-        "docs/current-status.md",
-        "docs/requirements-traceability.md",
-    )
-    for relative in linked_surfaces:
-        content = (ROOT / relative).read_text(encoding="utf-8")
-        assert "https://pypi.org/project/pmgs-reference/0.5.0/" in content
-        assert "releases/tag/v0.5.0" in content
-
-    plan = (ROOT / "PLAN.md").read_text(encoding="utf-8")
-    assert "PyPI v0.5.0" in plan
-    assert "GitHub Release v0.5.0" in plan
-
-    japanese = (ROOT / "README.md").read_text(encoding="utf-8")
-    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    assert "## v0.5.0の公開状況" in japanese
-    assert "[PyPI v0.5.0]" in japanese
-    assert "## v0.5.0 release status" in english
-    assert "[PyPI v0.5.0]" in english
-
-
-def test_v050_release_notes_cover_both_breaking_migrations() -> None:
-    notes = (ROOT / "docs/releases/v0.5.0.md").read_text(encoding="utf-8")
-    assert "https://pypi.org/project/pmgs-reference/0.5.0/" in notes
-    assert "releases/tag/v0.5.0" in notes
-    assert "release candidate" not in notes
-    assert all(token in notes for token in ("`section`", "`locator`"))
-    assert all(
-        token in notes
-        for token in ("`PMGSStore.parents()`", "`children()`", "summary", "`lookup()`")
-    )
-
-
 def test_package_version_has_one_public_value() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["version"] == "0.5.0"
     assert __version__ == project["project"]["version"]
 
 
 def test_release_tag_guard_accepts_only_the_package_version() -> None:
     script = ROOT / "scripts" / "verify_release_tag.py"
     accepted = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.5.0"],
+        [sys.executable, str(script), "--tag", f"v{__version__}"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -273,7 +236,7 @@ def test_release_tag_guard_accepts_only_the_package_version() -> None:
         encoding="utf-8",
     )
     rejected = subprocess.run(
-        [sys.executable, str(script), "--tag", "v0.5.1"],
+        [sys.executable, str(script), "--tag", f"v{__version__}-mismatch"],
         cwd=ROOT,
         check=False,
         capture_output=True,

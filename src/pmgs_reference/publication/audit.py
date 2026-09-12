@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pmgs_reference.publication.model import canonical_json_bytes
+from pmgs_reference.publication.validation import validate_public_export
 from pmgs_reference.schema import APPLICATION_ID
 from pmgs_reference.store import JSONDict
 
@@ -252,6 +253,8 @@ def audit_public_release(
         expected_source_manifest_sha256, "expected_source_manifest_sha256"
     )
     database = database.resolve()
+    current_first_validation = validate_public_export(first_root).as_dict()
+    current_second_validation = validate_public_export(second_root).as_dict()
     first_root = first_root.resolve()
     second_root = second_root.resolve()
     first_export = _json_object(first_export_report.resolve())
@@ -287,8 +290,10 @@ def audit_public_release(
         == expected_source_manifest_sha256,
         "exports.equal": first_export == second_export,
         "validations.equal": first_validation == second_validation,
-        "validations.first_ready": _validation_matches_export(first_validation, first_export),
-        "validations.second_ready": _validation_matches_export(second_validation, second_export),
+        "validations.first_ready": first_validation == current_first_validation
+        and _validation_matches_export(current_first_validation, first_export),
+        "validations.second_ready": second_validation == current_second_validation
+        and _validation_matches_export(current_second_validation, second_export),
         "manifests.hash_equal": first_manifest.manifest_sha256 == second_manifest.manifest_sha256,
         "manifests.hash_matches_report": first_manifest.manifest_sha256
         == first_export.get("release_manifest_sha256")

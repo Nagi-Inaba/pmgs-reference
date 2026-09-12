@@ -10,6 +10,7 @@ import sqlite3
 import tempfile
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -168,7 +169,12 @@ def promote_database_exclusive(
         except FileExistsError:
             raise FileExistsError(f"database output already exists: {output_path}") from None
     else:
-        _retry_permission_error(temporary_path.unlink, attempts=permission_attempts)
+        # The exclusive link has already committed the complete database.
+        # A locked staging name must not turn that success into a failed build.
+        with suppress(PermissionError):
+            _retry_permission_error(
+                lambda: temporary_path.unlink(missing_ok=True), attempts=permission_attempts
+            )
 
 
 def build_database(

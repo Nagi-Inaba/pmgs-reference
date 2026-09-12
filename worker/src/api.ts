@@ -400,8 +400,11 @@ export async function getDocument(
     throw unavailable();
   }
   const chunkEntry = findDocumentChunk(manifestPayload.chunks, page, section);
-  if (chunkEntry === null || !chunkEntry.json_key.startsWith(`${prefix}/`)) {
+  if (chunkEntry === null) {
     throw new PublicError(404, "DOCUMENT_SELECTOR_NOT_FOUND", "document selector not found");
+  }
+  if (!chunkEntry.json_key.startsWith(`${prefix}/`)) {
+    throw unavailable();
   }
   const chunkPayload = await reader.getJson(chunkEntry.json_key);
   if (

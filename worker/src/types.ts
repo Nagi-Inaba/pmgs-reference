@@ -421,7 +421,7 @@ function isDocumentChunkEntry(value: unknown): value is DocumentChunkEntry {
 export function isDocumentManifest(value: unknown): value is DocumentManifest {
   return (
     isJsonObject(value) &&
-    isString(value.schema_version) &&
+    value.schema_version === "2.0" &&
     isString(value.release_id) &&
     isString(value.document_id) &&
     isString(value.kind) &&
@@ -429,6 +429,7 @@ export function isDocumentManifest(value: unknown): value is DocumentManifest {
     (value.site_language === "ja" || value.site_language === "en") &&
     isString(value.title) &&
     isNullableNonNegativeInteger(value.page_count) &&
+    value.metadata !== undefined &&
     isNonNegativeInteger(value.segment_count) &&
     isPublicSource(value.source) &&
     Array.isArray(value.chunks) &&
@@ -451,7 +452,7 @@ function isDocumentSegment(value: unknown): value is DocumentSegment {
 export function isDocumentChunk(value: unknown): value is DocumentChunk {
   return (
     isJsonObject(value) &&
-    isString(value.schema_version) &&
+    value.schema_version === "2.0" &&
     isString(value.release_id) &&
     isString(value.document_id) &&
     isString(value.chunk_id) &&

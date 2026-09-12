@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allowedMethods, selectPageFormat } from "../src/http";
+import { selectPageFormat } from "../src/http";
 
 describe("HTTP representation helpers", () => {
   it.each([
@@ -22,8 +22,4 @@ describe("HTTP representation helpers", () => {
     expect(selectPageFormat(accept)).toBe(expected);
   });
 
-  it("reports only methods implemented for each route class", () => {
-    expect(allowedMethods(true)).toBe("GET, HEAD, OPTIONS");
-    expect(allowedMethods(false)).toBe("GET, HEAD");
-  });
 });

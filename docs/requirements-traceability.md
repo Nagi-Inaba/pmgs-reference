@@ -14,6 +14,8 @@
 
 ## v1要件
 
+2026-09-12の[ローカル改修](verification/repository-review-2026-09-12.md)では、公開validatorと監査の追加検査を合成fixtureで確認した。以下の実データA/Bの証拠は公開済みv0.5.0時点の記録であり、追加検査による実データ全件再検証はまだ行っていない。
+
 | ID | 要件 | 状態 | 証拠または残作業 |
 | --- | --- | --- | --- |
 | DOC-01 | 設計、状態、判断、runbookを版管理する | verified | `PLAN.md`、`docs/current-status.md`、ADR、runbook |
