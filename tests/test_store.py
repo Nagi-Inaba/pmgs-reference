@@ -701,16 +701,28 @@ def test_search_returns_distinct_paginated_classifications_before_applying_limit
     }.isdisjoint({item["code"] for item in second["results"]})  # type: ignore[index]
 
 
-def test_search_rejects_offsets_outside_sqlite_integer_range(
+def test_query_pagination_rejects_nonintegers_and_sqlite_overflow(
     synthetic_database: Path,
 ) -> None:
     store = PMGSStore.open(synthetic_database)
 
-    with pytest.raises(PMGSQueryError, match="SQLite signed 64-bit integer"):
-        store.search("Synthetic", offset=2**63)
+    for offset in (2**63, 0.5, True):
+        for search in (store.search, store.search_documents):
+            with pytest.raises(PMGSQueryError) as error:
+                search("Synthetic", offset=offset)
+            assert error.value.code == "INVALID_OFFSET"
+        with pytest.raises(PMGSQueryError) as error:
+            store.lookup("fi", "G06F3/048", relation_offset=offset)
+        assert error.value.code == "INVALID_RELATION_OFFSET"
 
-    with pytest.raises(PMGSQueryError, match="SQLite signed 64-bit integer"):
-        store.search_documents("Synthetic", offset=2**63)
+    for limit in (1.5, True):
+        for search in (store.search, store.search_documents):
+            with pytest.raises(PMGSQueryError) as error:
+                search("Synthetic", limit=limit)
+            assert error.value.code == "INVALID_LIMIT"
+        with pytest.raises(PMGSQueryError) as error:
+            store.lookup("fi", "G06F3/048", relation_limit=limit)
+        assert error.value.code == "INVALID_RELATION_LIMIT"
 
 
 @pytest.mark.parametrize(
@@ -764,6 +776,10 @@ def test_composite_search_tracks_classification_and_document_offsets_independent
     assert document["offset"] == 10
     assert document["next_offset"] == 15
     assert result["has_more"] is True
+
+    with pytest.raises(PMGSQueryError) as error:
+        store.search_pmgs("Needle", content_types=[])
+    assert error.value.code == "INVALID_CONTENT_TYPE"
 
 
 def test_pdf_page_release_info_and_safe_errors(synthetic_database: Path) -> None:

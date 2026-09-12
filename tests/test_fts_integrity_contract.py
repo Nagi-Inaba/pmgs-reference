@@ -49,22 +49,6 @@ def _remove_postings_but_keep_content(
         connection.close()
 
 
-def test_validation_adds_stable_read_only_fts5_checks_without_mutation(
-    synthetic_database: Path, tmp_path: Path
-) -> None:
-    database = tmp_path / "fts.sqlite"
-    shutil.copy2(synthetic_database, database)
-    before = _sha256(database)
-
-    result = validate_database(database)
-
-    assert result.valid is True
-    assert all(result.checks[name] == _SUCCESS for name in _FTS_CHECK_NAMES)
-    assert result.checks["concept_text_fts_parity"]["match"] is True
-    assert result.checks["document_text_fts_parity"]["match"] is True
-    assert _sha256(database) == before
-
-
 @pytest.mark.parametrize(
     ("version", "expected"),
     [

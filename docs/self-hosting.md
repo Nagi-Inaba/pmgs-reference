@@ -85,6 +85,8 @@ uv run --frozen pmgs validate-public build\public-a `
 
 `public-b`も新規生成し、[リリース手順](release-runbook.md)どおりにDB hash、source manifest hash、件数、bytes、tree hash、coverage、出典表示を比較する。`audit-public`が`ready=true`になるまでuploadしない。
 
+`validate-public`は分類・文書JSONの保存形式と、manifestが指すchunkの件数・範囲・ページ・bytes・SHA-256も照合する。`audit-public`は両treeを再検証し、保存済みreportとの一致を要求する。監査には両treeを再読込する時間が必要になる。
+
 公開成果物は日本語topの`/`と`/ja/`、英語topの`/en/`、`/openapi.json`、日本語`/llms.txt`、英語`/llms.en.txt`、`/robots.txt`、shard済みsitemapを含む。日本語が既定である。
 
 ## 2. R2へ版付きでuploadする

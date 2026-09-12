@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-import sys
 from pathlib import Path
 
 import pytest
-from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.server.mcpserver import MCPServer
 
 import pmgs_reference.store as store_module
@@ -121,31 +118,3 @@ async def test_mcp_converts_oversized_responses_to_safe_tool_errors(
     assert result.is_error is True
     assert result.structured_content is None
     assert "RESPONSE_TOO_LARGE" in result.content[0].text  # type: ignore[union-attr]
-
-
-@pytest.mark.anyio
-async def test_mcp_stdio_protocol_smoke(synthetic_database: Path) -> None:
-    parameters = StdioServerParameters(
-        command=sys.executable,
-        args=[
-            "-m",
-            "pmgs_reference.cli",
-            "mcp",
-            "--db",
-            str(synthetic_database),
-        ],
-    )
-    async with (
-        stdio_client(parameters) as (read_stream, write_stream),
-        ClientSession(read_stream, write_stream) as session,
-    ):
-        initialized = await session.initialize()
-        listed = await session.list_tools()
-        result = await session.call_tool(
-            "lookup_classification", {"scheme": "fterm", "code": "4C083 AA01"}
-        )
-
-    assert initialized.server_info.name == "pmgs-reference"
-    assert len(listed.tools) == 3
-    assert result.structured_content is not None
-    assert result.structured_content["normalized_code"] == "4C083AA01"

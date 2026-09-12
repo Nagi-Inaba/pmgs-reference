@@ -347,21 +347,6 @@ def test_setup_dry_run_reports_approved_clients_as_planned(
     assert result.clients[0]["error"] is None
 
 
-def test_setup_lock_is_non_waiting(tmp_path: Path) -> None:
-    data_root = tmp_path / "pmgs-reference"
-    data_root.mkdir()
-
-    with (
-        SetupLock(data_root / "setup.lock", "first"),
-        pytest.raises(OSError, match="already running"),
-        SetupLock(data_root / "setup.lock", "second"),
-    ):
-        pass
-
-    with SetupLock(data_root / "setup.lock", "third"):
-        pass
-
-
 def test_setup_lock_excludes_another_process(tmp_path: Path) -> None:
     lock_path = tmp_path / "pmgs-reference" / "setup.lock"
     probe = (
@@ -371,7 +356,8 @@ def test_setup_lock_excludes_another_process(tmp_path: Path) -> None:
         "try:\n"
         "    with SetupLock(Path(sys.argv[1]), 'child'):\n"
         "        pass\n"
-        "except OSError:\n"
+        "except OSError as error:\n"
+        "    assert 'already running' in str(error), str(error)\n"
         "    raise SystemExit(0)\n"
         "raise SystemExit(1)\n"
     )
@@ -387,6 +373,9 @@ def test_setup_lock_excludes_another_process(tmp_path: Path) -> None:
         )
 
     assert completed.returncode == 0, completed.stderr
+
+    with SetupLock(lock_path, "after-release"):
+        pass
 
 
 def test_setup_reloads_current_pointer_after_acquiring_the_lock(

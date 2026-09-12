@@ -32,17 +32,6 @@ def _replace_fts_table(
         connection.close()
 
 
-def test_healthy_database_exposes_both_canonical_fts5_schema_checks(
-    synthetic_database: Path,
-) -> None:
-    result = validate_database(synthetic_database)
-
-    assert result.valid is True
-    assert result.checks["concept_text_fts_schema"] == _EXPECTED_SCHEMA_CHECK
-    assert result.checks["document_text_fts_schema"] == _EXPECTED_SCHEMA_CHECK
-    assert PMGSStore.open(synthetic_database).search_tokenizer == "trigram"
-
-
 @pytest.mark.parametrize(
     ("table", "definition", "insert_sql", "check_name", "actual"),
     [

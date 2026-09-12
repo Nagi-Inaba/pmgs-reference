@@ -2,6 +2,7 @@
 
 - 更新日: 2026-09-12
 - 保守記録: [依存関係PRのレビューと検証](verification/dependency-pr-review-2026-09-12.md)
+- ローカル改修: [全体レビュー・入力検証修正・テスト整理](verification/repository-review-2026-09-12.md)。公開済みv0.5.0には未反映
 - 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをmainへ統合済み
 - 検証状態: **v0.5.0 published**。tag release workflow、PyPI provenance、GitHub Release、両配布面のartifact hash、公開wheelの隔離導入を検証済み。Claude Codeのlive MCP評価だけは`not_observed`を維持する
 - 公開状態: [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)と[GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)を公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold

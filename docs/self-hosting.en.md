@@ -49,6 +49,8 @@ uv run --frozen pmgs validate-public build\public-a --report build\reports\publi
 
 Generate `public-b` independently and complete the A/B checks in the [release runbook](release-runbook.md). Do not upload until `audit-public` reports `ready=true` and the database hash, source-manifest hash, counts, bytes, tree hash, coverage, and notices all pass.
 
+`validate-public` also checks classification and document storage contracts and compares each manifest's chunk references with actual counts, ranges, pages, bytes, and SHA-256. `audit-public` validates both trees again and requires the results to match the saved reports. Allow time to read both trees again during the audit.
+
 Japanese is the default public language under `/` and `/ja/`; English is available under `/en/`.
 
 ## Upload and deploy

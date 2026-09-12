@@ -17,6 +17,7 @@ from xml.etree import ElementTree
 
 from lxml import html
 
+from pmgs_reference.publication.contracts import ChunkContract, inspect_public_json
 from pmgs_reference.publication.model import canonical_json_bytes
 from pmgs_reference.store import JSONDict
 
@@ -222,6 +223,8 @@ class _FileCheck:
     notice_errors: tuple[str, ...]
     coverage_entry: _CoverageEntry | None
     coverage_errors: tuple[str, ...]
+    chunk: ChunkContract | None
+    chunk_references: tuple[ChunkContract, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,9 +473,11 @@ def _check_file(
     notice_errors: list[str] = []
     coverage_errors: list[str] = []
     coverage_entry: _CoverageEntry | None = None
+    chunk: ChunkContract | None = None
+    chunk_references: tuple[ChunkContract, ...] = ()
 
     if metadata is not None:
-        if size != int(metadata.get("bytes", -1)):
+        if size != metadata.get("bytes"):
             metadata_errors.append(f"{key}: byte size mismatch")
         if sha256 != str(metadata.get("sha256", "")):
             metadata_errors.append(f"{key}: SHA-256 mismatch")
@@ -486,7 +491,12 @@ def _check_file(
             parsed_json = json.loads(data)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             parse_errors.append(f"{key}: JSON parse failed: {type(error).__name__}")
-        if parsed_json is not None:
+        else:
+            try:
+                chunk, chunk_references = inspect_public_json(key, parsed_json, size, sha256)
+            except ValueError as error:
+                parse_errors.append(f"{key}: JSON contract failed: {error}")
+        if isinstance(parsed_json, dict):
             coverage_entry, coverage_errors = _coverage_entry(key, parsed_json)
     elif suffix == ".xml":
         try:
@@ -524,6 +534,8 @@ def _check_file(
         notice_errors=tuple(notice_errors),
         coverage_entry=coverage_entry,
         coverage_errors=tuple(coverage_errors),
+        chunk=chunk,
+        chunk_references=chunk_references,
     )
 
 
@@ -592,6 +604,8 @@ def validate_public_export(root: Path) -> PublicValidationResult:
     document_segments = 0
     document_chunks = 0
     tree_digest = hashlib.sha256()
+    chunks: dict[str, ChunkContract] = {}
+    chunk_references: dict[str, ChunkContract] = {}
 
     def accept(check: _FileCheck) -> None:
         nonlocal total_bytes
@@ -605,6 +619,12 @@ def validate_public_export(root: Path) -> PublicValidationResult:
         html_errors.extend(check.html_errors)
         notice_errors.extend(check.notice_errors)
         coverage_errors.extend(check.coverage_errors)
+        if check.chunk is not None:
+            chunks[check.key] = check.chunk
+        for reference in check.chunk_references:
+            if reference.key in chunk_references:
+                coverage_errors.append(f"{reference.key}: duplicate chunk reference")
+            chunk_references[reference.key] = reference
         if check.coverage_entry is not None:
             if check.coverage_entry.kind == "group":
                 group_count += 1
@@ -640,6 +660,10 @@ def validate_public_export(root: Path) -> PublicValidationResult:
                 accept(pending.popleft().result())
         while pending:
             accept(pending.popleft().result())
+
+    for key in sorted(chunks.keys() | chunk_references.keys()):
+        if chunks.get(key) != chunk_references.get(key):
+            coverage_errors.append(f"{key}: chunk does not match its manifest reference")
 
     coverage_errors.extend(
         _coverage_checks(

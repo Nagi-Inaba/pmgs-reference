@@ -55,27 +55,30 @@ def _as_scheme(scheme: str) -> str:
     return normalized
 
 
-def _as_limit(limit: int) -> int:
-    if not 1 <= limit <= _MAX_LIMIT:
-        raise PMGSQueryError("INVALID_LIMIT", f"limit must be between 1 and {_MAX_LIMIT}")
-    return limit
-
-
-def _as_offset(offset: int) -> int:
-    if not 0 <= offset <= 2**63 - 1:
-        raise PMGSQueryError("INVALID_OFFSET", "offset must fit in a SQLite signed 64-bit integer")
-    return offset
+def _as_integer(
+    value: int,
+    name: str,
+    minimum: int = 0,
+    maximum: int = _SQLITE_INTEGER_MAX,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        constraint = (
+            f"fit in a {'positive' if minimum else 'non-negative'} SQLite signed 64-bit integer"
+            if maximum == _SQLITE_INTEGER_MAX
+            else f"be an integer between {minimum} and {maximum}"
+        )
+        raise PMGSQueryError(
+            f"INVALID_{name.upper()}",
+            f"{name} must {constraint}",
+        )
+    return value
 
 
 def _as_relation_page(limit: int, offset: int) -> tuple[int, int]:
-    if not 1 <= limit <= _MAX_RELATION_LIMIT:
-        raise PMGSQueryError(
-            "INVALID_RELATION_LIMIT",
-            f"relation_limit must be between 1 and {_MAX_RELATION_LIMIT}",
-        )
-    if offset < 0:
-        raise PMGSQueryError("INVALID_RELATION_OFFSET", "relation_offset must be at least 0")
-    return limit, offset
+    return (
+        _as_integer(limit, "relation_limit", 1, _MAX_RELATION_LIMIT),
+        _as_integer(offset, "relation_offset"),
+    )
 
 
 def _as_query(query: str) -> str:
@@ -106,7 +109,7 @@ def _as_ipc_version(version: str | None, scheme: str) -> str | None:
 
 
 def _validated_content_types(content_types: Sequence[str] | None) -> list[ContentType]:
-    requested = list(content_types or ("classification", "document"))
+    requested = list(("classification", "document") if content_types is None else content_types)
     if not requested or set(requested) - _SUPPORTED_CONTENT_TYPES:
         raise PMGSQueryError(
             "INVALID_CONTENT_TYPE",
@@ -802,8 +805,8 @@ class PMGSStore:
         valid_query = _as_query(query)
         valid_schemes = self._validated_schemes(schemes)
         valid_language = _as_language(language)
-        valid_limit = _as_limit(limit)
-        valid_offset = _as_offset(offset)
+        valid_limit = _as_integer(limit, "limit", 1, _MAX_LIMIT)
+        valid_offset = _as_integer(offset, "offset")
         placeholders = ",".join("?" for _ in valid_schemes)
         with self._connect() as connection:
             release_row = self._resolve_release(connection, release)
@@ -1280,17 +1283,10 @@ class PMGSStore:
                 "INVALID_DOCUMENT_SELECTOR",
                 "page, section, and locator are mutually exclusive",
             )
-        if page is not None and page < 1:
-            raise PMGSQueryError("INVALID_PAGE", "page must be at least 1")
-        if section is not None and (
-            isinstance(section, bool)
-            or not isinstance(section, int)
-            or not 1 <= section <= _SQLITE_INTEGER_MAX
-        ):
-            raise PMGSQueryError(
-                "INVALID_SECTION",
-                "section must fit in a positive SQLite signed 64-bit integer",
-            )
+        if page is not None:
+            _as_integer(page, "page", 1)
+        if section is not None:
+            _as_integer(section, "section", 1)
         clean_locator = locator.strip() if locator is not None else None
         if clean_locator == "":
             raise PMGSQueryError("INVALID_LOCATOR", "locator must not be empty")
@@ -1298,34 +1294,15 @@ class PMGSStore:
             len(clean_locator) > 256 or _CONTROL_CHARACTER.search(clean_locator)
         ):
             raise PMGSQueryError("INVALID_LOCATOR", "locator must be 1 to 256 printable characters")
-        if not 1 <= segment_limit <= _MAX_DOCUMENT_SEGMENTS:
-            raise PMGSQueryError(
-                "INVALID_SEGMENT_LIMIT",
-                f"segment_limit must be between 1 and {_MAX_DOCUMENT_SEGMENTS}",
-            )
-        if (
-            isinstance(segment_offset, bool)
-            or not isinstance(segment_offset, int)
-            or not 0 <= segment_offset <= _SQLITE_INTEGER_MAX
-        ):
-            raise PMGSQueryError(
-                "INVALID_SEGMENT_OFFSET",
-                "segment_offset must fit in a SQLite signed 64-bit integer",
-            )
-        if not 1 <= related_classification_limit <= _MAX_RELATED_CONCEPTS:
-            raise PMGSQueryError(
-                "INVALID_RELATED_CLASSIFICATION_LIMIT",
-                f"related_classification_limit must be between 1 and {_MAX_RELATED_CONCEPTS}",
-            )
-        if (
-            isinstance(related_classification_offset, bool)
-            or not isinstance(related_classification_offset, int)
-            or not 0 <= related_classification_offset <= _SQLITE_INTEGER_MAX
-        ):
-            raise PMGSQueryError(
-                "INVALID_RELATED_CLASSIFICATION_OFFSET",
-                "related_classification_offset must fit in a SQLite signed 64-bit integer",
-            )
+        _as_integer(segment_limit, "segment_limit", 1, _MAX_DOCUMENT_SEGMENTS)
+        _as_integer(segment_offset, "segment_offset")
+        _as_integer(
+            related_classification_limit,
+            "related_classification_limit",
+            1,
+            _MAX_RELATED_CONCEPTS,
+        )
+        _as_integer(related_classification_offset, "related_classification_offset")
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT d.*, sf.source_id, sf.relative_path, sf.sha256, "
@@ -1453,8 +1430,8 @@ class PMGSStore:
         """Search documents with stable distinct-document pagination."""
         valid_query = _as_query(query)
         valid_language = _as_language(language)
-        valid_limit = _as_limit(limit)
-        valid_offset = _as_offset(offset)
+        valid_limit = _as_integer(limit, "limit", 1, _MAX_LIMIT)
+        valid_offset = _as_integer(offset, "offset")
         with self._connect() as connection:
             release_row = self._resolve_release(connection, release)
             release_id = str(release_row["release_id"])
