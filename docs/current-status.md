@@ -2,11 +2,13 @@
 
 - 更新日: 2026-09-12
 - 保守記録: [依存関係PRのレビューと検証](verification/dependency-pr-review-2026-09-12.md)
-- リリース準備: [v0.5.1の配布・導入検証](verification/v0.5.1-release-2026-09-12.md)。mainへの統合とPyPI公開を進行中
-- 保守改修: [全体レビュー・入力検証修正・テスト整理](verification/repository-review-2026-09-12.md)。commit `f6a6c57`はhosted CIの16 jobに合格。公開済みv0.5.0には未反映
-- 実装状態: v0.5.0の検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをmainへ統合済み
-- 検証状態: **v0.5.0 published**。tag release workflow、PyPI provenance、GitHub Release、両配布面のartifact hash、公開wheelの隔離導入を検証済み。Claude Codeのlive MCP評価だけは`not_observed`を維持する
-- 公開状態: [PyPI v0.5.0](https://pypi.org/project/pmgs-reference/0.5.0/)と[GitHub Release v0.5.0](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.0)を公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
+- 公開検証: [v0.5.1の配布・導入検証](verification/v0.5.1-release-2026-09-12.md)
+- 保守改修: [全体レビュー・入力検証修正・テスト整理](verification/repository-review-2026-09-12.md)。PR #80でmainへ統合し、v0.5.1へ反映済み
+- 実装状態: v0.5.1の入力検証、DB設置後の一時ファイル処理、公開policyの日付、公開validator・audit、Workerの文書応答検査をmainへ統合済み
+- 検証状態: **v0.5.1 published**。main CI 16 job、CodeQL 3解析、tag release 9 job、両配布面のartifact hash一致、PyPI attestationの暗号学的検証、公開packageの隔離導入を確認済み。Claude Codeのlive MCP評価は`not_observed`を維持する
+- 公開状態: [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/)と[GitHub Release v0.5.1](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.1)を公開済み。R2、Worker、独自domain、外部検索indexは未公開のままHold
+
+2026年9月12日にv0.5.1を公開した。[PR #80](https://github.com/Nagi-Inaba/pmgs-reference/pull/80)をcommit `326919498aa31ad6cafc3ea97c427c0497fc7e43`へ統合し、main CIとCodeQLの成功後に同commitへtagを付けた。[Release run 34681865946](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/34681865946)は全9 jobに合格し、承認付きTrusted PublishingでPyPIへ公開した。同じwheelとsdistを配布するGitHub Releaseは07:57:11 UTCに公開された。両配布面のbytes・SHA-256一致、両fileの署名検証、空のtool環境からの最新版導入とsetup・doctor・lookup・MCP 3 toolを確認した。詳細は[v0.5.1の公開検証記録](verification/v0.5.1-release-2026-09-12.md)に記録する。
 
 
 2026年8月24日にv0.5.0を公開した。[Release run 32723564389](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/32723564389)は、Linux、Windows、macOSのwheel・sdist導入、Worker、artifact hash、3 OS決定性比較に合格した。required reviewer付き`pypi` environmentの承認後、Trusted Publishingとdigital attestationを使ってPyPIへ公開し、同じartifactからGitHub Releaseを作成した。両配布面のwheelとsdistはbytesとSHA-256が一致し、公開wheelの隔離導入ではversion=`pmgs 0.5.0`、初回setup=`ready`、再実行=`already_ready`、doctor=`true`、lookup=`exact`を確認した。詳細は[公開検証記録](verification/v0.5-release-2026-08-24.md)に記録する。
@@ -22,7 +24,7 @@ PMGS保有者向けの導線は、日英READMEと導入ガイドでinstall、展
 
 ## 結論
 
-v0.5.0は検索・階層・文書取得、doctor、CLI error、FTS5検査、client探索、release gateの改善をmainへ統合し、tag付きrelease workflowと外部配布検証に合格した。PyPIとGitHub Releaseの公開artifactは一致し、公開wheelからのsetup、doctor、lookupも成功した。
+v0.5.1は入力検証と公開成果物検査の保守改修をmainへ統合し、tag付きrelease workflowと外部配布検証に合格した。PyPIとGitHub Releaseの公開artifactは一致し、署名検証と公開packageからのsetup、doctor、lookupも成功した。CLI、MCP 3 tool、SQLite schema v2はv0.5.0と互換である。
 
 v0.4.0で修正したIPC版混在、FI改正関係の欠落、出典固定値、validationとAI参照契約の不足に対する実データA/B監査とCodex実MCP評価は、v0.5.0の基礎証拠として保持する。
 Claude Code用のMCP設定、共通skill、登録、分離環境、tool制限は回帰testで検証した。live MCP評価は、現在利用できる無料アカウントでは評価に必要なClaudeモデル呼出しを実行できないため`not_observed`であり、成功済みとは扱わない。ユーザーは2026年8月13日に、この未観測を残余リスクとして記録したうえでsourceをmainへ統合することを承認し、同日にv0.4.0のtag、PyPI、GitHub ReleaseのHoldも解除した。R2、Worker、独自domain、外部検索indexのHoldは維持する。
@@ -247,10 +249,10 @@ release auditは25条件すべて`true`、`ready=true`、`failures=[]`だった�
 
 ## 完了したPythonリリースと残るWebゲート
 
-1. GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を適用し、`v0.5.0`のdeploymentを承認した。PyPI Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで公開に成功した。
-2. PyPI project、両fileのprovenance、GitHub Release、asset hash、空の専用tool環境からの導入を外部確認した。公開fileのhashと導入結果は[v0.5.0のPython package公開検証](verification/v0.5-release-2026-08-24.md)へ記録した。
+1. GitHubの`pypi` environmentはrequired reviewerと`v*` tag制限を適用し、`v0.5.1`のdeploymentを承認した。PyPI Trusted Publisherは`Nagi-Inaba/pmgs-reference`、`release.yml`、`pypi`の組合せで公開に成功した。
+2. PyPI project、両fileのprovenanceと署名、GitHub Release、asset hash、空の専用tool環境からの導入を外部確認した。公開fileのhashと導入結果は[v0.5.1の配布・導入検証](verification/v0.5.1-release-2026-09-12.md)へ記録した。
 3. 第三者がWeb公開する場合だけ、現行契約で実originのA/Bを再生成し、R2 upload、Worker deploy、本番URL、sitemap、OpenAPIを確認する。
 4. Web公開者が検索エンジンとAI検索からの発見性を測定する。
 
-GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.5.0 wheel・sdistは公開済みである。
+GitHub repositoryの`main`にあるソースコードと、data非同梱のv0.5.1 wheel・sdistは公開済みである。
 全量成果物、Web deploy、独自domain、index登録は完了扱いにしない。
