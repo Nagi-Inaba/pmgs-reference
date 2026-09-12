@@ -20,6 +20,9 @@
     "types:check": "wrangler types src/worker-configuration.d.ts --include-runtime false --check",
     "verify": "npm run types:check && npm run typecheck && npm run lint && npm test && npm run build && npm audit --audit-level=high"
   },
+  "overrides": {
+    "sharp": "0.35.4"
+  },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@cloudflare/workers-types": "5.20260820.1",

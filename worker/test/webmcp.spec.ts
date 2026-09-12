@@ -10,6 +10,7 @@ describe("optional WebMCP registration", () => {
   });
 
   it("registers exactly one read-only lookup tool and returns the API record", async () => {
+    const executionOptions = { signal: new AbortController().signal };
     let registered: WebMCP.ModelContextTool | undefined;
     const registrar = {
       async registerTool(tool: WebMCP.ModelContextTool): Promise<void> {
@@ -44,7 +45,7 @@ describe("optional WebMCP registration", () => {
       relation_offset: { minimum: 0, default: 0 },
     } });
 
-    const result = await registered?.execute({ scheme: "fi", code: "G06F3/048" });
+    const result = await registered?.execute({ scheme: "fi", code: "G06F3/048" }, executionOptions);
     expect(result).toMatchObject({ structuredContent: apiRecord, isError: false });
     expect(fetchFunction).toHaveBeenCalledOnce();
     expect(fetchFunction.mock.calls[0]?.[0]).toContain(
@@ -61,13 +62,14 @@ describe("optional WebMCP registration", () => {
       version: "2006.01",
       relation_limit: 25,
       relation_offset: 50,
-    });
+    }, executionOptions);
     expect(fetchFunction.mock.calls[1]?.[0]).toContain("version=2006.01");
     expect(fetchFunction.mock.calls[1]?.[0]).toContain("relation_limit=25");
     expect(fetchFunction.mock.calls[1]?.[0]).toContain("relation_offset=50");
   });
 
   it("returns safe tool errors for invalid input, HTTP errors, and registration rejection", async () => {
+    const executionOptions = { signal: new AbortController().signal };
     let registered: WebMCP.ModelContextTool | undefined;
     const registrar = {
       async registerTool(tool: WebMCP.ModelContextTool): Promise<void> {
@@ -82,17 +84,17 @@ describe("optional WebMCP registration", () => {
     );
     await registerPmgsWebMcp(registrar, fetchFunction);
 
-    expect(await registered?.execute({ scheme: "fi", code: "" })).toMatchObject({
+    expect(await registered?.execute({ scheme: "fi", code: "" }, executionOptions)).toMatchObject({
       isError: true,
       structuredContent: { error: { code: "INVALID_INPUT" } },
     });
     expect(
-      await registered?.execute({ scheme: "ipc", code: "G06F3/048", version: "(2021.01" }),
+      await registered?.execute({ scheme: "ipc", code: "G06F3/048", version: "(2021.01" }, executionOptions),
     ).toMatchObject({
       isError: true,
       structuredContent: { error: { code: "INVALID_INPUT" } },
     });
-    expect(await registered?.execute({ scheme: "fi", code: "Z99Z99/999" })).toMatchObject({
+    expect(await registered?.execute({ scheme: "fi", code: "Z99Z99/999" }, executionOptions)).toMatchObject({
       isError: true,
       structuredContent: { error: { code: "CLASSIFICATION_NOT_FOUND" } },
     });
