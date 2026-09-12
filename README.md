@@ -8,7 +8,7 @@ PMGS Referenceは、取得済みのPMGSパッケージを検索用SQLiteへ変�
 
 ## v0.5.1
 
-- [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/)：Python packageの配布ページです。
+- [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/)：Python packageの配布ページです。`uv tool install pmgs-reference`で最新版を導入できます。
 - [GitHub Release v0.5.1](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.1)：同じ版のwheelとsdistの配布ページです。
 - [v0.5.1リリースノート](docs/releases/v0.5.1.md)：修正内容と更新方法です。
 - [ソースコード](https://github.com/Nagi-Inaba/pmgs-reference)：Apache License 2.0で公開しています。

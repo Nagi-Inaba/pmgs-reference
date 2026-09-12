@@ -8,7 +8,7 @@ PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex a
 
 ## v0.5.1
 
-- [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/): the Python package distribution page.
+- [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/): the Python package distribution page. Install the latest version with `uv tool install pmgs-reference`.
 - [GitHub Release v0.5.1](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.1): the wheel and sdist distribution page for the same version.
 - [v0.5.1 release notes](docs/releases/v0.5.1.en.md): fixes and upgrade instructions.
 - [Source code](https://github.com/Nagi-Inaba/pmgs-reference): published under the Apache License 2.0.
