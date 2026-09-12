@@ -117,9 +117,9 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
     stable_install = "uv tool install pmgs-reference"
     tagged_install = (
         'uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/'
-        'archive/refs/tags/v0.5.0.zip"'
+        f'archive/refs/tags/v{__version__}.zip"'
     )
-    pinned_install = 'uv tool install "pmgs-reference==0.5.0"'
+    pinned_install = f'uv tool install "pmgs-reference=={__version__}"'
 
     for relative in surfaces:
         text = (ROOT / relative).read_text(encoding="utf-8")
@@ -163,10 +163,10 @@ def test_pmgs_holders_have_complete_stable_onboarding_and_ai_contracts() -> None
         assert contract["purpose"] == "build_read_only_sqlite_and_mcp_from_local_pmgs"
         assert contract["install"] == {
             "primary": "uv tool install pmgs-reference",
-            "verified_pin": "uv tool install pmgs-reference==0.5.0",
+            "verified_pin": f"uv tool install pmgs-reference=={__version__}",
             "fallback": (
                 "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/"
-                "archive/refs/tags/v0.5.0.zip"
+                f"archive/refs/tags/v{__version__}.zip"
             ),
         }
         assert contract["source_input"] == {
