@@ -6,7 +6,7 @@
 
 ## 現在の境界
 
-[v0.5.1の配布・導入検証](v0.5.1-release-2026-09-12.md)に、2026年9月12日の保守リリースの進行状態と確認結果を記録する。
+[v0.5.1の配布・導入検証](v0.5.1-release-2026-09-12.md)は、2026年9月12日の保守リリースについて、main・tagのhosted gate、PyPIとGitHub Releaseの公開、両fileの署名・hash、公開最新版の隔離導入を記録する。
 
 [v0.5.0のPython package公開検証](v0.5-release-2026-08-24.md)は、tag release workflow、PyPI Trusted Publishing、GitHub Release、artifact hash、公開packageの隔離導入を記録する。この検証はPython packageの配布面を対象とし、R2、Worker、独自domainのWeb公開を意味しない。
 
