@@ -5,9 +5,9 @@
 | PR | レビュー結果 |
 | --- | --- |
 | [#68](https://github.com/Nagi-Inaba/pmgs-reference/pull/68) | setup-uv 10.0.1の公式tagと固定SHAの一致、差分が11箇所のaction参照だけであること、必須CI成功を確認し、`1752da8`へsquash mergeした。 |
-| [#69](https://github.com/Nagi-Inaba/pmgs-reference/pull/69) | Worker依存6件の更新。WebMCPテストの型エラー5件とsharpの脆弱性を修正対象とした。 |
+| [#69](https://github.com/Nagi-Inaba/pmgs-reference/pull/69) | Worker依存6件の更新。WebMCPテストの型エラー5件とsharpの脆弱性を修正し、最新headのCI成功後に`da7c5c5`へsquash mergeした。 |
 | [#76](https://github.com/Nagi-Inaba/pmgs-reference/pull/76) | httpx2とhttpcore2を2.12.0へ同時更新する。追加のhttpx2-jsfetchはEmscriptenだけに適用される。Pythonのローカル検査に合格した。 |
-| [#77](https://github.com/Nagi-Inaba/pmgs-reference/pull/77)、[#78](https://github.com/Nagi-Inaba/pmgs-reference/pull/78) | 両PRの差分は同一。Vitest 4.1.11への更新は#69にも含まれる。 |
+| [#77](https://github.com/Nagi-Inaba/pmgs-reference/pull/77)、[#78](https://github.com/Nagi-Inaba/pmgs-reference/pull/78) | 両PRの差分は同一。Vitest 4.1.11への更新を#69で取り込んだため、重複PRとしてクローズした。 |
 | [#79](https://github.com/Nagi-Inaba/pmgs-reference/pull/79) | httpcore2とhttpx2を2.10.0へ更新する。#76の2.12.0更新が含む範囲と重なる。 |
 
 ## Workerの修正とローカル検証
@@ -29,5 +29,9 @@
 ## 外部検証の状態
 
 #68統合後の[main CI](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/34674146285)は、16 job中15 jobが成功し、Worker jobは既存sharpの脆弱性監査で失敗した。修正後のPRと統合後mainについて、最新commitの必須CI成功をマージ判断の条件とする。
+
+#69の修正commit `a1bb558867c73d7b893842d5e487068d2ce16464`は、[Push CI](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/34677369757)と[PR CI](https://github.com/Nagi-Inaba/pmgs-reference/actions/runs/34677372108)で各16 jobが成功した。UbuntuのWorker検査は`npm ci`、型検査、lint、Workerテスト46件、WebMCPテスト3件、dry-run build、脆弱性0件の依存監査を含む。CodeQLを含むPRチェックは36件成功、対象外のrepair 1件skipで、保護ルールを迂回せずマージした。
+
+GitHub DependabotのPython関連アラート6件について、修正条件がhttpx2の2.10.0、2.11.0、2.12.0、およびhttpcore2の2.10.0であることを確認した。#76の両package 2.12.0はすべての条件を満たす。#79を先に取り込む必要はない。
 
 この記録は依存更新の検証であり、PyPI公開、GitHub Release作成、R2 upload、Worker deployを実施した記録ではない。
