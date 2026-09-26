@@ -1,9 +1,9 @@
 # 現在の状態
 
 - 更新日: 2026-09-26
-- 配布版の記録: v0.5.1。v0.5.2のリリース候補を準備中。[新版の配布・導入検証](verification/v0.5.2-release-2026-09-26.md)に進行状態を記録する
+- 配布版: v0.5.2。PyPI・GitHub Releaseへの公開、署名・hash・公開最新版の隔離導入を[配布・導入検証](verification/v0.5.2-release-2026-09-26.md)で確認済み
 - 今回の変更: Workerの分類なし応答、条件付き取得、公開境界検査を修正し、不要な一時workflowと運用メモを削除
-- 今回の変更はmainへ統合済み。Python package v0.5.2の公開検証を進めており、Web deployは未実施
+- 今回の変更はmainとv0.5.2のtagへ反映済み。Python runtimeはv0.5.1と同じで、Workerと境界検査scriptの修正はソース配布に含まれる
 - R2、Worker、独自domain、外部検索indexは未公開。今回もWebの外部操作は実施していない
 
 ## 現行機能
@@ -25,7 +25,7 @@ Pythonは355件合格・10件skip、LinuxのWorker・HTTPは73件、WebMCPは3�
 
 ## GitHub source repositoryの公開検証
 
-GitHub source、PyPI package、GitHub Releaseの公開履歴は、[v0.5.1](verification/v0.5.1-release-2026-09-12.md)と[v0.5.0](verification/v0.5-release-2026-08-24.md)の記録を参照する。これらは測定時点の証拠であり、今回の変更や現在の外部設定を検証した記録ではない。
+[v0.5.2の公開検証](verification/v0.5.2-release-2026-09-26.md)で、mainの16 CI jobとCodeQL、tagの9 release job、PyPI・GitHub Release・固定artifactの一致、両fileの署名、公開最新版の隔離導入を確認した。過去版は[v0.5.1](verification/v0.5.1-release-2026-09-12.md)と[v0.5.0](verification/v0.5-release-2026-08-24.md)を参照する。各記録は測定時点の証拠である。
 
 ## 残る検証と運用上の境界
 
@@ -34,4 +34,4 @@ GitHub source、PyPI package、GitHub Releaseの公開履歴は、[v0.5.1](verif
 - 第三者がWeb公開する場合は、実originを使って現行契約のA/Bを新規生成し、全件validation・auditを実施する。手順は[release runbook](release-runbook.md)と[セルフホストガイド](self-hosting.md)を参照する。
 - ローカル検証には実PMGSの再構築・全量A/B、macOS、GitHub hosted CI、外部配布・Web公開を含めていない。GitHubでの統合時は対象PRのchecksを別途確認する。
 
-v0.5.2の公開には、tag付きrelease gateと公開artifactの配布検証が必要になる。
+v0.5.2のpackage公開と配布検証は完了した。Web公開は別のreleaseとして扱う。
