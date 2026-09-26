@@ -27,9 +27,16 @@ build/*
 *.sqlite3
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite-journal
+*.sqlite3-journal
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
+*.whl
+*.log
 *.zip
 *.7z
 *.tar

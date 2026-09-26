@@ -287,6 +287,12 @@ def test_release_workflow_keeps_publish_authority_narrow() -> None:
     assert "scripts/verify_wheel_install.py" in raw
 
 
+def test_all_workflows_default_to_read_only_repository_access() -> None:
+    for path in (ROOT / ".github" / "workflows").glob("*.yml"):
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert workflow["permissions"] == {"contents": "read"}, path.name
+
+
 def test_windows_setup_script_is_a_thin_setup_adapter() -> None:
     script = (ROOT / "scripts" / "setup_local_agent.ps1").read_text(encoding="utf-8")
 

@@ -122,3 +122,26 @@ export function selectPageFormat(accept: string): PageFormat {
 export function allowedMethods(api: boolean): string {
   return api ? "GET, HEAD, OPTIONS" : "GET, HEAD";
 }
+
+export function matchesIfNoneMatch(value: string | null, etag: string): boolean {
+  if (value === null) return false;
+  if (value.trim() === "*") return true;
+  const opaqueTag = etag.replace(/^W\//u, "");
+  // Commas inside a tag are data; a malformed list must not trigger a 304.
+  const tagPattern = /(?:W\/)?("[\x21\x23-\x7e\x80-\xff]*")/uy;
+  let position = 0;
+  let matched = false;
+  while (position < value.length) {
+    // HTTP list syntax permits empty entries.
+    while (position < value.length && /[\t ,]/u.test(value[position]!)) position += 1;
+    if (position === value.length) break;
+    tagPattern.lastIndex = position;
+    const tag = tagPattern.exec(value);
+    if (tag === null) return false;
+    matched ||= tag[1] === opaqueTag;
+    position = tagPattern.lastIndex;
+    while (position < value.length && /[\t ]/u.test(value[position]!)) position += 1;
+    if (position < value.length && value[position] !== ",") return false;
+  }
+  return matched;
+}

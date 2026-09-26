@@ -55,6 +55,8 @@ adapterへ委譲し、setup自体を別の分類正本にしない。
 
 Workerは利用者入力を検証し、版付きR2 keyを選び、content negotiationとHTTP応答を処理する。
 
+分類chunkの範囲は探索先を絞るために使い、その間の全codeの存在は仮定しない。manifestの総件数と全chunk entryの件数合計を探索前に照合する。対象chunkとmanifest entryの件数・両端キー、recordの順序・release・lookup keyを照合してから、未収録codeを404として返す。R2直接配信では選択した表現のETagを使い、GET・HEADの弱い比較による条件付き取得を処理する。
+
 WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
 
 公開validatorは、分類・文書の保存形式、版とobject keyの一致、chunkの件数・範囲・ページ・bytes・SHA-256を検査する。内容を保持せずchunk要約だけを集約し、manifestの参照と照合する。`audit-public`はA/B両treeをその場で再検証し、保存済み検証reportとの一致を要求する。過去のreportだけでは現在の公開候補を合格にしない。

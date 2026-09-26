@@ -1,6 +1,6 @@
 import { getDocument, lookupClassification } from "./api";
 import { PublicError, unavailable } from "./errors";
-import { selectPageFormat } from "./http";
+import { matchesIfNoneMatch, selectPageFormat } from "./http";
 import {
   cleanEdition,
   decodePathSegment,
@@ -226,11 +226,7 @@ async function serveR2Object(request: Request, env: Env, route: ObjectRoute): Pr
   headers.set("Content-Type", route.contentType ?? headers.get("Content-Type") ?? fallbackContentType(route.key));
   headers.set("Content-Length", String(object.size));
   headers.set("ETag", object.httpEtag);
-  const ifNoneMatch = request.headers.get("If-None-Match");
-  if (
-    ifNoneMatch !== null &&
-    (ifNoneMatch.trim() === "*" || ifNoneMatch.split(",").some((value) => value.trim() === object.httpEtag))
-  ) {
+  if (matchesIfNoneMatch(request.headers.get("If-None-Match"), object.httpEtag)) {
     return decorateResponse(new Response(null, { status: 304, headers }), {
       api: route.api,
       cache: route.cache,

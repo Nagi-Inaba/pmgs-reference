@@ -16,6 +16,8 @@
 
 2026-09-12の[保守改修](verification/repository-review-2026-09-12.md)はv0.5.1へ含めて公開した。公開validatorと監査の追加検査は合成fixtureで確認した。以下の実データA/Bの証拠はv0.5.0時点の記録であり、追加検査による実データ全件再検証はまだ行っていない。
 
+2026-09-26のローカル保守変更は[保守検証記録](verification/maintenance-2026-09-26.md)を参照する。Workerの404・503の区別、条件付き取得、repositoryの候補file検査を更新した。過去の公開・hosted検証を今回の差分の検証結果へ読み替えない。
+
 | ID | 要件 | 状態 | 証拠または残作業 |
 | --- | --- | --- | --- |
 | DOC-01 | 設計、状態、判断、runbookを版管理する | verified | `PLAN.md`、`docs/current-status.md`、ADR、runbook |

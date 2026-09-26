@@ -311,6 +311,10 @@ export async function lookupClassification(request: Request, env: Env): Promise<
   if (!isGroupManifest(manifestPayload) || manifestPayload.release_id !== release.id) {
     throw unavailable("group manifest is malformed");
   }
+  const recordCount = manifestPayload.chunks.reduce((total, entry) => total + entry.record_count, 0);
+  if (!Number.isSafeInteger(recordCount) || recordCount !== manifestPayload.record_count) {
+    throw unavailable("group manifest record count is inconsistent");
+  }
   const chunkEntry = findGroupChunk(manifestPayload.chunks, targetLookupKey);
   if (chunkEntry === null) {
     throw new PublicError(404, "CLASSIFICATION_NOT_FOUND", "classification not found");
@@ -322,7 +326,15 @@ export async function lookupClassification(request: Request, env: Env): Promise<
   if (
     !isClassificationChunk(chunkPayload) ||
     chunkPayload.release_id !== release.id ||
-    chunkPayload.chunk_id !== chunkEntry.chunk_id
+    chunkPayload.chunk_id !== chunkEntry.chunk_id ||
+    chunkPayload.records.length !== chunkEntry.record_count ||
+    chunkPayload.records[0]?.lookup_key !== chunkEntry.first_lookup_key ||
+    chunkPayload.records.at(-1)?.lookup_key !== chunkEntry.last_lookup_key ||
+    chunkPayload.records.some((candidate, index, records) =>
+      candidate.release_id !== release.id ||
+      candidate.lookup_key !== lookupKey(candidate.scheme, candidate.edition, candidate.normalized_code) ||
+      (index > 0 && candidate.lookup_key <= records[index - 1]!.lookup_key)
+    )
   ) {
     throw unavailable("classification chunk is malformed");
   }
@@ -333,7 +345,7 @@ export async function lookupClassification(request: Request, env: Env): Promise<
       candidate.normalized_code === normalizedCode,
   );
   if (record === undefined) {
-    throw unavailable("classification range does not contain its indexed record");
+    throw new PublicError(404, "CLASSIFICATION_NOT_FOUND", "classification not found");
   }
   const matchStatus = checkedCode.clean === normalizedCode ? "exact" : "normalized_exact";
   return jsonResponse(

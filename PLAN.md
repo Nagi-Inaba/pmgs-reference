@@ -1,7 +1,7 @@
 # PMGS Reference v1 設計計画
 
 - 初版作成日: 2026-08-08
-- 最終更新日: 2026-08-24
+- 最終更新日: 2026-09-26
 - 対象: JPOの登録制一括ダウンロードサービスから取得したPMGSパッケージ
 - 利用者: Codex・Claude Code利用者、ローカル開発者、任意Web公開者、検索エンジン、GPTs、Gem、Copilot Studio、MCPクライアント
 
@@ -23,23 +23,9 @@ WebMCPは対応ブラウザ向けの追加機能として提供し、通常の�
 
 ローカル正本、Python API、CLI、stdio MCP、Codex・Claude Code用agent kit、決定的な公開export、Cloudflare Worker、OpenAPI、WebMCPアダプターは実装済みである。
 
-2026-08-09に、公開ページの帰属表示、原典リンク、加工表示、非公式サービス表示を必須契約へ追加した。
+版ごとの改修と実測結果は[検証記録](docs/verification/README.md)に保存し、配布状態・未公開の変更・残る検証は[現在の状態](docs/current-status.md)を正本とする。旧schemaや旧表示契約の監査結果を現行契約へ自動的に継承しない。
 
-2026-08-09時点の旧schemaと表示契約は、合成fixtureと実データ全量監査で検証済みである。
-
-実データA/Bは各399,025オブジェクト、10,491,136,463 bytesで一致し、全件validatorとrelease auditは`ready=true`、`failures=[]`となった。
-
-2026-08-10に日本語topと日本語`llms.txt`を既定にし、英語切替先を追加した。この新しい入口契約は合成fixtureで検証し、Web公開時に実originで全量A/B監査を再実行する。
-
-この旧監査結果は回帰資料として保持するが、schema v2と分類record 2.0の合格証拠には継承しない。
-
-2026-08-11に、全OS共通の`pmgs setup`、内容アドレス付きSQLite、原子的な`current.json`、Codex・Claude Codeの非破壊登録、wheel実環境test、PyPI Trusted Publishing用release workflowをv0.3.0として追加した。PyPI packageとv0.3.0 Releaseの外部公開はtagと承認環境による別状態として扱う。
-
-2026-08-13に、分類概念と版ごとのrevisionを分離するschema v2、IPCの基準日版選択、FI改正の`reference_only`概念、出典lineage、関係ページング、分類・文書の複合検索をv0.4.0として実装・検証し、Pull Request #6からmainへ統合した。PMGS保有者向けのPyPI-first導線、dry-run、AI向け機械可読説明はPull Request #8からmainへ統合した。実データA/B、Codex実MCP評価、hosted CI、CodeQLに合格している。Claude Code用設定、skill、登録、分離環境、tool制限は自動検証済みだが、現在利用できる無料アカウントではlive MCP評価に必要なClaudeモデル呼出しを実行できないため、live MCP評価は`not_observed`として残す。現在の検証状態と外部公開Holdは[現在の状態](docs/current-status.md)を正本とする。
-
-2026-08-24に、検索・階層・文書ページング、doctor、JSON error、FTS5検査、client探索、3 OS release gateをv0.5.0として公開した。tag付きworkflowはLinux、Windows、macOSのwheel・sdist導入、Worker、決定性比較に合格し、同じartifactをPyPIとGitHub Releaseへ配布した。
-
-GitHub source repository、PyPI v0.5.0、GitHub Release v0.5.0を現在の配布面とする。Web deploy、domain公開、R2 upload、外部検索エンジンへの登録は停止中の別外部状態であり、第三者向けセルフホスト手順だけを提供する。
+公開ページでは帰属表示、原典リンク、加工表示、非公式サービス表示を必須とする。GitHub sourceとPython packageの配布、任意のWebセルフホストは別の公開面として扱う。
 
 ## v1の設計原則
 

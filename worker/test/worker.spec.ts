@@ -9,6 +9,7 @@ import {
   seedLargeLookupFixture,
   seedMalformedClassificationFixture,
   seedPagedIpcFixture,
+  seedSparseLookupFixture,
 } from "./fixtures";
 
 const ORIGIN = "https://pmgs.example.test";
@@ -41,6 +42,24 @@ describe("shared normalization contract", () => {
 });
 
 describe("classification API", () => {
+  it("returns 404 for a missing code between valid records in a chunk", async () => {
+    try {
+      await seedSparseLookupFixture();
+      const response = await request("/api/v1/lookup?scheme=fi&code=G06F3%2F049");
+      expect(response.status).toBe(404);
+      expect(await json(response)).toMatchObject({
+        error: { code: "CLASSIFICATION_NOT_FOUND" },
+      });
+      for (const code of ["G06F3%2F048", "G06F3%2F050"]) {
+        const endpoint = await request(`/api/v1/lookup?scheme=fi&code=${code}`);
+        expect(endpoint.status).toBe(200);
+        expect(endpoint.headers.get("Server-Timing")).toBe('pmgs-r2;desc="2 reads"');
+      }
+    } finally {
+      await seedFixture();
+    }
+  });
+
   it("returns a language-projected FI record with exactly two R2 reads", async () => {
     const response = await request(
       "/api/v1/lookup?scheme=fi&code=%20g06f%203%2F048%20&language=ja",
@@ -170,6 +189,59 @@ describe("classification API", () => {
     expect(await json(response)).toMatchObject({ error: { code: "RELEASE_UNAVAILABLE" } });
   });
 
+  it.each(["count", "first_key", "last_key", "release", "lookup_key", "order"])(
+    "keeps corrupted classification %s as 503 rather than a missing code",
+    async (defect) => {
+      try {
+        await seedSparseLookupFixture();
+        const prefix = "releases/JPPM2099001/groups/classification/G06F3";
+        const key = `${prefix}/${defect.endsWith("key") && defect !== "lookup_key" ? "manifest.json" : "001.json"}`;
+        const object = await env.PMGS_BUCKET.get(key);
+        const payload = await object!.json<{
+          chunks: { first_lookup_key: string; last_lookup_key: string }[];
+          records: { release_id: string; lookup_key: string }[];
+        }>();
+        if (defect === "count") payload.records.pop();
+        if (defect === "first_key") payload.chunks[0]!.first_lookup_key = "fi\u001f\u001fG06F3/047";
+        if (defect === "last_key") payload.chunks[0]!.last_lookup_key = "fi\u001f\u001fG06F3/051";
+        if (defect === "release") payload.records[0]!.release_id = "JPPM2098001";
+        if (defect === "lookup_key") payload.records[0]!.lookup_key = "inconsistent";
+        if (defect === "order") payload.records.reverse();
+        await env.PMGS_BUCKET.put(key, JSON.stringify(payload));
+        const response = await request("/api/v1/lookup?scheme=fi&code=G06F3%2F049");
+        expect(response.status).toBe(503);
+        expect(await json(response)).toMatchObject({ error: { code: "RELEASE_UNAVAILABLE" } });
+      } finally {
+        await seedFixture();
+      }
+    },
+  );
+
+  it.each(["aggregate_count", "unselected_count"])(
+    "rejects a manifest with inconsistent %s before returning a match or miss",
+    async (defect) => {
+      try {
+        await seedSparseLookupFixture();
+        const key = "releases/JPPM2099001/groups/classification/G06F3/manifest.json";
+        const object = await env.PMGS_BUCKET.get(key);
+        const manifest = await object!.json<{
+          record_count: number;
+          chunks: { record_count: number }[];
+        }>();
+        if (defect === "aggregate_count") manifest.record_count += 1;
+        else manifest.chunks[1]!.record_count += 1;
+        await env.PMGS_BUCKET.put(key, JSON.stringify(manifest));
+        for (const code of ["G06F3%2F048", "G06F3%2F049", "G06F3%2F999"]) {
+          const response = await request(`/api/v1/lookup?scheme=fi&code=${code}`);
+          expect(response.status).toBe(503);
+          expect(await json(response)).toMatchObject({ error: { code: "RELEASE_UNAVAILABLE" } });
+        }
+      } finally {
+        await seedFixture();
+      }
+    },
+  );
+
   it.each(["revision_relation", "storage_schema"] as const)(
     "returns 503 for a malformed classification %s",
     async (defect) => {
@@ -249,6 +321,29 @@ describe("document API", () => {
 });
 
 describe("static and negotiated routes", () => {
+  it.each(["GET", "HEAD"])("revalidates weak ETags for %s without a body", async (method) => {
+    const original = await request("/ja/classification/G06F3", {
+      headers: { Accept: "text/markdown" },
+    });
+    const etag = original.headers.get("ETag");
+    expect(etag).toBeTruthy();
+    const response = await request("/ja/classification/G06F3", {
+      method,
+      headers: { Accept: "text/markdown", "If-None-Match": `"other", W/${etag}` },
+    });
+    expect(response.status).toBe(304);
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("ETag")).toBe(etag);
+    expect(response.headers.get("Vary")).toContain("Accept");
+    expect(response.headers.get("Server-Timing")).toBe('pmgs-r2;desc="1 reads"');
+    const malformed = await request("/ja/classification/G06F3", {
+      method,
+      headers: { Accept: "text/markdown", "If-None-Match": `${etag}garbage` },
+    });
+    expect(malformed.status).toBe(200);
+    await malformed.text();
+  });
+
   it("streams HTML by default and pre-generated Markdown on Accept", async () => {
     const html = await request("/ja/classification/G06F3");
     const markdown = await request("/ja/classification/G06F3", {
