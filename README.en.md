@@ -6,18 +6,18 @@
 
 PMGS Reference converts an acquired PMGS package into searchable SQLite. Codex and Claude Code can then retrieve FI, F-term, and IPC definitions, hierarchy, editions, related documents, and source metadata through a read-only MCP server. This gives the agent a direct PMGS reference instead of relying only on general web search or model memory.
 
-## v0.5.1
+## v0.5.2
 
-- [PyPI v0.5.1](https://pypi.org/project/pmgs-reference/0.5.1/): the Python package distribution page. Install the latest version with `uv tool install pmgs-reference`.
-- [GitHub Release v0.5.1](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.1): the wheel and sdist distribution page for the same version.
-- [v0.5.1 release notes](docs/releases/v0.5.1.en.md): fixes and upgrade instructions.
+- [PyPI v0.5.2](https://pypi.org/project/pmgs-reference/0.5.2/): the Python package distribution page. Install the latest version with `uv tool install pmgs-reference`.
+- [GitHub Release v0.5.2](https://github.com/Nagi-Inaba/pmgs-reference/releases/tag/v0.5.2): the wheel and sdist distribution page for the same version.
+- [v0.5.2 release notes](docs/releases/v0.5.2.en.md): fixes and upgrade instructions.
 - [Source code](https://github.com/Nagi-Inaba/pmgs-reference): published under the Apache License 2.0.
 
-v0.5.1 fixes invalid query pagination, temporary-file cleanup after database installation, publication-policy dates, and public artifact validation and audits. It uses the same CLI, MCP tools, and SQLite schema as v0.5.0.
+v0.5.2 refreshes the distribution documentation alongside source improvements to Worker missing-code responses, conditional requests, and repository boundary checks. Python runtime code and dependency requirements are unchanged from v0.5.1. The Worker and boundary-checking scripts are distributed in the source repository, not in the wheel or sdist. CLI arguments, MCP tools, and the SQLite schema remain unchanged.
 
 Python callers that previously supplied a string `section` must migrate that value to `locator`. In addition, `parents()` and `children()` now return lightweight summary records; call `lookup()` with the returned identifiers when texts, properties, relations, documents, or sources are needed. See the [v0.5.0 release notes](docs/releases/v0.5.0.md).
 
-The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill. PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI. Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`. See the [v0.5.1 verification record](docs/verification/v0.5.1-release-2026-09-12.md) for distribution and installation verification status and the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md) for the real-PMGS A/B build and live Codex evidence.
+The distributions contain the Python builder and query code, CLI, read-only MCP server, and AI skill. PMGS source data, generated SQLite databases, bulk exports, and credentials are neither included in the distributions nor uploaded to GitHub or PyPI. Claude Code configuration and registration pass automated tests, but live MCP behavior remains `not_observed`. See the [v0.5.2 verification record](docs/verification/v0.5.2-release-2026-09-26.md) for distribution and installation verification status and the [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md) for the real-PMGS A/B build and live Codex evidence.
 
 ## If you do not have a PMGS package yet
 
@@ -56,16 +56,16 @@ uv tool install pmgs-reference
 ```
 
 This command installs the latest release available from PyPI when you run it.
-To pin v0.5.1, run this command instead:
+To pin v0.5.2, run this command instead:
 
 ```powershell
-uv tool install "pmgs-reference==0.5.1"
+uv tool install "pmgs-reference==0.5.2"
 ```
 
 If you do not use PyPI, install the same command from the fixed GitHub tag:
 
 ```powershell
-uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
+uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.2.zip"
 ```
 
 Then run a write-free preflight that inventories the input and checks available space:
@@ -161,8 +161,8 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
-    verified_pin: "uv tool install pmgs-reference==0.5.1"
-    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
+    verified_pin: "uv tool install pmgs-reference==0.5.2"
+    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.2.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false
@@ -286,8 +286,8 @@ PMGS data is not included in the repository or Python package. Complete the JPO 
 - [Web self-hosting](docs/self-hosting.en.md)
 - [Architecture](docs/architecture.md)
 - [Current implementation status](docs/current-status.md)
-- [v0.5.1 release notes](docs/releases/v0.5.1.en.md)
-- [v0.5.1 distribution and installation verification](docs/verification/v0.5.1-release-2026-09-12.md)
+- [v0.5.2 release notes](docs/releases/v0.5.2.en.md)
+- [v0.5.2 distribution and installation verification](docs/verification/v0.5.2-release-2026-09-26.md)
 - [v0.5.0 release notes](docs/releases/v0.5.0.md)
 - [v0.5.0 Python package publication verification](docs/verification/v0.5-release-2026-08-24.md)
 - [v0.4.0 correctness verification](docs/verification/v0.4-correctness-2026-08-12.md)

@@ -26,16 +26,16 @@ uv tool install pmgs-reference
 ```
 
 This command installs the latest release available from PyPI when you run it.
-To pin v0.5.1, run this command instead:
+To pin v0.5.2, run this command instead:
 
 ```powershell
-uv tool install "pmgs-reference==0.5.1"
+uv tool install "pmgs-reference==0.5.2"
 ```
 
 If you do not use PyPI, install from the fixed GitHub tag:
 
 ```powershell
-uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
+uv tool install "https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.2.zip"
 ```
 
 To keep a local copy of the source for development, clone it with Git and install it into the same kind of dedicated tool environment:
@@ -138,8 +138,8 @@ pmgs_reference_ai_contract:
   purpose: build_read_only_sqlite_and_mcp_from_local_pmgs
   install:
     primary: "uv tool install pmgs-reference"
-    verified_pin: "uv tool install pmgs-reference==0.5.1"
-    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.1.zip"
+    verified_pin: "uv tool install pmgs-reference==0.5.2"
+    fallback: "uv tool install https://github.com/Nagi-Inaba/pmgs-reference/archive/refs/tags/v0.5.2.zip"
   source_input:
     format: extracted_directory
     archive_direct_input: false

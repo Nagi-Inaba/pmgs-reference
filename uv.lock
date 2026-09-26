@@ -773,7 +773,7 @@ wheels = [
 
 [[package]]
 name = "pmgs-reference"
-version = "0.5.1"
+version = "0.5.2"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
