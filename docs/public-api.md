@@ -57,7 +57,7 @@ APIは`Access-Control-Allow-Origin: *`を返す。
 
 正常な分類照会と文書照会は、manifestと対象chunkの最大2回のR2読み取りで完了する。成果物不整合や8 MiBを超えるJSON objectは推測で返さず503とする。
 
-分類chunkのキー範囲は全コードの存在を保証しない。範囲内の未収録コードも404 `CLASSIFICATION_NOT_FOUND`を返す。chunkの件数、両端キー、並び順、recordのreleaseとlookup keyが不整合なら503で拒否する。
+分類chunkのキー範囲は全コードの存在を保証しない。範囲内の未収録コードも404 `CLASSIFICATION_NOT_FOUND`を返す。manifestの総件数と全chunk entryの件数合計、対象chunkの件数、両端キー、並び順、recordのreleaseとlookup keyが不整合なら503で拒否する。
 
 R2から直接配信するHTML、Markdown、静的JSONなどのGET・HEADは、`If-None-Match`の一致時に本文なしの304を返す。弱いETag（`W/`）、タグ一覧、`*`に対応する。HTMLとMarkdownは選択した表現のETagを照合し、`Vary: Accept`を維持する。[RFC 9110 §13.1.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.2)に従う。
 

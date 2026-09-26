@@ -26,7 +26,7 @@
 | `uv run --frozen pytest -q` | 355 passed / 10 skipped、120.85秒。skipはWindowsのsymlink権限9件とPOSIX専用条件1件 |
 | 境界検査・project契約の最終変更後の重点検査 | 30 passed / 1 skipped。Markdownリンク、JSON Schema、YAML・TOML契約を含む |
 | `uv build` | wheel・sdistの構築に成功 |
-| Linuxで`npm --prefix worker ci`、`npm --prefix worker run verify` | bindings、型検査、lint、Worker・HTTP 71件、WebMCP 3件、dry-run build、依存監査に合格。脆弱性0件 |
+| Linuxで`npm --prefix worker ci`、`npm --prefix worker run verify` | bindings、型検査、lint、Worker・HTTP 73件、WebMCP 3件、dry-run build、依存監査に合格。脆弱性0件 |
 | `git diff --check` / staged差分検査 | 合格 |
 
 Workerは、作業中のWorker・schemaファイルだけを隔離コピーし、既存のNode.js 22.19.0 Linuxコンテナで検証した。検証用コピーと作業ツリーの全対象fileのSHA-256一致を確認した。元のWindows workerdはsocket listenがエラー10013で拒否され、テスト起動に失敗した。Linuxの成功をWindows実行成功とは扱わない。
@@ -43,4 +43,8 @@ Workerは、作業中のWorker・schemaファイルだけを隔離コピーし�
 
 `If-None-Match`に一致するタグと不正な後続文字が含まれると304になることを再現した。ヘッダー全体をタグ一覧として検証し、不正な一覧は一致なしとして通常の200応答にするよう修正した。引用符内のカンマ、弱いタグ、空の一覧要素は引き続き受け付ける。分類chunkの不整合拒否、公開境界、削除対象の参照関係も確認した。
 
-追加した7ケースとGET・HEADの回帰を含む最終Linux検証は71件・WebMCP 3件に合格した。初回は既存の`beforeAll`でR2 fixtureの準備が10秒の制限に達して失敗したが、同じsourceと設定の再実行は全gateに合格した。timeout設定やテストの省略条件は変更していない。
+追加した7ケースとGET・HEADの回帰を含むレビュー時点のLinux検証は71件・WebMCP 3件に合格した。初回は既存の`beforeAll`でR2 fixtureの準備が10秒の制限に達して失敗したが、同じsourceと設定の再実行は全gateに合格した。timeout設定やテストの省略条件は変更していない。
+
+[PR #84](https://github.com/Nagi-Inaba/pmgs-reference/pull/84)の自動レビューで、manifest総件数と全chunk entryの件数合計の照合不足が見つかった。総件数だけの変更と照会対象外chunk entryの件数変更を再現し、既存code・範囲内の未収録code・範囲外codeの全6通りを、chunk探索前に503で拒否するよう修正した。R2代替による検証では、不整合時の読み取りは1回だった。
+
+追加した2テストを含む修正後のLinux `npm ci` / `npm run verify`は、Worker・HTTP 73件、WebMCP 3件、bindings、型検査、lint、build、依存監査0件に合格した。公開境界217候補とMarkdownリンクも再検証した。

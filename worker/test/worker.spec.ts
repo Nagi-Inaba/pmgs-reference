@@ -217,6 +217,31 @@ describe("classification API", () => {
     },
   );
 
+  it.each(["aggregate_count", "unselected_count"])(
+    "rejects a manifest with inconsistent %s before returning a match or miss",
+    async (defect) => {
+      try {
+        await seedSparseLookupFixture();
+        const key = "releases/JPPM2099001/groups/classification/G06F3/manifest.json";
+        const object = await env.PMGS_BUCKET.get(key);
+        const manifest = await object!.json<{
+          record_count: number;
+          chunks: { record_count: number }[];
+        }>();
+        if (defect === "aggregate_count") manifest.record_count += 1;
+        else manifest.chunks[1]!.record_count += 1;
+        await env.PMGS_BUCKET.put(key, JSON.stringify(manifest));
+        for (const code of ["G06F3%2F048", "G06F3%2F049", "G06F3%2F999"]) {
+          const response = await request(`/api/v1/lookup?scheme=fi&code=${code}`);
+          expect(response.status).toBe(503);
+          expect(await json(response)).toMatchObject({ error: { code: "RELEASE_UNAVAILABLE" } });
+        }
+      } finally {
+        await seedFixture();
+      }
+    },
+  );
+
   it.each(["revision_relation", "storage_schema"] as const)(
     "returns 503 for a malformed classification %s",
     async (defect) => {

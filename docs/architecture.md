@@ -55,7 +55,7 @@ adapterへ委譲し、setup自体を別の分類正本にしない。
 
 Workerは利用者入力を検証し、版付きR2 keyを選び、content negotiationとHTTP応答を処理する。
 
-分類chunkの範囲は探索先を絞るために使い、その間の全codeの存在は仮定しない。chunkとmanifestの件数・両端キー、recordの順序・release・lookup keyを照合してから、未収録codeを404として返す。R2直接配信では選択した表現のETagを使い、GET・HEADの弱い比較による条件付き取得を処理する。
+分類chunkの範囲は探索先を絞るために使い、その間の全codeの存在は仮定しない。manifestの総件数と全chunk entryの件数合計を探索前に照合する。対象chunkとmanifest entryの件数・両端キー、recordの順序・release・lookup keyを照合してから、未収録codeを404として返す。R2直接配信では選択した表現のETagを使い、GET・HEADの弱い比較による条件付き取得を処理する。
 
 WorkerはPMGSのCSV、XML、HTML、PDFを解析しない。
 

@@ -311,6 +311,10 @@ export async function lookupClassification(request: Request, env: Env): Promise<
   if (!isGroupManifest(manifestPayload) || manifestPayload.release_id !== release.id) {
     throw unavailable("group manifest is malformed");
   }
+  const recordCount = manifestPayload.chunks.reduce((total, entry) => total + entry.record_count, 0);
+  if (!Number.isSafeInteger(recordCount) || recordCount !== manifestPayload.record_count) {
+    throw unavailable("group manifest record count is inconsistent");
+  }
   const chunkEntry = findGroupChunk(manifestPayload.chunks, targetLookupKey);
   if (chunkEntry === null) {
     throw new PublicError(404, "CLASSIFICATION_NOT_FOUND", "classification not found");

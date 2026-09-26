@@ -16,12 +16,12 @@ SQLite schema v2と分類record 2.0は、IPCの基準日・指定version、FI改
 
 [2026-09-26の保守検証](verification/maintenance-2026-09-26.md)に、修正の再現条件、実測結果、削除対象、検証限界を記録する。
 
-- 分類chunkの範囲内にある未収録コードは404を返す。件数・境界キー・順序・releaseの不整合は503で拒否する。
+- 分類chunkの範囲内にある未収録コードは404を返す。manifest総件数・chunk件数・境界キー・順序・releaseの不整合は503で拒否する。
 - R2直接配信のGET・HEADは、弱いETagを含む条件付き取得に対応する。
 - 公開境界検査は作業ディレクトリによらずrepository全体を対象とする。生成物の強制追加、バイナリ・NUL入りファイル、リンク、端末固有pathの検査を強化した。
 - 一時的な自動push workflowと、公開利用者に不要な依存更新PRの作業メモを削除した。
 
-Pythonは355件合格・10件skip、LinuxのWorker・HTTPは71件、WebMCPは3件合格した。公開境界217候補、Ruff、mypy、wheel・sdist build、Worker dry-run build、依存監査、Markdownリンク検査にも合格した。skipはWindowsのsymlink権限とPOSIX専用条件による。Windows workerdの起動失敗などの限界は上記の保守検証記録へ記載した。
+Pythonは355件合格・10件skip、LinuxのWorker・HTTPは73件、WebMCPは3件合格した。公開境界217候補、Ruff、mypy、wheel・sdist build、Worker dry-run build、依存監査、Markdownリンク検査にも合格した。skipはWindowsのsymlink権限とPOSIX専用条件による。Windows workerdの起動失敗などの限界は上記の保守検証記録へ記載した。
 
 ## GitHub source repositoryの公開検証
 
