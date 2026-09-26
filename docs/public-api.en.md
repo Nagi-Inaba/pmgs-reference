@@ -57,8 +57,11 @@ Every response includes `Content-Signal: search=yes, ai-input=yes, ai-train=no` 
 
 Versioned responses use long-lived caching; `current` responses use short-lived caching.
 
-A normal classification or document lookup completes with at most two R2 reads: one manifest and one target chunk.
-The Worker returns 503 rather than guessing when artifacts are inconsistent or a JSON object exceeds 8 MiB.
+A normal classification or document lookup completes with at most two R2 reads: one manifest and one target chunk. The Worker returns 503 rather than guessing when artifacts are inconsistent or a JSON object exceeds 8 MiB.
+
+A classification chunk's key range does not guarantee that every code within it exists. An absent code within the range also returns 404 `CLASSIFICATION_NOT_FOUND`. Inconsistent counts, endpoint keys, ordering, record releases, or lookup keys return 503.
+
+GET and HEAD requests for HTML, Markdown, static JSON, and other objects served directly from R2 return a bodyless 304 when `If-None-Match` matches. Weak ETags (`W/`), tag lists, and `*` are supported. Negotiated HTML and Markdown compare the selected representation's ETag and preserve `Vary: Accept`, following [RFC 9110 §13.1.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.2).
 
 ## Security boundary
 

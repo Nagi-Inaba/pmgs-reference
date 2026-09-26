@@ -1,8 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { selectPageFormat } from "../src/http";
+import { matchesIfNoneMatch, selectPageFormat } from "../src/http";
 
 describe("HTTP representation helpers", () => {
+  it.each([
+    [null, '"current"', false],
+    ["*", '"current"', true],
+    ['"current"', '"current"', true],
+    ['W/"current"', '"current"', true],
+    ['"current"', 'W/"current"', true],
+    ['"other", W/"current"', '"current"', true],
+    ['W/"other"', '"current"', false],
+    ['"CURRENT"', '"current"', false],
+    ['W/"part,tag", "other"', '"part,tag"', true],
+    ['"part,tag"', '"tag"', false],
+    ['"current"garbage', '"current"', false],
+    ['garbage, "current"', '"current"', false],
+    ['"other" "current"', '"current"', false],
+    ['"other""current"', '"current"', false],
+    ['"current", W/', '"current"', false],
+    ['*, "current"', '"current"', false],
+    [', W/"current", ,', '"current"', true],
+  ])("compares If-None-Match %s with %s", (header, etag, expected) => {
+    expect(matchesIfNoneMatch(header, etag)).toBe(expected);
+  });
+
   it.each([
     ["", "html"],
     ["*/*", "html"],

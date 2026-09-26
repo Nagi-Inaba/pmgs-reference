@@ -206,6 +206,22 @@ IPC_EXPIRED.revision_records = [
 ];
 const FTERM = record("fterm", "4C083AA01", null, "fterm/4C083", "F-term cosmetic");
 
+export async function seedSparseLookupFixture(): Promise<void> {
+  const prefix = `releases/${RELEASE}/groups/classification/G06F3`;
+  const last = record("fi", "G06F3/050", null, "classification/G06F3", "Sparse endpoint");
+  const manifest = JSON.parse(OBJECTS[`${prefix}/manifest.json`]!.body);
+  manifest.record_count += 1;
+  manifest.chunks[0].last_lookup_key = last.lookup_key;
+  manifest.chunks[0].record_count = 2;
+  await env.PMGS_BUCKET.put(`${prefix}/manifest.json`, JSON.stringify(manifest));
+  await env.PMGS_BUCKET.put(`${prefix}/001.json`, JSON.stringify({
+    schema_version: "2.0",
+    release_id: RELEASE,
+    chunk_id: "001",
+    records: [FI, last],
+  }));
+}
+
 const OBJECTS: Record<string, { body: string; contentType: string }> = {
   "index.html": {
     body: `<!doctype html><html><body><h1>PMGS Reference</h1><p>${NOTICE_JA}</p><script src="/assets/webmcp.js" defer></script></body></html>`,

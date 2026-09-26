@@ -17,6 +17,10 @@ GitHub repositoryの作成、remote追加、push、visibility変更、release作
 - 登録申込書、credential、連絡先
 - confidential patent document
 - local absolute pathを含むlogやreport
+- 一時ブランチ専用の修復workflow、自動push用の使い捨てscript、依存更新PRの作業メモ
+- 仮想環境、依存package、build出力、SQLite補助file、ローカルlog
+
+`verify_repository_boundary.py`はrepository rootを基準に追跡済みfileと未追跡候補を検査する。`.gitignore`で除外した生成物も、強制追加された場合は拒否する。許可済みJPO証跡PDFを除く候補はUTF-8テキストを要求し、NUL入りfileとリンクを拒否する。この検査は履歴内blobやstaging済みblobの内容を監査するものではない。
 
 ## 公開履歴
 
