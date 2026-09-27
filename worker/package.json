@@ -25,12 +25,12 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
-    "@cloudflare/workers-types": "5.20260820.1",
+    "@cloudflare/workers-types": "5.20260924.1",
     "esbuild": "0.28.2",
-    "oxlint": "1.79.0",
+    "oxlint": "1.85.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.11",
-    "webmcp-types": "0.1.5",
-    "wrangler": "4.125.0"
+    "vitest": "5.0.1",
+    "webmcp-types": "0.1.9",
+    "wrangler": "4.139.0"
   }
 }
