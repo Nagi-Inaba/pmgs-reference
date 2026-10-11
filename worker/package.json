@@ -24,13 +24,13 @@
     "sharp": "0.35.4"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.22.0",
-    "@cloudflare/workers-types": "5.20260820.1",
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@cloudflare/workers-types": "5.20261008.1",
     "esbuild": "0.28.2",
-    "oxlint": "1.79.0",
+    "oxlint": "1.87.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.11",
-    "webmcp-types": "0.1.5",
-    "wrangler": "4.125.0"
+    "vitest": "5.0.3",
+    "webmcp-types": "0.1.10",
+    "wrangler": "4.149.0"
   }
 }
