@@ -13,7 +13,7 @@ authors = [{ name = "Nagi-Inaba" }]
 dependencies = [
   "lxml>=6.1,<7",
   "mcp>=2.0,<3",
-  "pymupdf>=1.28,<2",
+  "pymupdf>=1.28,<3",
   "pyyaml>=6.0,<7",
 ]
 
@@ -31,7 +31,7 @@ dev = [
   "mypy>=2.3,<3",
   "pytest>=9.1,<10",
   "pytest-cov>=7.0,<8",
-  "ruff>=0.16,<0.17",
+  "ruff>=0.16,<0.18",
   "types-pyyaml>=6.0.12,<7",
 ]
 
