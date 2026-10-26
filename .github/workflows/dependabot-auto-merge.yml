@@ -1,0 +1,60 @@
+# Enable auto-merge for Dependabot patch and minor updates.
+# Matches GitHub's automerge example and dependabot/fetch-metadata's write-token
+# pattern: pull_request_target runs this file from the default branch, the job
+# never checks out pull-request code, and only dependabot[bot] is eligible.
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions#enabling-automerge-on-a-pull-request
+# https://github.com/dependabot/fetch-metadata#enabling-auto-merge
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot:
+    name: Dependabot auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.repository == 'Nagi-Inaba/pmgs-reference' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Label major updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh api "repos/${GITHUB_REPOSITORY}/labels/needs-review" >/dev/null 2>&1; then
+            gh label create "needs-review" \
+              --description "Dependabot major update; do not auto-merge" \
+              --color "B60205"
+          fi
+          gh pr edit "$PR_URL" --add-label "needs-review"
+
+      - name: Enable auto-merge for patch and minor npm, pip, and uv updates
+        if: >-
+          contains(fromJSON('["npm_and_yarn","npm","pip","uv"]'), steps.metadata.outputs.package-ecosystem) &&
+          contains(fromJSON('["version-update:semver-patch","version-update:semver-minor"]'), steps.metadata.outputs.update-type)
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"

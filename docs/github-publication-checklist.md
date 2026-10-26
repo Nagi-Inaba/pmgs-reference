@@ -97,6 +97,25 @@ patent-classification pmgs intellectual-property openapi mcp cloudflare-workers
 6. CodeQLのPythonとJavaScriptまたはTypeScriptを有効にする。
 7. default branchのforce pushとdeletionを禁止する。
 8. 初回hosted runで実在するcheck名を確認してからrequired checkへ設定する。
+9. Dependabotのpatch・minor自動マージを使う場合は、repositoryの「Allow auto-merge」とsquash mergeを有効にする。`main`のrulesetまたはbranch protectionの必須status checkには、次の`ci.yml` job名を指定する。Dependabot PRでは`CodeQL`がskippingになるため必須にしない。自動マージworkflow自身も必須にしない。承認レビューを必須にすると、このworkflowは承認しないためpatch・minorも人の承認までマージされない。
+   - `Python 3.12 on ubuntu-latest`
+   - `Python 3.12 on windows-latest`
+   - `Python 3.12 on macos-latest`
+   - `Python 3.13 on ubuntu-latest`
+   - `Python 3.14 on ubuntu-latest`
+   - `Python 3.14 on windows-latest`
+   - `Python 3.14 on macos-latest`
+   - `Installed wheel on ubuntu-latest`
+   - `Installed wheel on windows-latest`
+   - `Installed wheel on macos-latest`
+   - `Installed wheel on Python 3.13`
+   - `Synthetic determinism on ubuntu-latest`
+   - `Synthetic determinism on windows-latest`
+   - `Synthetic determinism on macos-latest`
+   - `Compare synthetic determinism`
+   - `Cloudflare Worker on Node 22`
+10. 週次CodexレビューはrepositoryのActions secret `OPENAI_API_KEY`を使う。Dependabotイベントでは起動しないため、Dependabot secretは不要である。secretが無い実行はログを残して成功終了する。
+11. 「Allow GitHub Actions to create and approve pull requests」は無効のままにする。workflow既定permissionはcontentのreadのままでよく、writeは自動マージjobの`permissions`だけが宣言する。自動マージworkflowは`pull_request_target`でdefault branchの定義だけを実行し、PRのcodeはcheckoutしない。
 
 ## hosted verification
 
