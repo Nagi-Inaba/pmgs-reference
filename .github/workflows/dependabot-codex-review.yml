@@ -110,6 +110,8 @@ jobs:
           prompt-file: ${{ runner.temp }}/dependabot-review/prompt.md
           working-directory: ${{ runner.temp }}/dependabot-review
           output-file: ${{ runner.temp }}/dependabot-review/final-message.md
+          model: gpt-6.1-sol
+          effort: high
           permission-profile: ":read-only"
           safety-strategy: drop-sudo
 
