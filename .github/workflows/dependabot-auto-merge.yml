@@ -42,13 +42,15 @@ jobs:
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if ! gh api "repos/${GITHUB_REPOSITORY}/labels/needs-review" >/dev/null 2>&1; then
             gh label create "needs-review" \
+              --repo "$GH_REPO" \
               --description "Dependabot major update; do not auto-merge" \
               --color "B60205"
           fi
-          gh pr edit "$PR_URL" --add-label "needs-review"
+          gh pr edit "$PR_URL" --repo "$GH_REPO" --add-label "needs-review"
 
       - name: Enable auto-merge for patch and minor npm, pip, and uv updates
         if: >-
@@ -57,4 +59,5 @@ jobs:
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge --auto --squash "$PR_URL"
+          GH_REPO: ${{ github.repository }}
+        run: gh pr merge --auto --squash --repo "$GH_REPO" "$PR_URL"
